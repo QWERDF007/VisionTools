@@ -224,5 +224,76 @@ class TestToolContractGenerator(unittest.TestCase):
         self.assertIn('return new CpuTool(s);', content)
         self.assertIn('s_generatedModuleApi', content)
 
+    def test_bool_rank_rejected(self):
+        doc = {
+            "schema_version": 1,
+            "tool_id": "test.bool.rank",
+            "display_name": "Bool Rank Tool",
+            "kind": "cpp_function",
+            "entry": {"registry_name": "test.bool.rank"},
+            "inputs": [{"id": "x", "type": "NumericArray", "dtype": "float32", "rank": True}],
+            "outputs": []
+        }
+        with self.assertRaises(ContractValidationError) as ctx:
+            validate_tool_declaration(doc, Path("test.yaml"))
+        self.assertIn("integer rank >= 0", str(ctx.exception))
+
+    def test_onesided_range_rejected(self):
+        # min constraint with smaller default
+        doc = {
+            "schema_version": 1,
+            "tool_id": "test.onesided.range",
+            "display_name": "Onesided Range Tool",
+            "kind": "cpp_function",
+            "entry": {"registry_name": "test.onesided.range"},
+            "inputs": [{"id": "x", "type": "Float", "default": -1.0, "min": 0.0}],
+            "outputs": []
+        }
+        with self.assertRaises(ContractValidationError) as ctx:
+            validate_tool_declaration(doc, Path("test.yaml"))
+        self.assertIn("out of range", str(ctx.exception))
+
+    def test_missing_python_file_rejected(self):
+        doc = {
+            "schema_version": 1,
+            "tool_id": "test.py.missing",
+            "display_name": "Python Tool",
+            "kind": "python_function",
+            "entry": {"file": "nonexistent_script.py", "symbol": "foo"},
+            "inputs": [],
+            "outputs": []
+        }
+        with self.assertRaises(ContractValidationError) as ctx:
+            validate_tool_declaration(doc, Path("test.yaml"))
+        self.assertIn("does not exist", str(ctx.exception))
+
+    def test_typespec_and_tool_contract_in_header(self):
+        valid_path = self.fixtures_dir / "valid_tool.yaml"
+        doc = load_yaml(valid_path)
+        val = validate_tool_declaration(doc, valid_path)
+        header = generate_port_constants_header([val])
+        self.assertIn("TypeSpec", header)
+        self.assertIn("getToolContract()", header)
+        self.assertIn("visionrt::PortContract", header)
+
+    def test_cli_negative_cases(self):
+        import subprocess
+        script = str(tools_dir / "generate_tool_contracts.py")
+        with tempfile.TemporaryDirectory() as td:
+            t = Path(td)
+            # Missing bindings file -> returncode != 0
+            p = subprocess.run([sys.executable, script, "--tools-dir", str(self.fixtures_dir),
+                                "--bindings", str(t / "missing_bindings.yaml"), "--output-dir", str(t / "gen"),
+                                "--index-output", str(t / "index.json")], capture_output=True, text=True)
+            self.assertNotEqual(p.returncode, 0)
+
+            # Empty tools dir -> returncode != 0
+            empty_dir = t / "empty_tools"
+            empty_dir.mkdir()
+            p = subprocess.run([sys.executable, script, "--tools-dir", str(empty_dir),
+                                "--bindings", str(tools_dir / "module_bindings.yaml"), "--output-dir", str(t / "gen"),
+                                "--index-output", str(t / "index.json")], capture_output=True, text=True)
+            self.assertNotEqual(p.returncode, 0)
+
 if __name__ == "__main__":
     unittest.main()

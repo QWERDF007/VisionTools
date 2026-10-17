@@ -1,5 +1,6 @@
 #include "YoloModel.h"
 #include "InferProtocol.h"
+#include "PortConstants.h"
 
 #include <inferrt/model/ModelFactory.hpp>
 #include <inferrt/model/Buffers.hpp>
@@ -14,6 +15,7 @@
 
 namespace visionrt::infer {
 namespace {
+namespace yolo_ports = visiontools::ports::visionrt_dl_yolo;
 constexpr std::array strides{8, 16, 32};
 constexpr std::array<const char*, 3> outputNames{"output0", "output1", "output2"};
 template<class T> T parameter(const Values& values, const char* name, T fallback) {
@@ -63,7 +65,7 @@ void verifyTensor(const irt::TensorInfo& tensor, const char* name, const irt::Sh
 }
 std::vector<std::string> labels(const Values& values, const PathResolver& paths, int count) {
     std::vector<std::string> result;
-    const auto path = text(values, "labels_path");
+    const auto path = text(values, yolo_ports::init::LABELS_PATH);
     if (!path.empty()) {
         std::ifstream file(paths.resolve(path), std::ios::binary);
         if (!file) throw ContractError("Cannot open labels_path: " + path);
@@ -131,19 +133,19 @@ ToolStatus YoloTool::initialize(const Values& parameters) {
     if (!cleanup) return cleanup;
     try {
         auto state = std::make_unique<State>();
-        const auto modelName = text(parameters, "model_name", "yolov8n");
-        const auto mode = text(parameters, "load_mode", "engine");
-        const auto precision = text(parameters, "precision", "fp32");
-        const auto modelPath = text(parameters, "model_path");
-        const auto outputPath = text(parameters, "engine_output_path");
+        const auto modelName = text(parameters, yolo_ports::init::MODEL_NAME, "yolov8n");
+        const auto mode = text(parameters, yolo_ports::init::LOAD_MODE, "engine");
+        const auto precision = text(parameters, yolo_ports::init::PRECISION, "fp32");
+        const auto modelPath = text(parameters, yolo_ports::init::MODEL_PATH);
+        const auto outputPath = text(parameters, yolo_ports::init::ENGINE_OUTPUT_PATH);
         if (modelName != "yolov8n") throw ContractError("Only native yolov8n is supported by this tool");
         if (mode != "engine" && mode != "build_wts") throw ContractError("load_mode must be engine or build_wts");
         if (precision != "fp32" && precision != "fp16") throw ContractError("precision must be fp32 or fp16");
         if (modelPath.empty()) throw ContractError("model_path is empty");
-        state->device = integer(parameters, "gpu_index", 0, 0);
-        state->width = integer(parameters, "input_width", 640, 32);
-        state->height = integer(parameters, "input_height", 640, 32);
-        state->classes = integer(parameters, "num_classes", 80, 1);
+        state->device = integer(parameters, yolo_ports::init::GPU_INDEX, 0, 0);
+        state->width = integer(parameters, yolo_ports::init::INPUT_WIDTH, 640, 32);
+        state->height = integer(parameters, yolo_ports::init::INPUT_HEIGHT, 640, 32);
+        state->classes = integer(parameters, yolo_ports::init::NUM_CLASSES, 80, 1);
         if (state->width % 32 || state->height % 32 || state->classes > std::numeric_limits<int>::max() - 4)
             throw ContractError("Native yolov8n input dimensions must be multiples of 32; num_classes must fit 4+C");
         state->names = labels(parameters, paths_, state->classes);
@@ -228,12 +230,12 @@ ToolResult YoloTool::executeWithTrace(const Values& inputs, std::vector<ImageTra
 ToolResult YoloTool::run(const Values& inputs, std::vector<ImageTrace>* traces) {
     try {
         if (!state_) return missingResult({-3, "YOLO execute: model is not initialized"});
-        const auto found = inputs.find("images");
+        const auto found = inputs.find(yolo_ports::in::IMAGES);
         if (found == inputs.end() || !std::holds_alternative<ImageBatch>(found->second))
             throw ContractError("images: missing or not an ImageBatch");
         const auto& images = std::get<ImageBatch>(found->second);
-        const DetectionParameters parameters{parameter<double>(inputs, "conf_threshold", 0.25),
-            parameter<double>(inputs, "nms_threshold", 0.45), parameter<std::int64_t>(inputs, "max_detections", 100)};
+        const DetectionParameters parameters{parameter<double>(inputs, yolo_ports::in::CONF_THRESHOLD, 0.25),
+            parameter<double>(inputs, yolo_ports::in::NMS_THRESHOLD, 0.45), parameter<std::int64_t>(inputs, yolo_ports::in::MAX_DETECTIONS, 100)};
         validateParameters(parameters);
         for (const auto& image : images.images()) {
             if (image.empty() || image.readOnlyMat().depth() != CV_8U ||
@@ -304,10 +306,10 @@ ToolResult YoloTool::run(const Values& inputs, std::vector<ImageTrace>* traces) 
             classes.push_back(NumericBuffer::copy(DType::Int64, {length}, std::as_bytes(std::span(imageClasses))));
             names.emplace_back(std::vector<std::int64_t>{length}, std::move(imageNames));
         }
-        return {{}, {{"images", images}, {"rois", RoiBatch(std::move(rois))},
-            {"scores", NumericArray(DType::Float32, 2, Layout::BatchRagged, std::move(scores))},
-            {"classes", NumericArray(DType::Int64, 2, Layout::BatchRagged, std::move(classes))},
-            {"class_names", StringArray(2, Layout::BatchRagged, std::move(names))}}};
+        return {{}, {{yolo_ports::out::IMAGES, images}, {yolo_ports::out::ROIS, RoiBatch(std::move(rois))},
+            {yolo_ports::out::SCORES, NumericArray(DType::Float32, 2, Layout::BatchRagged, std::move(scores))},
+            {yolo_ports::out::CLASSES, NumericArray(DType::Int64, 2, Layout::BatchRagged, std::move(classes))},
+            {yolo_ports::out::CLASS_NAMES, StringArray(2, Layout::BatchRagged, std::move(names))}}};
     } catch (const std::exception& error) {
         if (state_ && state_->stream) cudaStreamSynchronize(state_->stream);
         if (traces) traces->clear();
