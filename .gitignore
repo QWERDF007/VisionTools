@@ -67,10 +67,10 @@ vcpkg_installed/
 Testing/
 .cache/
 
-# Local task ledger and solution packages (per instructions)
-WORKLOG.md
+# Solution packages (per instructions)
 docs/*.zip
 docs/VisionRT_VisionTools_分仓库方案包*/
+docs/VisionTools_验收与改进方案*/
 
 # IDE & Editor files
 .vs/
