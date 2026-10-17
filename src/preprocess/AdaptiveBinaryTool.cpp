@@ -1,10 +1,16 @@
 #include "AdaptiveBinaryTool.h"
+#include "PortConstants.h"
 
 #include <opencv2/imgproc.hpp>
 #include <cmath>
 #include <vector>
 
 namespace visiontools::preprocess {
+namespace {
+
+namespace p = visiontools::ports::visiontools_preprocess_adaptive_binary;
+
+} // namespace
 
 AdaptiveBinaryTool::AdaptiveBinaryTool(const visionrt::ToolServices& services)
     : services_(services) {}
@@ -19,16 +25,16 @@ visionrt::ToolStatus AdaptiveBinaryTool::initialize(const visionrt::Values& para
 visionrt::ToolResult AdaptiveBinaryTool::execute(const visionrt::Values& inputs) {
     try {
         // 1. 输入 Missing 或 非 ImageBatch 检验：非零业务状态；错误消息指明 port
-        auto imgIt = inputs.find("images");
+        auto imgIt = inputs.find(p::in::IMAGES);
         if (imgIt == inputs.end() || visionrt::isMissing(imgIt->second)) {
             visionrt::Values outputs;
-            outputs.emplace("images", visionrt::Missing{});
+            outputs.emplace(p::out::IMAGES, visionrt::Missing{});
             return {{1, "Input port 'images' is missing"}, std::move(outputs)};
         }
         const auto* images = std::get_if<visionrt::ImageBatch>(&imgIt->second);
         if (!images) {
             visionrt::Values outputs;
-            outputs.emplace("images", visionrt::Missing{});
+            outputs.emplace(p::out::IMAGES, visionrt::Missing{});
             return {{1, "Input port 'images' must be an ImageBatch"}, std::move(outputs)};
         }
 
@@ -36,7 +42,7 @@ visionrt::ToolResult AdaptiveBinaryTool::execute(const visionrt::Values& inputs)
         const auto batchSize = images->images().size();
         if (batchSize == 0) {
             visionrt::Values outputs;
-            outputs.emplace("images", visionrt::ImageBatch{});
+            outputs.emplace(p::out::IMAGES, visionrt::ImageBatch{});
             return {{0, ""}, std::move(outputs)};
         }
 
@@ -44,12 +50,12 @@ visionrt::ToolResult AdaptiveBinaryTool::execute(const visionrt::Values& inputs)
         std::int64_t blockSize = 3;
         double constantOffset = 5.0;
 
-        auto bsIt = inputs.find("block_size");
+        auto bsIt = inputs.find(p::in::BLOCK_SIZE);
         if (bsIt != inputs.end() && !visionrt::isMissing(bsIt->second)) {
             const auto* bsVal = std::get_if<std::int64_t>(&bsIt->second);
             if (!bsVal) {
                 visionrt::Values outputs;
-                outputs.emplace("images", visionrt::Missing{});
+                outputs.emplace(p::out::IMAGES, visionrt::Missing{});
                 return {{1, "Input port 'block_size' must be an integer"}, std::move(outputs)};
             }
             blockSize = *bsVal;
@@ -57,30 +63,29 @@ visionrt::ToolResult AdaptiveBinaryTool::execute(const visionrt::Values& inputs)
 
         if (blockSize < 3 || blockSize > 999) {
             visionrt::Values outputs;
-            outputs.emplace("images", visionrt::Missing{});
+            outputs.emplace(p::out::IMAGES, visionrt::Missing{});
             return {{1, "Input port 'block_size' must be between 3 and 999"}, std::move(outputs)};
         }
         if (blockSize % 2 == 0) {
             visionrt::Values outputs;
-            outputs.emplace("images", visionrt::Missing{});
+            outputs.emplace(p::out::IMAGES, visionrt::Missing{});
             return {{1, "Input port 'block_size' must be an odd number (even values are rejected)"}, std::move(outputs)};
         }
 
-        auto coIt = inputs.find("constant_offset");
+        auto coIt = inputs.find(p::in::CONSTANT_OFFSET);
         if (coIt != inputs.end() && !visionrt::isMissing(coIt->second)) {
             if (const auto* dVal = std::get_if<double>(&coIt->second)) {
                 constantOffset = *dVal;
-            } else if (const auto* iVal = std::get_if<std::int64_t>(&coIt->second)) {
-                constantOffset = static_cast<double>(*iVal);
             } else {
+                // Strict check: Int or non-float types must be rejected (VS-03 / TS-04)
                 visionrt::Values outputs;
-                outputs.emplace("images", visionrt::Missing{});
-                return {{1, "Input port 'constant_offset' must be a float"}, std::move(outputs)};
+                outputs.emplace(p::out::IMAGES, visionrt::Missing{});
+                return {{1, "Input port 'constant_offset' must be a float (int not accepted)"}, std::move(outputs)};
             }
         }
         if (!std::isfinite(constantOffset)) {
             visionrt::Values outputs;
-            outputs.emplace("images", visionrt::Missing{});
+            outputs.emplace(p::out::IMAGES, visionrt::Missing{});
             return {{1, "Input port 'constant_offset' must be finite"}, std::move(outputs)};
         }
 
@@ -89,12 +94,12 @@ visionrt::ToolResult AdaptiveBinaryTool::execute(const visionrt::Values& inputs)
             const auto& img = images->images()[b];
             if (img.empty()) {
                 visionrt::Values outputs;
-                outputs.emplace("images", visionrt::Missing{});
+                outputs.emplace(p::out::IMAGES, visionrt::Missing{});
                 return {{1, "Image at batch index " + std::to_string(b) + " is empty"}, std::move(outputs)};
             }
             if (img.type() != CV_8UC1) {
                 visionrt::Values outputs;
-                outputs.emplace("images", visionrt::Missing{});
+                outputs.emplace(p::out::IMAGES, visionrt::Missing{});
                 return {{1, "Image at batch index " + std::to_string(b) + " must be single-channel 8-bit unsigned (CV_8UC1)"}, std::move(outputs)};
             }
         }
@@ -112,11 +117,11 @@ visionrt::ToolResult AdaptiveBinaryTool::execute(const visionrt::Values& inputs)
         }
 
         visionrt::Values outputs;
-        outputs.emplace("images", visionrt::ImageBatch(std::move(outputImages)));
+        outputs.emplace(p::out::IMAGES, visionrt::ImageBatch(std::move(outputImages)));
         return {{0, ""}, std::move(outputs)};
     } catch (const std::exception& e) {
         visionrt::Values outputs;
-        outputs.emplace("images", visionrt::Missing{});
+        outputs.emplace(p::out::IMAGES, visionrt::Missing{});
         return {{1, e.what()}, std::move(outputs)};
     }
 }
@@ -126,3 +131,4 @@ visionrt::ToolStatus AdaptiveBinaryTool::release() {
 }
 
 } // namespace visiontools::preprocess
+

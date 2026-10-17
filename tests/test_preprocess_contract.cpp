@@ -12,6 +12,7 @@
 #include <iostream>
 #include <cassert>
 #include <cmath>
+#include <limits>
 
 #define REQUIRE(cond, msg) \
     do { \
@@ -89,7 +90,28 @@ void testAdaptiveBinaryTool() {
         REQUIRE(res.status.message.find("batch index 0") != std::string::npos, "Error must point out batch index 0");
     }
 
-    // 7. Synthetic 8U grayscale comparison against OpenCV reference
+    // 7. Strict float check: Int constant_offset rejected (VS-03 / TS-04 / F07)
+    {
+        cv::Mat gray(64, 64, CV_8UC1, cv::Scalar(128));
+        Values inputs;
+        inputs.emplace("images", ImageBatch({OwnedImage::copyOf(gray)}));
+        inputs.emplace("constant_offset", std::int64_t(5)); // Int passed instead of Float
+        auto res = tool.execute(inputs);
+        REQUIRE(!res.status, "Int constant_offset must be strictly rejected");
+        REQUIRE(res.status.message.find("constant_offset") != std::string::npos, "Error must mention constant_offset");
+    }
+
+    // 8. Non-finite constant_offset rejected (NaN or Inf)
+    {
+        cv::Mat gray(64, 64, CV_8UC1, cv::Scalar(128));
+        Values inputs;
+        inputs.emplace("images", ImageBatch({OwnedImage::copyOf(gray)}));
+        inputs.emplace("constant_offset", std::numeric_limits<double>::infinity());
+        auto res = tool.execute(inputs);
+        REQUIRE(!res.status, "Infinite constant_offset must be rejected");
+    }
+
+    // 9. Synthetic 8U grayscale comparison against OpenCV reference
     {
         cv::Mat img1(100, 120, CV_8UC1);
         for (int y = 0; y < img1.rows; ++y) {
@@ -178,22 +200,91 @@ void testImageCropTool() {
     cv::Mat img(100, 100, CV_8UC1, cv::Scalar(100));
     img(cv::Rect(20, 20, 30, 30)).setTo(cv::Scalar(200));
 
+    OwnedImage srcImage = OwnedImage::copyOf(img);
     auto roi = Roi::rectangle(20.0F, 20.0F, 30.0F, 30.0F, 0.0F);
 
-    Values inputs;
-    inputs.emplace("images", ImageBatch({OwnedImage::copyOf(img)}));
-    inputs.emplace("rois", RoiBatch({{roi}}));
+    OwnedImage savedCropped;
+    {
+        Values inputs;
+        inputs.emplace("images", ImageBatch({srcImage}));
+        inputs.emplace("rois", RoiBatch({{roi}}));
 
-    auto res = tool.execute(inputs);
-    REQUIRE(res.status, "Crop must succeed");
+        auto res = tool.execute(inputs);
+        REQUIRE(res.status, "Crop must succeed");
 
-    const auto* cropped = std::get_if<ImageBatch>(&res.outputs["images"]);
-    REQUIRE(cropped != nullptr, "Output must contain cropped images");
-    REQUIRE(cropped->images().size() == 1, "Expected 1 cropped image");
-    REQUIRE(cropped->images()[0].cols() == 30, "Cropped width must be 30");
-    REQUIRE(cropped->images()[0].rows() == 30, "Cropped height must be 30");
+        const auto* cropped = std::get_if<ImageBatch>(&res.outputs["images"]);
+        REQUIRE(cropped != nullptr, "Output must contain cropped images");
+        REQUIRE(cropped->images().size() == 1, "Expected 1 cropped image");
+        REQUIRE(cropped->images()[0].cols() == 30, "Cropped width must be 30");
+        REQUIRE(cropped->images()[0].rows() == 30, "Cropped height must be 30");
+
+        // Zero-copy verification: underlying pixel buffer must be shared with input (VS-03 / TS-03 / F06)
+        REQUIRE(cropped->images()[0].readOnlyMat().u == srcImage.readOnlyMat().u, "Rect crop must share pixel buffer (u) with input");
+        REQUIRE(cropped->images()[0].rowStride() == srcImage.rowStride(), "Rect crop must preserve rowStride");
+
+        savedCropped = cropped->images()[0];
+    }
+
+    // Input batch is now out of scope; verify savedCropped is still valid and readable
+    REQUIRE(savedCropped.readOnlyMat().at<unsigned char>(0, 0) == 200, "Cropped image must remain readable after input scope exit");
 
     std::cout << "[PASS] testImageCropTool passed." << std::endl;
+}
+
+void testDetectionFilterTool() {
+    std::cout << "[TEST] Running testDetectionFilterTool..." << std::endl;
+    ToolServices services;
+    DetectionFilterTool tool(services);
+
+    cv::Mat img(100, 100, CV_8UC1, cv::Scalar(0));
+    auto roi = Roi::rectangle(10.0F, 10.0F, 20.0F, 20.0F, 0.0F);
+
+    std::vector<float> scores = {0.85F, 0.35F};
+    std::vector<std::int64_t> classes = {1, 2};
+    std::vector<std::string> names = {"cat", "dog"};
+    std::vector<std::int64_t> allowed = {1, 2};
+
+    auto makeNumArray = [](DType dtype, auto vals) {
+        return NumericArray(dtype, 2, Layout::BatchRagged,
+            {NumericBuffer::copy(dtype, {static_cast<std::int64_t>(vals.size())}, std::as_bytes(std::span(vals)))});
+    };
+
+    // 1. Invalid threshold type (String instead of double/int) -> rejected
+    {
+        Values inputs;
+        inputs.emplace("images", ImageBatch({OwnedImage::copyOf(img)}));
+        inputs.emplace("rois", RoiBatch({{roi, roi}}));
+        inputs.emplace("scores", makeNumArray(DType::Float32, scores));
+        inputs.emplace("classes", makeNumArray(DType::Int64, classes));
+        inputs.emplace("class_names", StringArray(2, Layout::BatchRagged, {StringBuffer({2}, names)}));
+        inputs.emplace("allowed_classes", NumericArray(DType::Int64, 1, Layout::Dense,
+            {NumericBuffer::copy(DType::Int64, {2}, std::as_bytes(std::span(allowed)))}));
+        inputs.emplace("min_score", Utf8("not_a_number")); // String type
+
+        auto res = tool.execute(inputs);
+        REQUIRE(!res.status, "Non-numeric min_score must be rejected");
+    }
+
+    // 2. Valid execution: filter out score < 0.5
+    {
+        Values inputs;
+        inputs.emplace("images", ImageBatch({OwnedImage::copyOf(img)}));
+        inputs.emplace("rois", RoiBatch({{roi, roi}}));
+        inputs.emplace("scores", makeNumArray(DType::Float32, scores));
+        inputs.emplace("classes", makeNumArray(DType::Int64, classes));
+        inputs.emplace("class_names", StringArray(2, Layout::BatchRagged, {StringBuffer({2}, names)}));
+        inputs.emplace("allowed_classes", NumericArray(DType::Int64, 1, Layout::Dense,
+            {NumericBuffer::copy(DType::Int64, {2}, std::as_bytes(std::span(allowed)))}));
+        inputs.emplace("min_score", 0.5);
+
+        auto res = tool.execute(inputs);
+        REQUIRE(res.status, "Filter must succeed");
+        const auto* outRois = std::get_if<RoiBatch>(&res.outputs["rois"]);
+        REQUIRE(outRois != nullptr, "Output must contain rois");
+        REQUIRE(outRois->images()[0].size() == 1, "Expected 1 ROI to pass score >= 0.5");
+    }
+
+    std::cout << "[PASS] testDetectionFilterTool passed." << std::endl;
 }
 
 void testImagePreprocessTool() {
@@ -236,6 +327,7 @@ int main() {
         testAdaptiveBinaryTool();
         testRoiProjectionTool();
         testImageCropTool();
+        testDetectionFilterTool();
         testImagePreprocessTool();
         std::cout << "\n[ALL TESTS PASSED] All preprocess contract tests passed successfully.\n" << std::endl;
         return 0;

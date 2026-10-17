@@ -1,4 +1,5 @@
 #include "ImageCropTool.h"
+#include "PortConstants.h"
 
 #include <opencv2/core.hpp>
 #include <algorithm>
@@ -8,6 +9,8 @@
 
 namespace visiontools::preprocess {
 namespace {
+
+namespace p = visiontools::ports::visionrt_image_crop;
 
 bool insidePolygon(std::span<const cv::Point2d> vertices, double x, double y) {
     bool inside = false;
@@ -46,8 +49,8 @@ visionrt::ToolStatus ImageCropTool::initialize(const visionrt::Values& parameter
 
 visionrt::ToolResult ImageCropTool::execute(const visionrt::Values& inputs) {
     try {
-        auto imgIt = inputs.find("images");
-        auto roiIt = inputs.find("rois");
+        auto imgIt = inputs.find(p::in::IMAGES);
+        auto roiIt = inputs.find(p::in::ROIS);
         if (imgIt == inputs.end() || visionrt::isMissing(imgIt->second))
             throw visionrt::ContractError("Missing input: images");
         if (roiIt == inputs.end() || visionrt::isMissing(roiIt->second))
@@ -126,6 +129,21 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values& inputs) {
                 }
 
                 const cv::Rect bounds(left, top, right - left, bottom - top);
+
+                // Zero-copy readonly view for axis-aligned rectangles:
+                // Shares image.owner() and preserves rowStride() per TS-03 / VS-03 / F06
+                const bool isAxisAlignedRect = (roi.kind() == visionrt::RoiKind::Rectangle &&
+                    std::remainder(static_cast<double>(encoded[5]), 360.0) == 0.0);
+
+                if (isAxisAlignedRect) {
+                    output.push_back(image.region(bounds));
+                    indices.push_back(static_cast<std::int64_t>(b));
+                    indices.push_back(static_cast<std::int64_t>(n));
+                    origins.push_back(left);
+                    origins.push_back(top);
+                    continue;
+                }
+
                 cv::Mat mask(bounds.height, bounds.width, CV_8UC1, cv::Scalar(0));
                 bool any = false;
 
@@ -162,18 +180,18 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values& inputs) {
 
         const auto count = static_cast<std::int64_t>(output.size());
         visionrt::Values results;
-        results.emplace("images", visionrt::ImageBatch(std::move(output)));
-        results.emplace("source_indices", visionrt::NumericArray(visionrt::DType::Int64, 2, visionrt::Layout::Dense,
+        results.emplace(p::out::IMAGES, visionrt::ImageBatch(std::move(output)));
+        results.emplace(p::out::SOURCE_INDICES, visionrt::NumericArray(visionrt::DType::Int64, 2, visionrt::Layout::Dense,
             {makeBuffer(visionrt::DType::Int64, {count, 2}, indices)}));
-        results.emplace("origins", visionrt::NumericArray(visionrt::DType::Float64, 2, visionrt::Layout::Dense,
+        results.emplace(p::out::ORIGINS, visionrt::NumericArray(visionrt::DType::Float64, 2, visionrt::Layout::Dense,
             {makeBuffer(visionrt::DType::Float64, {count, 2}, origins)}));
 
         return {{}, std::move(results)};
     } catch (const std::exception& e) {
         visionrt::Values results;
-        results.emplace("images", visionrt::Missing{});
-        results.emplace("source_indices", visionrt::Missing{});
-        results.emplace("origins", visionrt::Missing{});
+        results.emplace(p::out::IMAGES, visionrt::Missing{});
+        results.emplace(p::out::SOURCE_INDICES, visionrt::Missing{});
+        results.emplace(p::out::ORIGINS, visionrt::Missing{});
         return {{1, e.what()}, std::move(results)};
     }
 }
@@ -183,3 +201,4 @@ visionrt::ToolStatus ImageCropTool::release() {
 }
 
 } // namespace visiontools::preprocess
+

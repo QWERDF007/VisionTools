@@ -1,4 +1,5 @@
 #include "ReadImageTool.h"
+#include "PortConstants.h"
 
 #include <opencv2/imgcodecs.hpp>
 #include <algorithm>
@@ -8,6 +9,8 @@
 
 namespace visiontools::preprocess {
 namespace {
+
+namespace p = visiontools::ports::visionrt_image_read;
 
 std::string toLower(std::string_view s) {
     std::string res;
@@ -52,10 +55,10 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values& inputs) {
             throw visionrt::ContractError("Expected integer for input: " + key);
         };
 
-        const auto mode = getStr("mode", "file");
-        const auto color = getStr("color", "bgr");
-        const auto rawPath = getStr("path", "");
-        const auto limit = getInt("limit", 0);
+        const auto mode = getStr(p::in::MODE, "file");
+        const auto color = getStr(p::in::COLOR, "bgr");
+        const auto rawPath = getStr(p::in::PATH, "");
+        const auto limit = getInt(p::in::LIMIT, 0);
 
         int flags = cv::IMREAD_COLOR;
         if (color == "unchanged") flags = cv::IMREAD_UNCHANGED;
@@ -132,15 +135,15 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values& inputs) {
 
         const auto count = static_cast<std::int64_t>(pathStrings.size());
         visionrt::Values outputs;
-        outputs.emplace("images", visionrt::ImageBatch(std::move(images)));
-        outputs.emplace("paths", visionrt::StringArray(1, visionrt::Layout::Dense,
+        outputs.emplace(p::out::IMAGES, visionrt::ImageBatch(std::move(images)));
+        outputs.emplace(p::out::PATHS, visionrt::StringArray(1, visionrt::Layout::Dense,
             {visionrt::StringBuffer({count}, std::move(pathStrings))}));
 
         return {{}, std::move(outputs)};
     } catch (const std::exception& e) {
         visionrt::Values outputs;
-        outputs.emplace("images", visionrt::Missing{});
-        outputs.emplace("paths", visionrt::Missing{});
+        outputs.emplace(p::out::IMAGES, visionrt::Missing{});
+        outputs.emplace(p::out::PATHS, visionrt::Missing{});
         return {{1, e.what()}, std::move(outputs)};
     }
 }

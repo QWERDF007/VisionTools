@@ -1,4 +1,5 @@
 #include "DetectionFilterTool.h"
+#include "PortConstants.h"
 
 #include <algorithm>
 #include <cmath>
@@ -6,6 +7,8 @@
 
 namespace visiontools::preprocess {
 namespace {
+
+namespace p = visiontools::ports::visionrt_detection_filter;
 
 template<class T>
 visionrt::NumericBuffer makeBuffer(visionrt::DType dtype, std::vector<std::int64_t> shape, const std::vector<T>& values) {
@@ -34,12 +37,12 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values& inputs
             return it->second;
         };
 
-        const auto* images = std::get_if<visionrt::ImageBatch>(&getReq("images"));
-        const auto* rois = std::get_if<visionrt::RoiBatch>(&getReq("rois"));
-        const auto* scores = std::get_if<visionrt::NumericArray>(&getReq("scores"));
-        const auto* classes = std::get_if<visionrt::NumericArray>(&getReq("classes"));
-        const auto* names = std::get_if<visionrt::StringArray>(&getReq("class_names"));
-        const auto* allowedArray = std::get_if<visionrt::NumericArray>(&getReq("allowed_classes"));
+        const auto* images = std::get_if<visionrt::ImageBatch>(&getReq(p::in::IMAGES));
+        const auto* rois = std::get_if<visionrt::RoiBatch>(&getReq(p::in::ROIS));
+        const auto* scores = std::get_if<visionrt::NumericArray>(&getReq(p::in::SCORES));
+        const auto* classes = std::get_if<visionrt::NumericArray>(&getReq(p::in::CLASSES));
+        const auto* names = std::get_if<visionrt::StringArray>(&getReq(p::in::CLASS_NAMES));
+        const auto* allowedArray = std::get_if<visionrt::NumericArray>(&getReq(p::in::ALLOWED_CLASSES));
 
         if (!images || !rois || !scores || !classes || !names || !allowedArray) {
             throw visionrt::ContractError("Invalid input types for detection filter");
@@ -47,13 +50,15 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values& inputs
 
         double minimumScore = 0.0;
         double minimumArea = 0.0;
-        if (auto it = inputs.find("min_score"); it != inputs.end() && !visionrt::isMissing(it->second)) {
+        if (auto it = inputs.find(p::in::MIN_SCORE); it != inputs.end() && !visionrt::isMissing(it->second)) {
             if (auto* d = std::get_if<double>(&it->second)) minimumScore = *d;
             else if (auto* i = std::get_if<std::int64_t>(&it->second)) minimumScore = static_cast<double>(*i);
+            else throw visionrt::ContractError("Input port 'min_score' must be numeric");
         }
-        if (auto it = inputs.find("min_area"); it != inputs.end() && !visionrt::isMissing(it->second)) {
+        if (auto it = inputs.find(p::in::MIN_AREA); it != inputs.end() && !visionrt::isMissing(it->second)) {
             if (auto* d = std::get_if<double>(&it->second)) minimumArea = *d;
             else if (auto* i = std::get_if<std::int64_t>(&it->second)) minimumArea = static_cast<double>(*i);
+            else throw visionrt::ContractError("Input port 'min_area' must be numeric");
         }
 
         if (!std::isfinite(minimumScore) || minimumScore < 0 || minimumScore > 1 ||
@@ -136,23 +141,23 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values& inputs
         }
 
         visionrt::Values outputs;
-        outputs.emplace("images", *images);
-        outputs.emplace("rois", visionrt::RoiBatch(std::move(filteredRois)));
-        outputs.emplace("scores", visionrt::NumericArray(visionrt::DType::Float32, 2, visionrt::Layout::BatchRagged, std::move(filteredScores)));
-        outputs.emplace("classes", visionrt::NumericArray(visionrt::DType::Int64, 2, visionrt::Layout::BatchRagged, std::move(filteredClasses)));
-        outputs.emplace("class_names", visionrt::StringArray(2, visionrt::Layout::BatchRagged, std::move(filteredNames)));
-        outputs.emplace("counts", visionrt::NumericArray(visionrt::DType::Int64, 1, visionrt::Layout::Dense,
+        outputs.emplace(p::out::IMAGES, *images);
+        outputs.emplace(p::out::ROIS, visionrt::RoiBatch(std::move(filteredRois)));
+        outputs.emplace(p::out::SCORES, visionrt::NumericArray(visionrt::DType::Float32, 2, visionrt::Layout::BatchRagged, std::move(filteredScores)));
+        outputs.emplace(p::out::CLASSES, visionrt::NumericArray(visionrt::DType::Int64, 2, visionrt::Layout::BatchRagged, std::move(filteredClasses)));
+        outputs.emplace(p::out::CLASS_NAMES, visionrt::StringArray(2, visionrt::Layout::BatchRagged, std::move(filteredNames)));
+        outputs.emplace(p::out::COUNTS, visionrt::NumericArray(visionrt::DType::Int64, 1, visionrt::Layout::Dense,
             {makeBuffer(visionrt::DType::Int64, {static_cast<std::int64_t>(batchSize)}, counts)}));
 
         return {{}, std::move(outputs)};
     } catch (const std::exception& e) {
         visionrt::Values outputs;
-        outputs.emplace("images", visionrt::Missing{});
-        outputs.emplace("rois", visionrt::Missing{});
-        outputs.emplace("scores", visionrt::Missing{});
-        outputs.emplace("classes", visionrt::Missing{});
-        outputs.emplace("class_names", visionrt::Missing{});
-        outputs.emplace("counts", visionrt::Missing{});
+        outputs.emplace(p::out::IMAGES, visionrt::Missing{});
+        outputs.emplace(p::out::ROIS, visionrt::Missing{});
+        outputs.emplace(p::out::SCORES, visionrt::Missing{});
+        outputs.emplace(p::out::CLASSES, visionrt::Missing{});
+        outputs.emplace(p::out::CLASS_NAMES, visionrt::Missing{});
+        outputs.emplace(p::out::COUNTS, visionrt::Missing{});
         return {{1, e.what()}, std::move(outputs)};
     }
 }
