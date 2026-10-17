@@ -16,11 +16,32 @@ find_package(CUDAToolkit REQUIRED)
 
 get_filename_component(VISIONTOOLS_SOURCE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 
+set(_gen_inc "${CMAKE_BINARY_DIR}/generated")
+if(NOT EXISTS "${_gen_inc}/PortConstants.h" AND EXISTS "${VISIONTOOLS_SOURCE_ROOT}/build/generated/PortConstants.h")
+    set(_gen_inc "${VISIONTOOLS_SOURCE_ROOT}/build/generated")
+endif()
+
+if(NOT TARGET visiontools_infer)
+    find_library(VISIONTOOLS_INFER_LIB NAMES visiontools_infer PATHS
+        "${CMAKE_BINARY_DIR}/src/infer"
+        "${CMAKE_BINARY_DIR}/bin"
+        "${VISIONTOOLS_SOURCE_ROOT}/build/src/infer"
+        "${VISIONTOOLS_SOURCE_ROOT}/dist/VisionTools/bin"
+    )
+    if(VISIONTOOLS_INFER_LIB)
+        add_library(visiontools_infer SHARED IMPORTED)
+        set_target_properties(visiontools_infer PROPERTIES
+            IMPORTED_LOCATION "${VISIONTOOLS_INFER_LIB}"
+            IMPORTED_IMPLIB "${VISIONTOOLS_INFER_LIB}"
+        )
+    endif()
+endif()
+
 add_executable(visiontools_infer_probe main.cpp)
 target_include_directories(visiontools_infer_probe PRIVATE
     "${VISIONTOOLS_SOURCE_ROOT}/src"
     "${VISIONTOOLS_SOURCE_ROOT}/src/infer"
-    "${VISIONTOOLS_SOURCE_ROOT}/src/generated"
+    "${_gen_inc}"
     ${OpenCV_INCLUDE_DIRS}
 )
 target_link_libraries(visiontools_infer_probe PRIVATE

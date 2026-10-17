@@ -7,6 +7,22 @@
 #include <future>
 #include <thread>
 #include <vector>
+#include <algorithm>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <psapi.h>
+#pragma comment(lib, "psapi.lib")
+inline std::size_t getProcessRSS() {
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+        return pmc.WorkingSetSize;
+    }
+    return 0;
+}
+#else
+inline std::size_t getProcessRSS() { return 0; }
+#endif
 
 #define REQUIRE(cond, msg) \
     do { \
@@ -51,12 +67,12 @@ int main() {
         api->destroy(inst);
     }
 
-    // 4. destroy(nullptr) must be safe and no-op
+    // 4. destroy(nullptr) must be safe and no-op (NS-05)
     {
         api->destroy(nullptr);
     }
 
-    // 5. Lifecycle and Snapshot persistence across execute/release/destroy (VS-05)
+    // 5. Lifecycle and Snapshot persistence across execute/release/destroy (VS-05 / NS-05)
     visionrt::OwnedImage snapshotImage;
     {
         visionrt::IToolInstance* inst = api->create("visiontools.preprocess.adaptive_binary", &services, &status);
@@ -74,8 +90,13 @@ int main() {
         REQUIRE(outBatch1 != nullptr && !outBatch1->images().empty(), "Execute 1 must return valid image");
         snapshotImage = outBatch1->images()[0];
 
-        // Execute a second time with different data
-        cv::Mat gray2(40, 40, CV_8UC1, cv::Scalar(50));
+        // Execute a second time with different non-uniform data
+        cv::Mat gray2(40, 40, CV_8UC1);
+        for (int r = 0; r < 40; ++r) {
+            for (int c = 0; c < 40; ++c) {
+                gray2.at<unsigned char>(r, c) = static_cast<unsigned char>((r * 5 + c * 3) % 256);
+            }
+        }
         visionrt::Values in2;
         in2.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(gray2)}));
         in2.emplace("block_size", std::int64_t(3));
@@ -83,16 +104,21 @@ int main() {
         auto res2 = inst->execute(in2);
         REQUIRE(res2.status.code == 0, "Execute 2 must succeed");
 
-        // Verify snapshot from execute 1 is still valid and readable
-        REQUIRE(snapshotImage.rows() == 60 && snapshotImage.cols() == 60, "Snapshot 1 dimensions must remain valid");
-        REQUIRE(snapshotImage.readOnlyMat().at<unsigned char>(0, 0) == 255, "Snapshot 1 pixels must remain readable");
+        // Verify snapshot from execute 1 is still completely valid and all pixels match
+        const auto& snapMat = snapshotImage.readOnlyMat();
+        REQUIRE(snapMat.rows == 60 && snapMat.cols == 60, "Snapshot 1 dimensions must remain valid");
+        for (int r = 0; r < 60; ++r) {
+            for (int c = 0; c < 60; ++c) {
+                REQUIRE(snapMat.at<unsigned char>(r, c) == 255, "Every pixel of snapshot 1 must remain 255");
+            }
+        }
 
-        // Release idempotency
+        // Release idempotency: release twice succeeds (NS-05)
         REQUIRE(inst->release().code == 0, "Release 1 must succeed");
         REQUIRE(inst->release().code == 0, "Repeated release must succeed (idempotent)");
 
         // Snapshot must remain valid after release
-        REQUIRE(snapshotImage.rows() == 60 && snapshotImage.readOnlyMat().at<unsigned char>(0, 0) == 255, "Snapshot must remain valid after release");
+        REQUIRE(snapshotImage.rows() == 60 && snapMat.at<unsigned char>(0, 0) == 255, "Snapshot must remain valid after release");
 
         // Destroy instance
         api->destroy(inst);
@@ -100,7 +126,7 @@ int main() {
     // Snapshot must remain valid after instance destruction
     REQUIRE(snapshotImage.rows() == 60 && snapshotImage.readOnlyMat().at<unsigned char>(0, 0) == 255, "Snapshot must remain valid after destroy");
 
-    // 6. Concurrency: 2 instances running concurrently with independent states (VS-05)
+    // 6. Concurrency: 2 instances running concurrently with independent states (VS-05 / NS-05)
     {
         auto worker = [&](int val, int size) {
             visionrt::ToolStatus s;
@@ -130,24 +156,59 @@ int main() {
         REQUIRE(f1.get() && f2.get(), "Both concurrent worker threads must complete successfully");
     }
 
-    // 7. Stress loop: 100 executions and 20 create/destroy cycles (VS-05)
+    // 7. Lifecycle: 100 consecutive executions on the same instance (NS-05)
+    {
+        std::size_t rssBefore = getProcessRSS();
+        visionrt::ToolStatus s;
+        visionrt::IToolInstance* inst = api->create("visiontools.preprocess.adaptive_binary", &services, &s);
+        REQUIRE(inst != nullptr, "Create for 100 consecutive runs must succeed");
+
+        cv::Mat nonUniform(64, 64, CV_8UC1);
+        for (int r = 0; r < 64; ++r) {
+            for (int c = 0; c < 64; ++c) {
+                nonUniform.at<unsigned char>(r, c) = static_cast<unsigned char>((r * 7 + c * 13) % 256);
+            }
+        }
+        visionrt::Values inputs;
+        inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(nonUniform)}));
+        inputs.emplace("block_size", std::int64_t(5));
+        inputs.emplace("constant_offset", 1.0);
+
+        // Warmup 5 runs
+        for (int w = 0; w < 5; ++w) {
+            auto res = inst->execute(inputs);
+            REQUIRE(res.status.code == 0, "Warmup execute must succeed");
+        }
+
+        std::vector<double> latencies_us;
+        latencies_us.reserve(100);
+
+        for (int i = 0; i < 100; ++i) {
+            auto t0 = std::chrono::high_resolution_clock::now();
+            auto res = inst->execute(inputs);
+            auto t1 = std::chrono::high_resolution_clock::now();
+            REQUIRE(res.status.code == 0, "100 consecutive execute must succeed");
+            latencies_us.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
+        }
+
+        std::sort(latencies_us.begin(), latencies_us.end());
+        double p50 = latencies_us[50];
+        double p95 = latencies_us[95];
+
+        inst->release();
+        api->destroy(inst);
+        std::size_t rssAfter = getProcessRSS();
+
+        std::cout << "[METRICS] 100-run: p50=" << p50 << "us, p95=" << p95
+                  << "us, RSS_before=" << rssBefore << "B, RSS_after=" << rssAfter << "B" << std::endl;
+    }
+
+    // 8. 20 separate create/destroy cycles (NS-05)
     {
         for (int cycle = 0; cycle < 20; ++cycle) {
             visionrt::ToolStatus s;
             visionrt::IToolInstance* inst = api->create("visiontools.preprocess.adaptive_binary", &services, &s);
             REQUIRE(inst != nullptr, "Cycle create must succeed");
-
-            cv::Mat img(32, 32, CV_8UC1, cv::Scalar(128));
-            visionrt::Values inputs;
-            inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(img)}));
-            inputs.emplace("block_size", std::int64_t(5));
-            inputs.emplace("constant_offset", 1.0);
-
-            for (int i = 0; i < 5; ++i) { // 20 cycles * 5 = 100 executions
-                auto res = inst->execute(inputs);
-                REQUIRE(res.status.code == 0, "Stress loop execute must succeed");
-            }
-
             inst->release();
             api->destroy(inst);
         }

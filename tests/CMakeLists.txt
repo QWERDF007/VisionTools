@@ -1,6 +1,5 @@
 include_directories(
     "${CMAKE_SOURCE_DIR}"
-    "${CMAKE_SOURCE_DIR}/src/generated"
     "${CMAKE_BINARY_DIR}/generated"
 )
 
@@ -19,6 +18,11 @@ visiontools_add_test(test_preprocess_contract
 visiontools_add_test(test_module_contract
     SOURCES test_module_contract.cpp
     LIBRARIES visiontools_preprocess VisionRT::ToolSDK
+)
+
+visiontools_add_test(test_installation_consumer
+    SOURCES test_installation_consumer.cpp
+    LIBRARIES VisionRT::ToolSDK ${OpenCV_LIBS}
 )
 
 if(VISIONTOOLS_BUILD_INFER AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_infer_contract.cpp")

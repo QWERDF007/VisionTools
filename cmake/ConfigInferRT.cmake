@@ -58,3 +58,14 @@ endif()
 if(INFERRT_BIN_DIR)
     file(GLOB INFERRT_DLLS "${INFERRT_BIN_DIR}/inferrt_*.dll")
 endif()
+
+visiontools_resolve_path(_vt_trt_root
+    VARIABLES TRT_ROOT TensorRT_ROOT TENSORRT_DIR TRT_DIR
+    ENVIRONMENT_VARIABLES TRT_ROOT TensorRT_ROOT TENSORRT_DIR TRT_DIR
+    REQUIRED_FILE "lib/nvinfer_10.lib"
+    DEFAULT "D:/Software/dev/TensorRT-10.16.1.11"
+)
+if(_vt_trt_root)
+    set(TRT_ROOT "${_vt_trt_root}" CACHE PATH "TensorRT installation root" FORCE)
+    set(TRT_ROOT "${_vt_trt_root}")
+endif()
