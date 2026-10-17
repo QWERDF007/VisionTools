@@ -1,0 +1,109 @@
+schema_version: 1
+tool_id: visionrt.dl.yolo
+display_name: YOLO目标检测
+version: 1.0.0
+kind: cpp_class
+entry:
+  registry_name: visionrt.dl.yolo
+init_params:
+- id: model_name
+  name: 模型名称
+  type: String
+  default: yolov8
+- id: load_mode
+  name: 加载模式
+  type: String
+  default: onnx
+- id: model_path
+  name: 模型路径
+  type: String
+  default: ''
+  editor: file
+- id: engine_output_path
+  name: 引擎输出路径
+  type: String
+  default: ''
+  editor: file
+- id: labels_path
+  name: 标签路径
+  type: String
+  default: ''
+  editor: file
+- id: precision
+  name: 推理精度
+  type: String
+  default: fp16
+- id: gpu_index
+  name: GPU编号
+  type: Int
+  default: 0
+  min: 0
+- id: input_width
+  name: 输入宽度
+  type: Int
+  default: 640
+  min: 32
+- id: input_height
+  name: 输入高度
+  type: Int
+  default: 640
+  min: 32
+- id: num_classes
+  name: 类别数量
+  type: Int
+  default: 80
+  min: 1
+inputs:
+- id: images
+  name: 图像批次
+  type: ImageBatch
+- id: conf_threshold
+  name: 置信度阈值
+  type: Float
+  default: 0.25
+  min: 0.0
+  max: 1.0
+  step: 0.05
+  tab: 检测
+- id: nms_threshold
+  name: NMS阈值
+  type: Float
+  default: 0.45
+  min: 0.0
+  max: 1.0
+  step: 0.05
+  tab: 检测
+- id: max_detections
+  name: 最大检测数
+  type: Int
+  default: 300
+  min: 1
+  tab: 检测
+outputs:
+- id: images
+  name: 输出图像
+  type: ImageBatch
+  display:
+    same_geometry_as_input: images
+    color_order: BGR
+- id: rois
+  name: 目标ROI
+  type: RoiBatch
+  image_port: images
+- id: scores
+  name: 目标得分
+  type: NumericArray
+  dtype: float32
+  rank: 2
+  layout: batch_ragged
+- id: classes
+  name: 目标类别
+  type: NumericArray
+  dtype: int64
+  rank: 2
+  layout: batch_ragged
+- id: class_names
+  name: 目标类别名
+  type: StringArray
+  rank: 2
+  layout: batch_ragged
