@@ -131,11 +131,19 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values& inputs) {
                 const cv::Rect bounds(left, top, right - left, bottom - top);
 
                 // Zero-copy readonly view for axis-aligned rectangles:
+                // Only taken if EVERY pixel center within bounds is covered by the ROI (N04 / NS-03)
                 // Shares image.owner() and preserves rowStride() per TS-03 / VS-03 / F06
                 const bool isAxisAlignedRect = (roi.kind() == visionrt::RoiKind::Rectangle &&
                     std::remainder(static_cast<double>(encoded[5]), 360.0) == 0.0);
 
-                if (isAxisAlignedRect) {
+                const double eps = 32.0 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::max(maximumX, maximumY));
+                const bool coversEveryPixelCenter = isAxisAlignedRect &&
+                    (left + 0.5 >= minimumX - eps) &&
+                    (left + bounds.width - 0.5 <= maximumX + eps) &&
+                    (top + 0.5 >= minimumY - eps) &&
+                    (top + bounds.height - 0.5 <= maximumY + eps);
+
+                if (coversEveryPixelCenter) {
                     output.push_back(image.region(bounds));
                     indices.push_back(static_cast<std::int64_t>(b));
                     indices.push_back(static_cast<std::int64_t>(n));

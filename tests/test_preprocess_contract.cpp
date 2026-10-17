@@ -9,6 +9,7 @@
 #include "src/preprocess/AdaptiveBinaryTool.h"
 
 #include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <iostream>
 #include <cassert>
 #include <cmath>
@@ -197,14 +198,15 @@ void testImageCropTool() {
     ToolServices services;
     ImageCropTool tool(services);
 
-    cv::Mat img(100, 100, CV_8UC1, cv::Scalar(100));
-    img(cv::Rect(20, 20, 30, 30)).setTo(cv::Scalar(200));
-
-    OwnedImage srcImage = OwnedImage::copyOf(img);
-    auto roi = Roi::rectangle(20.0F, 20.0F, 30.0F, 30.0F, 0.0F);
-
+    // 1. Integer rectangle: zero-copy view and input owner release
     OwnedImage savedCropped;
     {
+        cv::Mat img(100, 100, CV_8UC1, cv::Scalar(100));
+        img(cv::Rect(20, 20, 30, 30)).setTo(cv::Scalar(200));
+
+        OwnedImage srcImage = OwnedImage::copyOf(img);
+        auto roi = Roi::rectangle(20.0F, 20.0F, 30.0F, 30.0F, 0.0F);
+
         Values inputs;
         inputs.emplace("images", ImageBatch({srcImage}));
         inputs.emplace("rois", RoiBatch({{roi}}));
@@ -224,9 +226,45 @@ void testImageCropTool() {
 
         savedCropped = cropped->images()[0];
     }
-
-    // Input batch is now out of scope; verify savedCropped is still valid and readable
+    // Outer input image is now released; verify savedCropped is still valid and readable
     REQUIRE(savedCropped.readOnlyMat().at<unsigned char>(0, 0) == 200, "Cropped image must remain readable after input scope exit");
+
+    // 2. Fractional ROI (x=0.75, y=0.0, w=1.0, h=1.0) on non-uniform image (N04 / R09)
+    // Pixel centers: x=0.5 (outside [0.75, 1.75], must be masked to 0), x=1.5 (inside, preserved)
+    {
+        cv::Mat nonUniform(10, 10, CV_8UC1);
+        for (int r = 0; r < 10; ++r) {
+            for (int c = 0; c < 10; ++c) {
+                nonUniform.at<unsigned char>(r, c) = static_cast<unsigned char>(r * 10 + c + 1);
+            }
+        }
+        auto roi = Roi::rectangle(0.75F, 0.0F, 1.0F, 1.0F, 0.0F);
+        Values inputs;
+        inputs.emplace("images", ImageBatch({OwnedImage::copyOf(nonUniform)}));
+        inputs.emplace("rois", RoiBatch({{roi}}));
+
+        auto res = tool.execute(inputs);
+        REQUIRE(res.status, "Fractional crop must succeed via mask path");
+        const auto* cropped = std::get_if<ImageBatch>(&res.outputs["images"]);
+        REQUIRE(cropped && cropped->images().size() == 1, "Expected 1 output image");
+        const auto& outMat = cropped->images()[0].readOnlyMat();
+        REQUIRE(outMat.cols == 2 && outMat.rows == 1, "Bounds width must be 2, height 1");
+        REQUIRE(outMat.at<unsigned char>(0, 0) == 0, "Col 0 center (0.5) is outside [0.75, 1.75], must be 0");
+        REQUIRE(outMat.at<unsigned char>(0, 1) == nonUniform.at<unsigned char>(0, 1), "Col 1 center (1.5) must be preserved");
+    }
+
+    // 3. Narrow fractional ROI (x=0.1, y=0.1, w=0.1, h=0.1) has no valid pixel center -> error (N04 / R09)
+    {
+        cv::Mat img(10, 10, CV_8UC1, cv::Scalar(100));
+        auto roi = Roi::rectangle(0.1F, 0.1F, 0.1F, 0.1F, 0.0F);
+        Values inputs;
+        inputs.emplace("images", ImageBatch({OwnedImage::copyOf(img)}));
+        inputs.emplace("rois", RoiBatch({{roi}}));
+
+        auto res = tool.execute(inputs);
+        REQUIRE(!res.status, "Narrow ROI with no pixel centers must fail");
+        REQUIRE(res.status.message.find("no valid pixel centers") != std::string::npos, "Error must mention no valid pixel centers");
+    }
 
     std::cout << "[PASS] testImageCropTool passed." << std::endl;
 }
@@ -249,7 +287,7 @@ void testDetectionFilterTool() {
             {NumericBuffer::copy(dtype, {static_cast<std::int64_t>(vals.size())}, std::as_bytes(std::span(vals)))});
     };
 
-    // 1. Invalid threshold type (String instead of double/int) -> rejected
+    // 1. Invalid threshold type (String instead of double) -> rejected
     {
         Values inputs;
         inputs.emplace("images", ImageBatch({OwnedImage::copyOf(img)}));
@@ -259,13 +297,47 @@ void testDetectionFilterTool() {
         inputs.emplace("class_names", StringArray(2, Layout::BatchRagged, {StringBuffer({2}, names)}));
         inputs.emplace("allowed_classes", NumericArray(DType::Int64, 1, Layout::Dense,
             {NumericBuffer::copy(DType::Int64, {2}, std::as_bytes(std::span(allowed)))}));
-        inputs.emplace("min_score", Utf8("not_a_number")); // String type
+        inputs.emplace("min_score", Utf8("not_a_number"));
+        inputs.emplace("min_area", 0.0);
 
         auto res = tool.execute(inputs);
-        REQUIRE(!res.status, "Non-numeric min_score must be rejected");
+        REQUIRE(!res.status, "String min_score must be rejected");
     }
 
-    // 2. Valid execution: filter out score < 0.5
+    // 2. Int min_score instead of Float -> rejected (N08 / NS-03)
+    {
+        Values inputs;
+        inputs.emplace("images", ImageBatch({OwnedImage::copyOf(img)}));
+        inputs.emplace("rois", RoiBatch({{roi, roi}}));
+        inputs.emplace("scores", makeNumArray(DType::Float32, scores));
+        inputs.emplace("classes", makeNumArray(DType::Int64, classes));
+        inputs.emplace("class_names", StringArray(2, Layout::BatchRagged, {StringBuffer({2}, names)}));
+        inputs.emplace("allowed_classes", NumericArray(DType::Int64, 1, Layout::Dense,
+            {NumericBuffer::copy(DType::Int64, {2}, std::as_bytes(std::span(allowed)))}));
+        inputs.emplace("min_score", std::int64_t(0)); // Int
+        inputs.emplace("min_area", 0.0);
+
+        auto res = tool.execute(inputs);
+        REQUIRE(!res.status, "Int min_score must be rejected (Float required)");
+    }
+
+    // 3. Missing min_score or min_area -> rejected (no silent default 0) (N08 / NS-03)
+    {
+        Values inputs;
+        inputs.emplace("images", ImageBatch({OwnedImage::copyOf(img)}));
+        inputs.emplace("rois", RoiBatch({{roi, roi}}));
+        inputs.emplace("scores", makeNumArray(DType::Float32, scores));
+        inputs.emplace("classes", makeNumArray(DType::Int64, classes));
+        inputs.emplace("class_names", StringArray(2, Layout::BatchRagged, {StringBuffer({2}, names)}));
+        inputs.emplace("allowed_classes", NumericArray(DType::Int64, 1, Layout::Dense,
+            {NumericBuffer::copy(DType::Int64, {2}, std::as_bytes(std::span(allowed)))}));
+        // Omit min_score and min_area
+
+        auto res = tool.execute(inputs);
+        REQUIRE(!res.status, "Missing min_score must be rejected");
+    }
+
+    // 4. Valid execution: filter out score < 0.5
     {
         Values inputs;
         inputs.emplace("images", ImageBatch({OwnedImage::copyOf(img)}));
@@ -276,6 +348,7 @@ void testDetectionFilterTool() {
         inputs.emplace("allowed_classes", NumericArray(DType::Int64, 1, Layout::Dense,
             {NumericBuffer::copy(DType::Int64, {2}, std::as_bytes(std::span(allowed)))}));
         inputs.emplace("min_score", 0.5);
+        inputs.emplace("min_area", 0.0);
 
         auto res = tool.execute(inputs);
         REQUIRE(res.status, "Filter must succeed");
@@ -322,6 +395,52 @@ void testImagePreprocessTool() {
     std::cout << "[PASS] testImagePreprocessTool passed." << std::endl;
 }
 
+void testReadImageTool() {
+    std::cout << "[TEST] Running testReadImageTool..." << std::endl;
+    ToolServices services{PathResolver(std::filesystem::current_path())};
+    ReadImageTool tool(services);
+
+    // 1. Missing path
+    {
+        Values inputs;
+        inputs.emplace("mode", Utf8("file"));
+        inputs.emplace("path", Utf8(""));
+        auto res = tool.execute(inputs);
+        REQUIRE(!res.status, "Empty path must fail");
+    }
+
+    // 2. Non-existent path
+    {
+        Values inputs;
+        inputs.emplace("mode", Utf8("file"));
+        inputs.emplace("path", Utf8("nonexistent_test_image.png"));
+        auto res = tool.execute(inputs);
+        REQUIRE(!res.status, "Non-existent path must fail");
+    }
+
+    // 3. Valid file read
+    {
+        std::string tempPath = "test_read_temp.png";
+        cv::Mat sample(24, 24, CV_8UC3, cv::Scalar(10, 20, 30));
+        cv::imwrite(tempPath, sample);
+
+        Values inputs;
+        inputs.emplace("mode", Utf8("file"));
+        inputs.emplace("path", Utf8(tempPath));
+        inputs.emplace("color", Utf8("bgr"));
+
+        auto res = tool.execute(inputs);
+        std::filesystem::remove(tempPath);
+
+        REQUIRE(res.status, "Valid image read must succeed");
+        const auto* batch = std::get_if<ImageBatch>(&res.outputs["images"]);
+        REQUIRE(batch && batch->images().size() == 1, "Must read 1 image");
+        REQUIRE(batch->images()[0].cols() == 24 && batch->images()[0].rows() == 24, "Image dims must match 24x24");
+    }
+
+    std::cout << "[PASS] testReadImageTool passed." << std::endl;
+}
+
 int main() {
     try {
         testAdaptiveBinaryTool();
@@ -329,6 +448,7 @@ int main() {
         testImageCropTool();
         testDetectionFilterTool();
         testImagePreprocessTool();
+        testReadImageTool();
         std::cout << "\n[ALL TESTS PASSED] All preprocess contract tests passed successfully.\n" << std::endl;
         return 0;
     } catch (const std::exception& e) {
@@ -336,3 +456,4 @@ int main() {
         return 1;
     }
 }
+

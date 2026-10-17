@@ -48,22 +48,24 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values& inputs
             throw visionrt::ContractError("Invalid input types for detection filter");
         }
 
-        double minimumScore = 0.0;
-        double minimumArea = 0.0;
-        if (auto it = inputs.find(p::in::MIN_SCORE); it != inputs.end() && !visionrt::isMissing(it->second)) {
-            if (auto* d = std::get_if<double>(&it->second)) minimumScore = *d;
-            else if (auto* i = std::get_if<std::int64_t>(&it->second)) minimumScore = static_cast<double>(*i);
-            else throw visionrt::ContractError("Input port 'min_score' must be numeric");
+        const auto& scoreVal = getReq(p::in::MIN_SCORE);
+        const auto* dScore = std::get_if<double>(&scoreVal);
+        if (!dScore) {
+            throw visionrt::ContractError("Input port 'min_score' must be Float");
         }
-        if (auto it = inputs.find(p::in::MIN_AREA); it != inputs.end() && !visionrt::isMissing(it->second)) {
-            if (auto* d = std::get_if<double>(&it->second)) minimumArea = *d;
-            else if (auto* i = std::get_if<std::int64_t>(&it->second)) minimumArea = static_cast<double>(*i);
-            else throw visionrt::ContractError("Input port 'min_area' must be numeric");
+        const double minimumScore = *dScore;
+        if (!std::isfinite(minimumScore) || minimumScore < 0.0 || minimumScore > 1.0) {
+            throw visionrt::ContractError("min_score out of range [0.0, 1.0]");
         }
 
-        if (!std::isfinite(minimumScore) || minimumScore < 0 || minimumScore > 1 ||
-            !std::isfinite(minimumArea) || minimumArea < 0) {
-            throw visionrt::ContractError("Invalid filter score/area threshold");
+        const auto& areaVal = getReq(p::in::MIN_AREA);
+        const auto* dArea = std::get_if<double>(&areaVal);
+        if (!dArea) {
+            throw visionrt::ContractError("Input port 'min_area' must be Float");
+        }
+        const double minimumArea = *dArea;
+        if (!std::isfinite(minimumArea) || minimumArea < 0.0) {
+            throw visionrt::ContractError("min_area must be >= 0.0");
         }
 
         std::span<const std::int64_t> allowed;
