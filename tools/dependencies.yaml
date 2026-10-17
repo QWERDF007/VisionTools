@@ -1,0 +1,64 @@
+# Runtime dependency manifest for VisionTools
+# root may be a path or a variable read from CMakeCache.txt / the listed CMake file.
+# default defines the local default path (Single Source of Truth).
+dependencies:
+  - name: opencv
+    cmake: cmake/ConfigOpenCV.cmake
+    root: OpenCV_HOME
+    windows_root: OpenCV_BIN_DIR
+    default: D:/Software/dev/opencv-4.8.0/build/x64/vc16
+    destinations:
+      - bin
+    windows:
+      - "*.dll"
+      - bin/*.dll
+
+  - name: inferrt
+    cmake: cmake/ConfigInferRT.cmake
+    root: INFERRT_ROOT
+    windows_root: INFERRT_BIN_DIR
+    default: F:/Projects/InferRT/InferRT-0.0.3
+    destinations:
+      - bin
+    windows:
+      - bin/*.dll
+      - inferrt_*.dll
+
+  - name: cuda
+    cmake: cmake/ConfigCUDA.cmake
+    env: CUDA_PATH
+    root: CUDAToolkit_ROOT
+    default: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8
+    destinations:
+      - bin
+    windows:
+      - bin/cudart64_*.dll
+      - bin/cublas64_*.dll
+      - bin/cublasLt64_*.dll
+      - bin/cufft64_*.dll
+      - bin/cudnn*.dll
+
+  - name: tensorrt
+    cmake: cmake/ConfigInferRT.cmake
+    root: TRT_ROOT
+    default: D:/Software/dev/TensorRT-10.16.1.11
+    destinations:
+      - bin
+    windows:
+      - bin/*.dll
+
+  - name: python
+    cmake: cmake/ConfigPython.cmake
+    root: PYTHON_HOME
+    default: D:/Software/anaconda3/envs/py312
+    destinations:
+      - bin
+    windows:
+      - python3*.dll
+
+  - name: visionrt_sdk
+    cmake: cmake/ConfigVisionRTToolSDK.cmake
+    root: VisionRTToolSDK_DIR
+    default: C:/dev/visionrt-sdk
+    destinations:
+      - bin

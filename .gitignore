@@ -66,3 +66,19 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Local task ledger and solution packages (per instructions)
+WORKLOG.md
+docs/*.zip
+docs/VisionRT_VisionTools_分仓库方案包*/
+
+# IDE & Editor files
+.vs/
+.vscode/
+.idea/
+
+# Distribution packages & Python cache
+dist/
+__pycache__/
+*.pyc
+
