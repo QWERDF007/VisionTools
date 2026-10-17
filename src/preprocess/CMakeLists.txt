@@ -11,7 +11,6 @@ add_library(visiontools_preprocess SHARED
 target_compile_definitions(visiontools_preprocess PRIVATE VISIONTOOLS_EXPORTS)
 target_include_directories(visiontools_preprocess PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../generated"
     "${CMAKE_BINARY_DIR}/generated"
 )
 
