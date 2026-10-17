@@ -1,0 +1,33 @@
+schema_version: 1
+tool_id: visiontools.preprocess.adaptive_binary
+display_name: 自适应二值化
+version: 1.0.0
+kind: cpp_function
+entry:
+  registry_name: visiontools.preprocess.adaptive_binary
+init_params: []
+inputs:
+  - id: images
+    name: 输入图像
+    type: ImageBatch
+  - id: block_size
+    name: 邻域大小
+    type: Int
+    editor: number
+    default: 3
+    min: 3
+    max: 999
+    step: 2
+  - id: constant_offset
+    name: 偏移常量
+    type: Float
+    editor: number
+    default: 5.0
+    decimals: 3
+outputs:
+  - id: images
+    name: 二值图像
+    type: ImageBatch
+    display:
+      color_order: Gray
+      same_geometry_as_input: images
