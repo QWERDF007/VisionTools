@@ -44,6 +44,9 @@ else()
     set(VISIONTOOLS_GENERATOR_VARIANT "cpu")
 endif()
 
+get_target_property(_sdk_include_dirs VisionRT::ToolSDK INTERFACE_INCLUDE_DIRECTORIES)
+list(GET _sdk_include_dirs 0 _primary_sdk_inc)
+
 add_custom_command(
     OUTPUT ${VISIONTOOLS_GENERATOR_OUTPUTS}
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_tool_contracts.py"
@@ -52,7 +55,10 @@ add_custom_command(
             --output-dir "${VISIONTOOLS_GENERATED_DIR}"
             --index-output "${CMAKE_CURRENT_BINARY_DIR}/module_index.json"
             --variant "${VISIONTOOLS_GENERATOR_VARIANT}"
+            --sdk-include-dir "${_primary_sdk_inc}"
     DEPENDS ${VISIONTOOLS_TOOL_YAMLS} ${VISIONTOOLS_MODULE_BINDINGS} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_tool_contracts.py"
+            "${_primary_sdk_inc}/visionrt/sdk/Value.h"
+            "${_primary_sdk_inc}/visionrt/sdk/Schema.h"
     COMMENT "Generating tool contracts, constants, and module factories from YAML declarations..."
     VERBATIM
 )

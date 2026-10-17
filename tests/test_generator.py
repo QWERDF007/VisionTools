@@ -221,7 +221,8 @@ class TestToolContractGenerator(unittest.TestCase):
         content = generate_module_factory_inc("visiontools_preprocess", tools_dict, mod_info)
         self.assertIn('#include "CpuTool.h"', content)
         self.assertIn('std::strcmp(registry_name, "tool.cpu") == 0', content)
-        self.assertIn('return new CpuTool(s);', content)
+        self.assertIn('ValidatedToolInstance', content)
+        self.assertIn('std::make_unique<CpuTool>(s)', content)
         self.assertIn('s_generatedModuleApi', content)
 
     def test_bool_rank_rejected(self):
@@ -276,6 +277,36 @@ class TestToolContractGenerator(unittest.TestCase):
         self.assertIn("getToolContract()", header)
         self.assertIn("visionrt::PortContract", header)
 
+    def test_x_and_x_spec_no_identifier_collision(self):
+        doc = {
+            "schema_version": 1,
+            "tool_id": "test.collision.spec",
+            "display_name": "Collision Test",
+            "kind": "cpp_function",
+            "entry": {"registry_name": "test.collision.spec"},
+            "inputs": [{"id": "x", "type": "Int"}, {"id": "x_spec", "type": "Int"}],
+            "outputs": []
+        }
+        header = generate_port_constants_header([doc])
+        self.assertIn('inline constexpr const char* X = "x";', header)
+        self.assertIn('inline constexpr const char* X_SPEC = "x_spec";', header)
+        self.assertIn('namespace spec {', header)
+        self.assertIn('inline const visionrt::TypeSpec X =', header)
+
+    def test_normalized_identifier_collision_rejected(self):
+        doc = {
+            "schema_version": 1,
+            "tool_id": "test.norm.collision",
+            "display_name": "Norm Collision Test",
+            "kind": "cpp_function",
+            "entry": {"registry_name": "test.norm.collision"},
+            "inputs": [{"id": "foo-bar", "type": "Int"}, {"id": "foo_bar", "type": "Int"}],
+            "outputs": []
+        }
+        with self.assertRaises(ContractValidationError) as ctx:
+            generate_port_constants_header([doc])
+        self.assertIn("normalizes to colliding C++ identifier", str(ctx.exception))
+
     def test_cli_negative_cases(self):
         import subprocess
         script = str(tools_dir / "generate_tool_contracts.py")
@@ -293,6 +324,13 @@ class TestToolContractGenerator(unittest.TestCase):
             p = subprocess.run([sys.executable, script, "--tools-dir", str(empty_dir),
                                 "--bindings", str(tools_dir / "module_bindings.yaml"), "--output-dir", str(t / "gen"),
                                 "--index-output", str(t / "index.json")], capture_output=True, text=True)
+            self.assertNotEqual(p.returncode, 0)
+
+            # Invalid explicit sdk-include-dir -> returncode != 0 (P01)
+            p = subprocess.run([sys.executable, script, "--tools-dir", str(self.fixtures_dir),
+                                "--bindings", str(tools_dir / "module_bindings.yaml"), "--output-dir", str(t / "gen"),
+                                "--index-output", str(t / "index.json"), "--sdk-include-dir", str(t / "absent-sdk")],
+                               capture_output=True, text=True)
             self.assertNotEqual(p.returncode, 0)
 
 if __name__ == "__main__":

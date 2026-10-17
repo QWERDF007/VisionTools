@@ -41,48 +41,62 @@ def to_cpp_identifier(name: str) -> str:
 def load_sdk_enums(sdk_include_dir: Optional[Path] = None) -> Tuple[Set[str], Set[str], Set[str], Set[str]]:
     """
     Derive canonical enums from VisionRT SDK headers (Value.h / Schema.h) to eliminate parallel definitions (SSOT).
-    Falls back to canonical SDK definitions if headers are not locally present.
+    Strictly fails if an explicit sdk_include_dir is invalid or missing headers.
     """
-    types = {"Int", "Float", "Bool", "String", "ImageBatch", "NumericArray", "StringArray", "RoiBatch"}
-    dtypes = {"uint8", "int32", "int64", "float32", "float64", "bool", "UInt8", "Int32", "Int64", "Float32", "Float64", "Bool"}
-    layouts = {"dense", "batch_ragged", "Dense", "BatchRagged"}
-    kinds = {"cpp_function", "cpp_class", "python_function", "python_class"}
-
-    search_dirs = []
-    if sdk_include_dir:
-        search_dirs.append(Path(sdk_include_dir))
-    if os.environ.get("VISIONRT_SDK_ROOT"):
-        search_dirs.append(Path(os.environ["VISIONRT_SDK_ROOT"]) / "include")
-    search_dirs.extend([
-        Path("C:/dev/visionrt-sdk/include"),
-        Path(__file__).resolve().parent.parent.parent / "VisionRT" / "include",
-    ])
+    if sdk_include_dir is not None:
+        sdir = Path(sdk_include_dir).resolve()
+        val_h = sdir / "visionrt" / "sdk" / "Value.h"
+        if not sdir.exists() or not val_h.exists():
+            raise ContractValidationError(f"Explicit SDK include directory does not exist or missing Value.h: {sdir}")
+        search_dirs = [sdir]
+    else:
+        search_dirs = []
+        if os.environ.get("VISIONRT_SDK_ROOT"):
+            search_dirs.append(Path(os.environ["VISIONRT_SDK_ROOT"]) / "include")
+        search_dirs.extend([
+            Path("C:/dev/visionrt-sdk/include"),
+            Path(__file__).resolve().parent.parent.parent / "VisionRT" / "include",
+        ])
 
     for sdir in search_dirs:
         val_h = sdir / "visionrt" / "sdk" / "Value.h"
+        schema_h = sdir / "visionrt" / "sdk" / "Schema.h"
         if val_h.exists():
             try:
                 content = val_h.read_text(encoding="utf-8")
                 m_type = re.search(r'enum\s+class\s+Type\s*\{([^}]+)\}', content)
-                if m_type:
-                    parsed = {x.strip() for x in m_type.group(1).split(',') if x.strip()}
-                    if parsed:
-                        types = parsed
+                types = {x.strip() for x in m_type.group(1).split(',') if x.strip()} if m_type else set()
                 m_dtype = re.search(r'enum\s+class\s+DType\s*\{([^}]+)\}', content)
-                if m_dtype:
-                    parsed = {x.strip() for x in m_dtype.group(1).split(',') if x.strip()}
-                    if parsed:
-                        dtypes = parsed | {x.lower() for x in parsed}
+                dtypes = {x.strip() for x in m_dtype.group(1).split(',') if x.strip()} if m_dtype else set()
+                dtypes |= {x.lower() for x in dtypes}
                 m_layout = re.search(r'enum\s+class\s+Layout\s*\{([^}]+)\}', content)
-                if m_layout:
-                    parsed = {x.strip() for x in m_layout.group(1).split(',') if x.strip()}
-                    if parsed:
-                        layouts = parsed | {re.sub(r'(?<!^)(?=[A-Z])', '_', x).lower() for x in parsed}
-                break
-            except Exception:
-                pass
+                layouts = {x.strip() for x in m_layout.group(1).split(',') if x.strip()} if m_layout else set()
+                layouts |= {re.sub(r'(?<!^)(?=[A-Z])', '_', x).lower() for x in layouts}
 
-    return types, dtypes, layouts, kinds
+                kinds = {"cpp_function", "cpp_class", "python_function", "python_class"}
+                if schema_h.exists():
+                    scontent = schema_h.read_text(encoding="utf-8")
+                    m_kind = re.search(r'enum\s+class\s+ToolKind\s*\{([^}]+)\}', scontent)
+                    if m_kind:
+                        raw_kinds = [x.strip() for x in m_kind.group(1).split(',') if x.strip()]
+                        kinds = {re.sub(r'(?<!^)(?=[A-Z])', '_', x).lower() for x in raw_kinds}
+
+                if types and dtypes and layouts:
+                    return types, dtypes, layouts, kinds
+            except Exception as e:
+                if sdk_include_dir:
+                    raise ContractValidationError(f"Failed to read SDK enums from {sdir}: {e}")
+
+    if sdk_include_dir is not None:
+        raise ContractValidationError(f"Failed to extract SDK enums from: {sdk_include_dir}")
+
+    # Fallback only when no sdk_include_dir is specified (e.g. standalone test environment)
+    return (
+        {"Int", "Float", "Bool", "String", "ImageBatch", "NumericArray", "StringArray", "RoiBatch"},
+        {"uint8", "int32", "int64", "float32", "float64", "bool", "UInt8", "Int32", "Int64", "Float32", "Float64", "Bool"},
+        {"dense", "batch_ragged", "Dense", "BatchRagged"},
+        {"cpp_function", "cpp_class", "python_function", "python_class"}
+    )
 
 VALID_TYPES, VALID_DTYPES, VALID_LAYOUTS, VALID_KINDS = load_sdk_enums()
 
@@ -330,32 +344,29 @@ def generate_port_constants_header(tools: List[Dict[str, Any]]) -> str:
         if reg_name:
             lines.append(f"inline constexpr const char* REGISTRY_NAME = \"{reg_name}\";")
 
-        lines.append("namespace init {")
-        for p in sorted(tool.get("init_params", []), key=lambda x: x["id"]):
-            pid = p["id"]
-            const_name = to_cpp_identifier(pid).upper()
-            spec_cpp = port_to_typespec_cpp(p)
-            lines.append(f"inline constexpr const char* {const_name} = \"{pid}\";")
-            lines.append(f"inline const visionrt::TypeSpec {const_name}_SPEC = {spec_cpp};")
-        lines.append("}")
+        for grp, key in [("init", "init_params"), ("in", "inputs"), ("out", "outputs")]:
+            ports = sorted(tool.get(key, []), key=lambda x: x["id"])
+            seen_port_idents = {}
+            for p in ports:
+                pid = p["id"]
+                c_name = to_cpp_identifier(pid).upper()
+                if c_name in seen_port_idents:
+                    raise ContractValidationError(f"Port ID '{pid}' normalizes to colliding C++ identifier '{c_name}' with '{seen_port_idents[c_name]}'")
+                seen_port_idents[c_name] = pid
 
-        lines.append("namespace in {")
-        for p in sorted(tool.get("inputs", []), key=lambda x: x["id"]):
-            pid = p["id"]
-            const_name = to_cpp_identifier(pid).upper()
-            spec_cpp = port_to_typespec_cpp(p)
-            lines.append(f"inline constexpr const char* {const_name} = \"{pid}\";")
-            lines.append(f"inline const visionrt::TypeSpec {const_name}_SPEC = {spec_cpp};")
-        lines.append("}")
-
-        lines.append("namespace out {")
-        for p in sorted(tool.get("outputs", []), key=lambda x: x["id"]):
-            pid = p["id"]
-            const_name = to_cpp_identifier(pid).upper()
-            spec_cpp = port_to_typespec_cpp(p)
-            lines.append(f"inline constexpr const char* {const_name} = \"{pid}\";")
-            lines.append(f"inline const visionrt::TypeSpec {const_name}_SPEC = {spec_cpp};")
-        lines.append("}")
+            lines.append(f"namespace {grp} {{")
+            for p in ports:
+                pid = p["id"]
+                c_name = to_cpp_identifier(pid).upper()
+                lines.append(f"inline constexpr const char* {c_name} = \"{pid}\";")
+            lines.append("namespace spec {")
+            for p in ports:
+                pid = p["id"]
+                c_name = to_cpp_identifier(pid).upper()
+                spec_cpp = port_to_typespec_cpp(p)
+                lines.append(f"inline const visionrt::TypeSpec {c_name} = {spec_cpp};")
+            lines.append("}")
+            lines.append("}")
 
         lines.append("")
         lines.append("inline visionrt::ToolContract getToolContract() {")
@@ -368,20 +379,20 @@ def generate_port_constants_header(tools: List[Dict[str, Any]]) -> str:
             pid = p["id"]
             c_name = to_cpp_identifier(pid).upper()
             req = "false" if "default" in p and p["default"] is not None else "true"
-            lines.append(f"        visionrt::PortContract{{init::{c_name}, init::{c_name}_SPEC, {req}}},")
+            lines.append(f"        visionrt::PortContract{{init::{c_name}, init::spec::{c_name}, {req}}},")
         lines.append("    };")
         lines.append("    c.inputs = {")
         for p in sorted(tool.get("inputs", []), key=lambda x: x["id"]):
             pid = p["id"]
             c_name = to_cpp_identifier(pid).upper()
             req = "false" if "default" in p and p["default"] is not None else "true"
-            lines.append(f"        visionrt::PortContract{{in::{c_name}, in::{c_name}_SPEC, {req}}},")
+            lines.append(f"        visionrt::PortContract{{in::{c_name}, in::spec::{c_name}, {req}}},")
         lines.append("    };")
         lines.append("    c.outputs = {")
         for p in sorted(tool.get("outputs", []), key=lambda x: x["id"]):
             pid = p["id"]
             c_name = to_cpp_identifier(pid).upper()
-            lines.append(f"        visionrt::PortContract{{out::{c_name}, out::{c_name}_SPEC, true}},")
+            lines.append(f"        visionrt::PortContract{{out::{c_name}, out::spec::{c_name}, true}},")
         lines.append("    };")
         lines.append("    return c;")
         lines.append("}")
@@ -404,9 +415,13 @@ def generate_module_factory_inc(module_name: str, tools_dict: Dict[str, Dict[str
         "",
         "#include <visionrt/sdk/Module.h>",
         "#include <visionrt/sdk/Tool.h>",
+        "#include <visionrt/sdk/Contract.h>",
+        "#include \"PortConstants.h\"",
         "#include <cstring>",
+        "#include <memory>",
         "#include <string>",
         "#include <stdexcept>",
+        "#include <utility>",
         ""
     ]
 
@@ -425,6 +440,42 @@ def generate_module_factory_inc(module_name: str, tools_dict: Dict[str, Dict[str
         "",
         f"namespace {ns} {{",
         "",
+        "class ValidatedToolInstance : public visionrt::IToolInstance {",
+        "public:",
+        "    ValidatedToolInstance(std::unique_ptr<visionrt::IToolInstance> inner, visionrt::ToolContract contract)",
+        "        : inner_(std::move(inner)), contract_(std::move(contract)) {}",
+        "",
+        "    visionrt::ToolStatus initialize(const visionrt::Values& initParams) override {",
+        "        try {",
+        "            visionrt::validateToolValues(contract_.initParams, initParams, false);",
+        "        } catch (const visionrt::ContractError& e) {",
+        "            return visionrt::ToolStatus{-2, e.what()};",
+        "        }",
+        "        return inner_->initialize(initParams);",
+        "    }",
+        "",
+        "    visionrt::ToolResult execute(const visionrt::Values& inputs) override {",
+        "        try {",
+        "            visionrt::validateToolValues(contract_.inputs, inputs, false);",
+        "        } catch (const visionrt::ContractError& e) {",
+        "            visionrt::Values missingOutputs;",
+        "            for (const auto& out : contract_.outputs) {",
+        "                missingOutputs.emplace(out.id, visionrt::Missing{});",
+        "            }",
+        "            return visionrt::ToolResult{visionrt::ToolStatus{-2, e.what()}, std::move(missingOutputs)};",
+        "        }",
+        "        return inner_->execute(inputs);",
+        "    }",
+        "",
+        "    visionrt::ToolStatus release() override {",
+        "        return inner_->release();",
+        "    }",
+        "",
+        "private:",
+        "    std::unique_ptr<visionrt::IToolInstance> inner_;",
+        "    visionrt::ToolContract contract_;",
+        "};",
+        "",
         "inline visionrt::IToolInstance* VT_CALL createToolInstance(",
         "    const char* registry_name,",
         "    const visionrt::ToolServices* services,",
@@ -440,12 +491,23 @@ def generate_module_factory_inc(module_name: str, tools_dict: Dict[str, Dict[str
 
     for reg, b in sorted(tool_bindings.items()):
         cls = b["class"]
-        lines.extend([
-            f'        if (std::strcmp(registry_name, "{reg}") == 0) {{',
-            "            if (status) { status->code = 0; status->message.clear(); }",
-            f"            return new {cls}(s);",
-            "        }"
-        ])
+        tool_decl = tools_dict.get(reg, {})
+        tid = tool_decl.get("tool_id", "")
+        safe_tid = to_cpp_identifier(tid) if tid else ""
+        if safe_tid:
+            lines.extend([
+                f'        if (std::strcmp(registry_name, "{reg}") == 0) {{',
+                "            if (status) { status->code = 0; status->message.clear(); }",
+                f"            return new ValidatedToolInstance(std::make_unique<{cls}>(s), visiontools::ports::{safe_tid}::getToolContract());",
+                "        }"
+            ])
+        else:
+            lines.extend([
+                f'        if (std::strcmp(registry_name, "{reg}") == 0) {{',
+                "            if (status) { status->code = 0; status->message.clear(); }",
+                f"            return new {cls}(s);",
+                "        }"
+            ])
 
     lines.extend([
         "",
@@ -535,6 +597,14 @@ def main():
     parser.add_argument("--variant", default="gpu", choices=["gpu", "cpu"], help="Distribution variant")
     parser.add_argument("--sdk-include-dir", default=None, help="Optional SDK include directory")
     args = parser.parse_args()
+
+    if args.sdk_include_dir:
+        try:
+            global VALID_TYPES, VALID_DTYPES, VALID_LAYOUTS, VALID_KINDS
+            VALID_TYPES, VALID_DTYPES, VALID_LAYOUTS, VALID_KINDS = load_sdk_enums(Path(args.sdk_include_dir))
+        except Exception as e:
+            print(f"[ERROR] Invalid SDK include directory: {e}", file=sys.stderr)
+            return 1
 
     tools_dir = Path(args.tools_dir)
     out_dir = Path(args.output_dir)
