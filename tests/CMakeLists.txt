@@ -1,4 +1,8 @@
-include_directories("${CMAKE_SOURCE_DIR}")
+include_directories(
+    "${CMAKE_SOURCE_DIR}"
+    "${CMAKE_SOURCE_DIR}/src/generated"
+    "${CMAKE_BINARY_DIR}/generated"
+)
 
 visiontools_add_test(test_preprocess_contract
     SOURCES
@@ -23,3 +27,23 @@ if(VISIONTOOLS_BUILD_INFER AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_infer_co
         LIBRARIES visiontools_infer VisionRT::ToolSDK ${OpenCV_LIBS}
     )
 endif()
+
+# 注册 Python 测试到 CTest (VS-02 / VS-06 / VS-07 / VS-08)
+add_test(
+    NAME test_generator
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tests/test_generator.py"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)
+
+add_test(
+    NAME test_package
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tests/test_package.py"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)
+
+add_test(
+    NAME test_python_tools
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tests/test_python_tools.py"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)
+

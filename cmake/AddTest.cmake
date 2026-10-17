@@ -17,4 +17,26 @@ function(visiontools_add_test test_name)
     else()
         add_test(NAME ${test_name} COMMAND ${test_name})
     endif()
+
+    # 在 Windows 上设置运行测试所需的 DLL PATH 环境 (VS-06 / VS-08)
+    if(WIN32)
+        set(_test_paths
+            "${CMAKE_BINARY_DIR}/src/preprocess"
+            "${CMAKE_BINARY_DIR}/src/infer"
+            "${VISIONTOOLS_OPENCV_BIN}"
+        )
+        if(DEFINED INFERRT_ROOT AND EXISTS "${INFERRT_ROOT}/bin")
+            list(APPEND _test_paths "${INFERRT_ROOT}/bin")
+        endif()
+        if(DEFINED CUDAToolkit_ROOT AND EXISTS "${CUDAToolkit_ROOT}/bin")
+            list(APPEND _test_paths "${CUDAToolkit_ROOT}/bin")
+        endif()
+        if(DEFINED TRT_ROOT AND EXISTS "${TRT_ROOT}/bin")
+            list(APPEND _test_paths "${TRT_ROOT}/bin")
+        endif()
+
+        # 转换为 Windows 路径分隔符分号列表
+        string(REPLACE ";" "\\;" _escaped_paths "${_test_paths}")
+        set_tests_properties(${test_name} PROPERTIES ENVIRONMENT "PATH=${_escaped_paths};$ENV{PATH}")
+    endif()
 endfunction()
