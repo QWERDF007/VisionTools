@@ -116,6 +116,24 @@ def package_tools(
     if install_dir == project_root or install_dir == Path.cwd().resolve() or install_dir in project_root.parents:
         raise RuntimeError(f"Refusing to package into project root or invalid install_dir: {install_dir}")
 
+    target_variant = "gpu" if infer_enabled else "cpu"
+    resolved_file = build_dir / "resolved_dependencies.json"
+    if resolved_file.exists():
+        try:
+            with open(resolved_file, "r", encoding="utf-8") as f:
+                deps_meta = json.load(f)
+            if "generator_variant" in deps_meta and deps_meta["generator_variant"] != target_variant:
+                raise RuntimeError(f"Build metadata variant mismatch: resolved_dependencies.json has '{deps_meta['generator_variant']}', packaging target is '{target_variant}'")
+            if "build_infer" in deps_meta and bool(deps_meta["build_infer"]) != infer_enabled:
+                raise RuntimeError(f"Build metadata build_infer mismatch: resolved_dependencies.json has build_infer={deps_meta['build_infer']}, packaging target is infer_enabled={infer_enabled}")
+        except RuntimeError:
+            raise
+        except Exception as e:
+            if strict:
+                raise RuntimeError(f"Corrupt build metadata {resolved_file}: {e}")
+    elif strict:
+        raise RuntimeError(f"Strict packaging requires build metadata: {resolved_file}")
+
     # Use a staging directory to guarantee atomic delivery and preserve existing release on failure (R10)
     staging_dir = install_dir.parent / f".tmp_pkg_{install_dir.name}_{os.getpid()}"
     if staging_dir.exists():
@@ -405,11 +423,33 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
         print("[ERROR] module_index.json 'tools' must be a non-empty dictionary")
         return False
 
+    # Collect declared tool registries from packaged YAML files (if present)
+    declared_registries = set()
+    for yf in list(install_dir.glob("assets/tools/**/*.yaml")) + list(install_dir.glob("assets/tools/**/*.yml")):
+        try:
+            import yaml
+            yd = yaml.safe_load(yf.read_text(encoding="utf-8")) or {}
+            r = yd.get("entry", {}).get("registry_name") or yd.get("tool_id")
+            if r:
+                declared_registries.add(r)
+        except Exception:
+            pass
+
     for reg, tinfo in tools_dict.items():
         if not isinstance(tinfo, dict):
             print(f"[ERROR] Tool '{reg}' entry is not a dictionary: {tinfo}")
             return False
-        kind = tinfo.get("kind", "")
+
+        known_kinds = {"cpp_function", "cpp_class", "python_function", "python_class"}
+        kind = tinfo.get("kind")
+        if not kind or kind not in known_kinds:
+            print(f"[ERROR] Tool '{reg}' missing or invalid kind: '{kind}'")
+            return False
+
+        if declared_registries and reg not in declared_registries:
+            print(f"[ERROR] Unknown tool registry '{reg}': not declared in packaged tool definitions")
+            return False
+
         if kind.startswith("cpp"):
             mod_dll = tinfo.get("module_dll")
             if not mod_dll:
@@ -436,21 +476,28 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
                     print(f"[ERROR] CPU package index references GPU module DLL '{mod_dll}' for tool '{reg}'")
                     return False
         elif kind.startswith("python"):
-            script = tinfo.get("script")
-            if script:
-                script_path = Path(script)
-                if script_path.is_absolute() or ".." in script_path.parts:
-                    print(f"[ERROR] Tool '{reg}' script '{script}' escapes package root")
-                    return False
-                target_script = (install_dir / script).resolve()
-                try:
-                    if not target_script.is_relative_to(install_dir.resolve()):
-                        print(f"[ERROR] Tool '{reg}' script '{script}' escapes package root")
-                        return False
-                except AttributeError:
-                    pass
-                if not target_script.exists():
-                    print(f"[ERROR] Indexed script '{script}' for tool '{reg}' does not exist: {target_script}")
+            entry_dict = tinfo.get("entry", {})
+            script = entry_dict.get("file") if isinstance(entry_dict, dict) else None
+            if not script:
+                script = tinfo.get("script")
+            if not script:
+                print(f"[ERROR] Python tool '{reg}' missing entry.file or script")
+                return False
+            script_path = Path(script)
+            if script_path.is_absolute() or ".." in script_path.parts:
+                print(f"[ERROR] Tool '{reg}' script '{script}' escapes package root")
+                return False
+            target_script = (install_dir / script).resolve()
+            if not target_script.exists():
+                candidates = [
+                    install_dir / "examples" / script,
+                    install_dir / "assets" / "tools" / "custom" / script,
+                ]
+                found_cand = next((c for c in candidates if c.exists()), None)
+                if found_cand:
+                    target_script = found_cand
+                else:
+                    print(f"[ERROR] Indexed Python script '{script}' for tool '{reg}' does not exist: {target_script}")
                     return False
         if not is_gpu:
             if "yolo" in reg.lower() or "infer" in reg.lower():
@@ -481,10 +528,17 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
         if not cuda_dlls:
             print("[ERROR] GPU package verification failed: no CUDA runtime DLL (cudart64_*.dll) found in bin/")
             return False
-        # TensorRT runtime DLL (Q04 / P06 / RS-03)
-        trt_dlls = list(bin_dir.glob("nvinfer*.dll"))
-        if not trt_dlls:
-            print("[ERROR] GPU package verification failed: no TensorRT runtime DLL (nvinfer*.dll) found in bin/")
+        # TensorRT core runtime DLL (cannot be satisfied solely by plugin/dispatch/lean libraries)
+        core_trt_dlls = [
+            dll for dll in bin_dir.glob("nvinfer*.dll")
+            if not (
+                dll.name.startswith("nvinfer_plugin") or
+                dll.name.startswith("nvinfer_dispatch") or
+                dll.name.startswith("nvinfer_lean")
+            )
+        ]
+        if not core_trt_dlls:
+            print("[ERROR] GPU package verification failed: no TensorRT core runtime DLL (nvinfer*.dll excluding plugins) found in bin/")
             return False
     else:
         # Strict CPU mode check: no GPU DLL or YAML

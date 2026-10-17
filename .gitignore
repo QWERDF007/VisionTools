@@ -74,6 +74,7 @@ docs/VisionRT_VisionTools_分仓库方案包*/
 docs/VisionTools_验收与改进方案*/
 docs/VisionTools_代码复验与下一阶段方案*/
 docs/VisionTools_第三轮验收与下一阶段方案*/
+docs/VisionTools_第四轮验收与下一阶段方案*/
 
 # IDE & Editor files
 .vs/
@@ -82,6 +83,7 @@ docs/VisionTools_第三轮验收与下一阶段方案*/
 
 # Distribution packages & Python cache
 dist/
+dist-*/
 __pycache__/
 *.pyc
 
