@@ -1,0 +1,76 @@
+schema_version: 1
+tool_id: visionrt.roi.projection
+display_name: 投影ROI
+version: 1.0.0
+kind: cpp_function
+entry:
+  registry_name: visionrt.roi.projection
+init_params: []
+inputs:
+- id: images
+  name: 图像
+  type: ImageBatch
+- id: axis
+  name: 投影轴
+  type: String
+  default: x
+  tab: 预处理
+  options:
+  - x
+  - y
+- id: polarity
+  name: 极性
+  type: String
+  default: bright
+  tab: 预处理
+  options:
+  - bright
+  - dark
+- id: threshold
+  name: 二值化阈值
+  type: Int
+  default: 128
+  min: 0
+  max: 255
+  step: 1
+  editor: number
+  tab: 预处理
+- id: min_pixels
+  name: 最小像素数
+  type: Int
+  default: 1
+  min: 1
+  editor: number
+  tab: 预处理
+- id: min_extent
+  name: 最小跨度
+  type: Int
+  default: 1
+  min: 1
+  editor: number
+  tab: 预处理
+- id: merge_gap
+  name: 合并间隙
+  type: Int
+  default: 0
+  min: 0
+  editor: number
+  tab: 预处理
+- id: padding
+  name: 外扩边距
+  type: Int
+  default: 0
+  min: 0
+  editor: number
+  tab: 预处理
+outputs:
+- id: images
+  name: 输出图像
+  type: ImageBatch
+  display:
+    same_geometry_as_input: images
+    color_order: BGR
+- id: rois
+  name: ROI批次
+  type: RoiBatch
+  image_port: images

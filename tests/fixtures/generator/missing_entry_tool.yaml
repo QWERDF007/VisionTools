@@ -1,0 +1,9 @@
+schema_version: 1
+tool_id: test.fixture.missing_entry
+display_name: 缺少Entry测试
+version: 1.0.0
+kind: cpp_function
+entry: {}
+init_params: []
+inputs: []
+outputs: []

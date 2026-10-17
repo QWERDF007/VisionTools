@@ -1,0 +1,16 @@
+schema_version: 1
+tool_id: test.fixture.invalid_dtype
+display_name: 非法DType测试
+version: 1.0.0
+kind: cpp_function
+entry:
+  registry_name: test.fixture.invalid_dtype
+init_params: []
+inputs: []
+outputs:
+  - id: bad_array
+    name: 错误数组
+    type: NumericArray
+    dtype: complex128
+    rank: 1
+    layout: dense

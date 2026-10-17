@@ -1,0 +1,93 @@
+schema_version: 1
+tool_id: visionrt.detection.filter
+display_name: 缺陷过滤
+version: 1.0.0
+kind: cpp_function
+entry:
+  registry_name: visionrt.detection.filter
+init_params: []
+inputs:
+- id: images
+  name: 图像批次
+  type: ImageBatch
+- id: rois
+  name: 候选ROI
+  type: RoiBatch
+  image_input: images
+- id: scores
+  name: 置信度得分
+  type: NumericArray
+  dtype: float32
+  rank: 2
+  layout: batch_ragged
+- id: classes
+  name: 类别ID
+  type: NumericArray
+  dtype: int64
+  rank: 2
+  layout: batch_ragged
+- id: class_names
+  name: 类别名称
+  type: StringArray
+  rank: 2
+  layout: batch_ragged
+- id: min_score
+  name: 最低置信度
+  type: Float
+  default: 0.5
+  min: 0.0
+  max: 1.0
+  step: 0.05
+  tab: 检测
+- id: min_area
+  name: 最小面积
+  type: Float
+  default: 1.0
+  min: 0.0
+  step: 1.0
+  tab: 检测
+- id: allowed_classes
+  name: 保留类别
+  type: NumericArray
+  dtype: int64
+  rank: 1
+  layout: dense
+  default:
+    shape:
+    - 0
+    data: []
+  tab: 检测
+outputs:
+- id: images
+  name: 输出图像
+  type: ImageBatch
+  display:
+    same_geometry_as_input: images
+    color_order: BGR
+- id: rois
+  name: 过滤后ROI
+  type: RoiBatch
+  image_port: images
+- id: scores
+  name: 过滤后得分
+  type: NumericArray
+  dtype: float32
+  rank: 2
+  layout: batch_ragged
+- id: classes
+  name: 过滤后类别
+  type: NumericArray
+  dtype: int64
+  rank: 2
+  layout: batch_ragged
+- id: class_names
+  name: 过滤后类别名
+  type: StringArray
+  rank: 2
+  layout: batch_ragged
+- id: counts
+  name: 目标数量
+  type: NumericArray
+  dtype: int64
+  rank: 1
+  layout: dense

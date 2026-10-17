@@ -1,0 +1,29 @@
+outputs:
+  - layout: dense
+    dtype: float32
+    name: 结果
+    id: result
+    type: NumericArray
+    rank: 1
+inputs:
+  - id: count
+    min: 1
+    max: 100
+    name: 数量
+    type: Int
+    default: 10
+  - name: 输入图像
+    type: ImageBatch
+    id: images
+entry:
+  registry_name: test.fixture.valid
+kind: cpp_function
+display_name: 有效测试算子
+version: 1.0.0
+tool_id: test.fixture.valid
+schema_version: 1
+init_params:
+  - type: String
+    default: "test"
+    id: param1
+    name: 参数1

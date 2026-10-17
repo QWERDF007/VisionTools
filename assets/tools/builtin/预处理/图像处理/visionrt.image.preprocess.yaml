@@ -1,0 +1,46 @@
+schema_version: 1
+tool_id: visionrt.image.preprocess
+display_name: 图像预处理
+version: 1.0.0
+kind: cpp_function
+entry:
+  registry_name: visionrt.image.preprocess
+init_params: []
+inputs:
+- id: images
+  name: 图像批次
+  type: ImageBatch
+- id: operation
+  name: 操作类型
+  type: String
+  default: identity
+  tab: 预处理
+  options:
+  - identity
+  - gray
+  - gaussian
+  - threshold
+- id: kernel
+  name: 高斯核大小
+  type: Int
+  default: 3
+  min: 1
+  step: 2
+  editor: number
+  tab: 预处理
+- id: threshold
+  name: 二值化阈值
+  type: Int
+  default: 128
+  min: 0
+  max: 255
+  step: 1
+  editor: number
+  tab: 预处理
+outputs:
+- id: images
+  name: 处理后图像
+  type: ImageBatch
+  display:
+    same_geometry_as_input: images
+    color_order: BGR

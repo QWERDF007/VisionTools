@@ -1,0 +1,20 @@
+schema_version: 1
+tool_id: custom.image.mean
+display_name: 计算图像均值
+version: 1.0.0
+kind: python_class
+entry:
+  file: mean.py
+  symbol: ToolInstance
+init_params: []
+inputs:
+- id: images
+  name: 输入图像批次
+  type: ImageBatch
+outputs:
+- id: means
+  name: 图像均值
+  type: NumericArray
+  dtype: float64
+  rank: 1
+  layout: dense

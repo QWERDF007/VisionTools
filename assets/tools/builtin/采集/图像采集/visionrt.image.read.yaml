@@ -1,0 +1,52 @@
+schema_version: 1
+tool_id: visionrt.image.read
+display_name: 图像读取
+version: 1.0.0
+kind: cpp_function
+entry:
+  registry_name: visionrt.image.read
+init_params: []
+inputs:
+- id: mode
+  name: 读取模式
+  type: String
+  default: file
+  editor: text
+  tab: 基本输入
+  options:
+  - file
+  - directory
+- id: path
+  name: 文件或目录路径
+  type: String
+  default: ''
+  editor: file
+  tab: 基本输入
+- id: color
+  name: 色彩模式
+  type: String
+  default: bgr
+  editor: text
+  tab: 基本输入
+  options:
+  - bgr
+  - gray
+  - unchanged
+- id: limit
+  name: 最大数量
+  type: Int
+  default: 0
+  min: 0
+  editor: number
+  tab: 基本输入
+outputs:
+- id: images
+  name: 图像批次
+  type: ImageBatch
+  display:
+    color_order: BGR
+- id: paths
+  name: 文件路径
+  type: StringArray
+  rank: 1
+  layout: dense

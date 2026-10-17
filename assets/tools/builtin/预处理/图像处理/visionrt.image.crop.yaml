@@ -1,0 +1,34 @@
+schema_version: 1
+tool_id: visionrt.image.crop
+display_name: 图像裁剪
+version: 1.0.0
+kind: cpp_function
+entry:
+  registry_name: visionrt.image.crop
+init_params: []
+inputs:
+- id: images
+  name: 图像批次
+  type: ImageBatch
+- id: rois
+  name: ROI区域
+  type: RoiBatch
+  image_input: images
+outputs:
+- id: images
+  name: 裁剪图像批次
+  type: ImageBatch
+  display:
+    color_order: BGR
+- id: source_indices
+  name: 源图索引
+  type: NumericArray
+  dtype: int64
+  rank: 2
+  layout: dense
+- id: origins
+  name: 原点坐标
+  type: NumericArray
+  dtype: float64
+  rank: 2
+  layout: dense

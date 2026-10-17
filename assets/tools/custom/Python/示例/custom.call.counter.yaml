@@ -1,0 +1,14 @@
+schema_version: 1
+tool_id: custom.call.counter
+display_name: 调用计数器
+version: 1.0.0
+kind: python_class
+entry:
+  file: counter.py
+  symbol: CounterTool
+init_params: []
+inputs: []
+outputs:
+- id: count
+  name: 累计调用次数
+  type: Int
