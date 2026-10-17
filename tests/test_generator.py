@@ -312,10 +312,25 @@ class TestToolContractGenerator(unittest.TestCase):
         script = str(tools_dir / "generate_tool_contracts.py")
         with tempfile.TemporaryDirectory() as td:
             t = Path(td)
+            mock_sdk = t / "mock_sdk"
+            val_dir = mock_sdk / "visionrt" / "sdk"
+            val_dir.mkdir(parents=True)
+            (val_dir / "Value.h").write_text("enum class Type { Int, Float, Bool, String, ImageBatch, NumericArray, StringArray, RoiBatch };\n"
+                                             "enum class DType { Int32, Int64, Float32, Float64, UInt8, Bool };\n"
+                                             "enum class Layout { Dense, BatchRagged };\n")
+            (val_dir / "Schema.h").write_text("enum class ToolKind { CppFunction, CppClass, PythonFunction, PythonClass };\n")
+
+            # Missing --sdk-include-dir -> returncode != 0 (E02)
+            p = subprocess.run([sys.executable, script, "--tools-dir", str(self.fixtures_dir),
+                                "--bindings", str(tools_dir / "module_bindings.yaml"), "--output-dir", str(t / "gen"),
+                                "--index-output", str(t / "index.json")], capture_output=True, text=True)
+            self.assertNotEqual(p.returncode, 0)
+            self.assertIn("Missing required --sdk-include-dir", p.stderr)
+
             # Missing bindings file -> returncode != 0
             p = subprocess.run([sys.executable, script, "--tools-dir", str(self.fixtures_dir),
                                 "--bindings", str(t / "missing_bindings.yaml"), "--output-dir", str(t / "gen"),
-                                "--index-output", str(t / "index.json")], capture_output=True, text=True)
+                                "--index-output", str(t / "index.json"), "--sdk-include-dir", str(mock_sdk)], capture_output=True, text=True)
             self.assertNotEqual(p.returncode, 0)
 
             # Empty tools dir -> returncode != 0
@@ -323,7 +338,7 @@ class TestToolContractGenerator(unittest.TestCase):
             empty_dir.mkdir()
             p = subprocess.run([sys.executable, script, "--tools-dir", str(empty_dir),
                                 "--bindings", str(tools_dir / "module_bindings.yaml"), "--output-dir", str(t / "gen"),
-                                "--index-output", str(t / "index.json")], capture_output=True, text=True)
+                                "--index-output", str(t / "index.json"), "--sdk-include-dir", str(mock_sdk)], capture_output=True, text=True)
             self.assertNotEqual(p.returncode, 0)
 
             # Invalid explicit sdk-include-dir -> returncode != 0 (P01)
@@ -332,6 +347,34 @@ class TestToolContractGenerator(unittest.TestCase):
                                 "--index-output", str(t / "index.json"), "--sdk-include-dir", str(t / "absent-sdk")],
                                capture_output=True, text=True)
             self.assertNotEqual(p.returncode, 0)
+
+    def test_reserved_port_id_rejected(self):
+        doc = {
+            "schema_version": 1,
+            "tool_id": "test.reserved.port",
+            "display_name": "Reserved Port",
+            "kind": "cpp_function",
+            "entry": {"registry_name": "test.reserved.port"},
+            "inputs": [{"id": "__private", "type": "Int"}],
+            "outputs": []
+        }
+        with self.assertRaises(ContractValidationError) as ctx:
+            validate_tool_declaration(doc, Path("test.yaml"))
+        self.assertIn("reserved '__' prefix", str(ctx.exception))
+
+    def test_negative_step_rejected(self):
+        doc = {
+            "schema_version": 1,
+            "tool_id": "test.step.invalid",
+            "display_name": "Invalid Step",
+            "kind": "cpp_function",
+            "entry": {"registry_name": "test.step.invalid"},
+            "inputs": [{"id": "x", "type": "Float", "step": -1.0}],
+            "outputs": []
+        }
+        with self.assertRaises(ContractValidationError) as ctx:
+            validate_tool_declaration(doc, Path("test.yaml"))
+        self.assertIn("step must be positive", str(ctx.exception))
 
 if __name__ == "__main__":
     unittest.main()

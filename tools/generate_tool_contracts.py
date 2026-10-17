@@ -186,6 +186,10 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
                 raise ContractValidationError(f"{prefix}Duplicate port id '{p_id}' in '{port_group}'")
             port_ids.add(p_id)
 
+            if p_id.startswith("__"):
+                if not (port_group == "outputs" and p_id in ("__status_code", "__status_message")):
+                    raise ContractValidationError(f"{prefix}Port ID uses reserved '__' prefix: '{p_id}' in '{port_group}'")
+
             c_ident = to_cpp_identifier(p_id).upper()
             if c_ident in port_c_idents:
                 raise ContractValidationError(f"{prefix}C++ identifier collision in '{port_group}' for port '{p_id}' ({c_ident})")
@@ -194,6 +198,16 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
             p_type = p.get("type")
             if p_type not in VALID_TYPES:
                 raise ContractValidationError(f"{prefix}Port '{p_id}' has invalid type '{p_type}'")
+
+            # Direction-specific constraint validation (SSOT with SDK Schema.cpp)
+            if port_group == "outputs":
+                for disallowed in ("editor", "min", "max", "step", "decimals", "options", "options_provider", "image_input"):
+                    if disallowed in p and p[disallowed] is not None:
+                        raise ContractValidationError(f"{prefix}'{disallowed}' is not an output field on port: '{p_id}'")
+            else:
+                for disallowed in ("color_order", "same_geometry_as_input", "image_port"):
+                    if disallowed in p and p[disallowed] is not None:
+                        raise ContractValidationError(f"{prefix}'{disallowed}' applies only to outputs on port: '{p_id}'")
 
             # NumericArray validation
             if p_type == "NumericArray":
@@ -238,6 +252,25 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
                     if not isinstance(default_val, str):
                         raise ContractValidationError(f"{prefix}Default value for String port '{p_id}' must be string (got {default_val})")
 
+            # Step validation
+            if "step" in p and p["step"] is not None:
+                step_val = p["step"]
+                if p_type not in ("Int", "Float"):
+                    raise ContractValidationError(f"{prefix}Numeric constraint 'step' requires Int or Float port: '{p_id}'")
+                if not isinstance(step_val, (int, float)) or isinstance(step_val, bool) or step_val <= 0 or math.isnan(step_val) or math.isinf(step_val):
+                    raise ContractValidationError(f"{prefix}Port '{p_id}' step must be positive (got {step_val})")
+
+            # Numeric constraint type checks
+            for attr in ("min", "max", "decimals"):
+                if attr in p and p[attr] is not None:
+                    if p_type not in ("Int", "Float"):
+                        raise ContractValidationError(f"{prefix}Numeric constraint '{attr}' requires Int or Float port: '{p_id}'")
+
+            if "decimals" in p and p["decimals"] is not None:
+                dec_val = p["decimals"]
+                if not isinstance(dec_val, int) or isinstance(dec_val, bool) or dec_val < 0:
+                    raise ContractValidationError(f"{prefix}Port '{p_id}' decimals must be non-negative integer (got {dec_val})")
+
             # Range validation (both two-sided and one-sided)
             min_val = p.get("min")
             max_val = p.get("max")
@@ -250,6 +283,15 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
                     raise ContractValidationError(f"{prefix}Port '{p_id}' default ({def_val}) out of range (min is {min_val})")
                 if max_val is not None and def_val > max_val:
                     raise ContractValidationError(f"{prefix}Port '{p_id}' default ({def_val}) out of range (max is {max_val})")
+
+            # Options validation
+            if "options" in p and p["options"] is not None:
+                opts = p["options"]
+                if not isinstance(opts, list):
+                    raise ContractValidationError(f"{prefix}Port '{p_id}' options must be a list")
+                if "default" in p and p["default"] is not None:
+                    if p["default"] not in opts:
+                        raise ContractValidationError(f"{prefix}Port '{p_id}' default value is not one of declared options")
 
     return doc
 
@@ -270,6 +312,8 @@ def load_and_validate_declarations(tools_dir: Path, bindings_data: Optional[Dict
     for yf in yaml_files:
         doc = load_yaml(yf)
         validated = validate_tool_declaration(doc, yf, tools_dir=tools_dir)
+        if any(part in yf.parts for part in ("custom", "示例", "examples")):
+            validated["is_example"] = True
         tid = validated["tool_id"]
         if tid in seen_tool_ids:
             raise ContractValidationError(f"Duplicate tool_id '{tid}' in {yf}")
@@ -464,7 +508,19 @@ def generate_module_factory_inc(module_name: str, tools_dict: Dict[str, Dict[str
         "            }",
         "            return visionrt::ToolResult{visionrt::ToolStatus{-2, e.what()}, std::move(missingOutputs)};",
         "        }",
-        "        return inner_->execute(inputs);",
+        "        visionrt::ToolResult result = inner_->execute(inputs);",
+        "        if (result.status.code == 0) {",
+        "            try {",
+        "                visionrt::validateToolValues(contract_.outputs, result.outputs, false);",
+        "            } catch (const visionrt::ContractError& e) {",
+        "                visionrt::Values missingOutputs;",
+        "                for (const auto& out : contract_.outputs) {",
+        "                    missingOutputs.emplace(out.id, visionrt::Missing{});",
+        "                }",
+        "                return visionrt::ToolResult{visionrt::ToolStatus{-2, std::string(\"Output contract error: \") + e.what()}, std::move(missingOutputs)};",
+        "            }",
+        "        }",
+        "        return result;",
         "    }",
         "",
         "    visionrt::ToolStatus release() override {",
@@ -559,6 +615,8 @@ def build_module_index(tools: List[Dict[str, Any]], bindings_data: Optional[Dict
                 reg_to_module[reg] = dll_path
 
     for tool in sorted(tools, key=lambda t: t["tool_id"]):
+        if tool.get("is_example"):
+            continue
         tid = tool["tool_id"]
         reg = tool.get("entry", {}).get("registry_name", tid)
         kind = tool.get("kind", "cpp_function")
@@ -595,16 +653,19 @@ def main():
     parser.add_argument("--output-dir", default="src/generated", help="Directory for generated C++ files")
     parser.add_argument("--index-output", default="module_index.json", help="Output path for module index JSON")
     parser.add_argument("--variant", default="gpu", choices=["gpu", "cpu"], help="Distribution variant")
-    parser.add_argument("--sdk-include-dir", default=None, help="Optional SDK include directory")
+    parser.add_argument("--sdk-include-dir", default=None, help="VisionRT SDK include directory")
     args = parser.parse_args()
 
-    if args.sdk_include_dir:
-        try:
-            global VALID_TYPES, VALID_DTYPES, VALID_LAYOUTS, VALID_KINDS
-            VALID_TYPES, VALID_DTYPES, VALID_LAYOUTS, VALID_KINDS = load_sdk_enums(Path(args.sdk_include_dir))
-        except Exception as e:
-            print(f"[ERROR] Invalid SDK include directory: {e}", file=sys.stderr)
-            return 1
+    if not args.sdk_include_dir:
+        print("[ERROR] Missing required --sdk-include-dir argument in formal build", file=sys.stderr)
+        return 1
+
+    try:
+        global VALID_TYPES, VALID_DTYPES, VALID_LAYOUTS, VALID_KINDS
+        VALID_TYPES, VALID_DTYPES, VALID_LAYOUTS, VALID_KINDS = load_sdk_enums(Path(args.sdk_include_dir))
+    except Exception as e:
+        print(f"[ERROR] Invalid SDK include directory: {e}", file=sys.stderr)
+        return 1
 
     tools_dir = Path(args.tools_dir)
     out_dir = Path(args.output_dir)
@@ -640,6 +701,8 @@ def main():
         try:
             doc = load_yaml(yf)
             validated = validate_tool_declaration(doc, yf, tools_dir=tools_dir)
+            if any(part in yf.parts for part in ("custom", "示例", "examples")):
+                validated["is_example"] = True
             tid = validated["tool_id"]
             if tid in seen_tool_ids:
                 raise ContractValidationError(f"Duplicate tool_id '{tid}' in {yf}")
