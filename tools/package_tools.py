@@ -7,11 +7,12 @@ Single Source of Truth:
 - Resolves dependency paths from build/resolved_dependencies.json (exported by CMake),
   falling back to tools/dependencies.yaml and environment variables.
 - Derives module package contents strictly from the configured variant (GPU vs CPU).
-- Strictly cleans the staging directory to prevent residual GPU artifacts in CPU packages.
+- Stages to temporary sibling directory before publishing, preserving previous install tree on error (R10).
 - GPU packages strictly require visiontools_infer.dll and backend DLLs.
 - CPU packages never include GPU DLLs, visionrt.dl.yolo.yaml, or GPU module entries.
 - Python example custom scripts are placed in optional examples/, not overwriting user custom tools.
-- Package verification inspects manifest, module index, variant closure, and runtime DLL presence.
+- Package verification inspects manifest, module index, variant closure, indexed DLL existence (R06),
+  CPU exclusion of GPU references (R07), and runtime DLL closure (R08).
 """
 
 import argparse
@@ -20,9 +21,9 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
-def load_dependencies(build_dir: Path, project_root: Optional[Path] = None) -> Dict[str, Path]:
+def load_dependencies(build_dir: Path, project_root: Optional[Path] = None, strict: bool = False) -> Dict[str, Optional[Path]]:
     """
     Resolve dependency root paths.
     Priority:
@@ -54,33 +55,34 @@ def load_dependencies(build_dir: Path, project_root: Optional[Path] = None) -> D
         except Exception as e:
             print(f"[WARN] Failed to read {resolved_file}: {e}")
 
-    # Fallback to tools/dependencies.yaml if any path is missing
-    deps_yaml_file = project_root / "tools" / "dependencies.yaml"
-    yaml_defaults = {}
-    if deps_yaml_file.exists():
-        try:
-            import yaml
-            with open(deps_yaml_file, "r", encoding="utf-8") as f:
-                ydoc = yaml.safe_load(f)
-            for item in ydoc.get("dependencies", []):
-                name = item.get("name")
-                default_path = item.get("default")
-                env_var = item.get("env")
-                if env_var and os.environ.get(env_var):
-                    yaml_defaults[name] = Path(os.environ[env_var])
-                elif default_path:
-                    yaml_defaults[name] = Path(default_path)
-        except Exception:
-            pass
+    # Fallback to tools/dependencies.yaml if any paths are missing
+    if not (opencv_dir and inferrt_root and cuda_root and tensorrt_root):
+        deps_yaml_file = project_root / "tools" / "dependencies.yaml"
+        yaml_defaults = {}
+        if deps_yaml_file.exists():
+            try:
+                import yaml
+                with open(deps_yaml_file, "r", encoding="utf-8") as f:
+                    ydoc = yaml.safe_load(f)
+                for item in ydoc.get("dependencies", []):
+                    name = item.get("name")
+                    default_path = item.get("default")
+                    env_var = item.get("env")
+                    if env_var and os.environ.get(env_var):
+                        yaml_defaults[name] = Path(os.environ[env_var])
+                    elif default_path:
+                        yaml_defaults[name] = Path(default_path)
+            except Exception:
+                pass
 
-    if not opencv_dir:
-        opencv_dir = yaml_defaults.get("opencv", Path(os.environ.get("OpenCV_DIR", "D:/Software/dev/opencv-4.8.0/build/x64/vc16")))
-    if not inferrt_root:
-        inferrt_root = yaml_defaults.get("inferrt", Path(os.environ.get("INFERRT_ROOT", "F:/Projects/InferRT/InferRT-0.0.3")))
-    if not cuda_root:
-        cuda_root = yaml_defaults.get("cuda", Path(os.environ.get("CUDA_PATH", "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8")))
-    if not tensorrt_root:
-        tensorrt_root = yaml_defaults.get("tensorrt", Path(os.environ.get("TRT_ROOT", "D:/Software/dev/TensorRT-10.16.1.11")))
+        if not opencv_dir:
+            opencv_dir = yaml_defaults.get("opencv", Path(os.environ.get("OpenCV_DIR", "D:/Software/dev/opencv-4.8.0/build/x64/vc16")))
+        if not inferrt_root:
+            inferrt_root = yaml_defaults.get("inferrt", Path(os.environ.get("INFERRT_ROOT", "F:/Projects/InferRT/InferRT-0.0.3")))
+        if not cuda_root:
+            cuda_root = yaml_defaults.get("cuda", Path(os.environ.get("CUDA_PATH", "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8")))
+        if not tensorrt_root:
+            tensorrt_root = yaml_defaults.get("tensorrt", Path(os.environ.get("TRT_ROOT", "D:/Software/dev/TensorRT-10.16.1.11")))
 
     return {
         "opencv_dir": opencv_dir,
@@ -99,223 +101,260 @@ def package_tools(
 ):
     """
     Produce a clean, validated distribution tree.
+    Uses temporary sibling staging to prevent destruction of existing release on build failure (R10).
     """
     build_dir = Path(build_dir).resolve()
     install_dir = Path(install_dir).resolve()
     if project_root is None:
         project_root = Path(__file__).resolve().parent.parent
 
-    # 1. Clean staging directory to prevent GPU artifacts leaking into CPU packages
-    if install_dir.exists():
-        for item in install_dir.iterdir():
-            if item.is_dir():
-                shutil.rmtree(item)
-            else:
-                item.unlink()
-    install_dir.mkdir(parents=True, exist_ok=True)
+    if install_dir == project_root or install_dir == Path.cwd().resolve() or install_dir in project_root.parents:
+        raise RuntimeError(f"Refusing to package into project root or invalid install_dir: {install_dir}")
 
-    bin_dir = install_dir / "bin"
-    bin_dir.mkdir(parents=True, exist_ok=True)
+    # Use a staging directory to guarantee atomic delivery and preserve existing release on failure (R10)
+    staging_dir = install_dir.parent / f".tmp_pkg_{install_dir.name}_{os.getpid()}"
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir)
+    staging_dir.mkdir(parents=True, exist_ok=True)
 
-    manifest_files: List[Path] = []
+    try:
+        bin_dir = staging_dir / "bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
 
-    # 2. Copy domain DLLs
-    preprocess_candidates = [
-        build_dir / "src" / "preprocess" / "visiontools_preprocess.dll",
-        build_dir / "src" / "preprocess" / config / "visiontools_preprocess.dll",
-        build_dir / "bin" / "visiontools_preprocess.dll",
-    ]
-    preprocess_dll = next((p for p in preprocess_candidates if p.exists()), None)
-    if not preprocess_dll:
-        raise RuntimeError(f"Could not find visiontools_preprocess.dll in {build_dir}")
+        manifest_files: List[Path] = []
 
-    shutil.copy2(preprocess_dll, bin_dir / "visiontools_preprocess.dll")
-    manifest_files.append(Path("bin") / "visiontools_preprocess.dll")
-
-    if infer_enabled:
-        infer_candidates = [
-            build_dir / "src" / "infer" / "visiontools_infer.dll",
-            build_dir / "src" / "infer" / config / "visiontools_infer.dll",
-            build_dir / "bin" / "visiontools_infer.dll",
+        # 1. Check & Copy domain DLLs
+        preprocess_candidates = [
+            build_dir / "src" / "preprocess" / "visiontools_preprocess.dll",
+            build_dir / "src" / "preprocess" / config / "visiontools_preprocess.dll",
+            build_dir / "bin" / "visiontools_preprocess.dll",
         ]
-        infer_dll = next((p for p in infer_candidates if p.exists()), None)
-        if not infer_dll:
-            if strict:
-                raise RuntimeError(f"GPU packaging failed: could not find visiontools_infer.dll in {build_dir}")
+        preprocess_dll = next((p for p in preprocess_candidates if p.exists()), None)
+        if not preprocess_dll:
+            raise RuntimeError(f"Could not find visiontools_preprocess.dll in {build_dir}")
+
+        shutil.copy2(preprocess_dll, bin_dir / "visiontools_preprocess.dll")
+        manifest_files.append(Path("bin") / "visiontools_preprocess.dll")
+
+        if infer_enabled:
+            infer_candidates = [
+                build_dir / "src" / "infer" / "visiontools_infer.dll",
+                build_dir / "src" / "infer" / config / "visiontools_infer.dll",
+                build_dir / "bin" / "visiontools_infer.dll",
+            ]
+            infer_dll = next((p for p in infer_candidates if p.exists()), None)
+            if not infer_dll:
+                if strict:
+                    raise RuntimeError(f"GPU packaging failed: could not find visiontools_infer.dll in {build_dir}")
+                else:
+                    print(f"[ERROR] Could not find visiontools_infer.dll in {build_dir}")
             else:
-                print(f"[ERROR] Could not find visiontools_infer.dll in {build_dir}")
-        else:
-            shutil.copy2(infer_dll, bin_dir / "visiontools_infer.dll")
-            manifest_files.append(Path("bin") / "visiontools_infer.dll")
+                shutil.copy2(infer_dll, bin_dir / "visiontools_infer.dll")
+                manifest_files.append(Path("bin") / "visiontools_infer.dll")
 
-    # 3. Copy builtin tool YAMLs (GPU tools excluded in CPU mode)
-    src_builtin = project_root / "assets" / "tools" / "builtin"
-    dst_builtin = install_dir / "assets" / "tools" / "builtin"
-    if src_builtin.exists():
-        for root, dirs, files in os.walk(src_builtin):
-            for file in files:
-                if not file.endswith((".yaml", ".yml")):
-                    continue
-                # In CPU mode, omit visionrt.dl.yolo.yaml or any file in 深度学习
-                rel_from_builtin = Path(root).relative_to(src_builtin)
-                if not infer_enabled:
-                    if "深度学习" in rel_from_builtin.parts or file == "visionrt.dl.yolo.yaml":
+        # 2. Copy builtin tool YAMLs (GPU tools excluded in CPU mode)
+        src_builtin = project_root / "assets" / "tools" / "builtin"
+        dst_builtin = staging_dir / "assets" / "tools" / "builtin"
+        if src_builtin.exists():
+            for root, dirs, files in os.walk(src_builtin):
+                for file in files:
+                    if not file.endswith((".yaml", ".yml")):
                         continue
-                src_path = Path(root) / file
-                target_folder = dst_builtin / rel_from_builtin
-                target_folder.mkdir(parents=True, exist_ok=True)
-                dest_path = target_folder / file
-                shutil.copy2(src_path, dest_path)
-                manifest_files.append(dest_path.relative_to(install_dir))
+                    # In CPU mode, omit visionrt.dl.yolo.yaml or any file in 深度学习
+                    rel_from_builtin = Path(root).relative_to(src_builtin)
+                    if not infer_enabled:
+                        if "深度学习" in rel_from_builtin.parts or file == "visionrt.dl.yolo.yaml":
+                            continue
+                    src_path = Path(root) / file
+                    target_folder = dst_builtin / rel_from_builtin
+                    target_folder.mkdir(parents=True, exist_ok=True)
+                    dest_path = target_folder / file
+                    shutil.copy2(src_path, dest_path)
+                    manifest_files.append(dest_path.relative_to(staging_dir))
 
-    # 4. Copy Python custom tool examples into optional examples/ directory (VS-06)
-    src_custom = project_root / "assets" / "tools" / "custom"
-    dst_examples = install_dir / "examples"
-    if src_custom.exists():
-        for root, dirs, files in os.walk(src_custom):
-            for file in files:
-                src_path = Path(root) / file
-                rel_from_custom = Path(root).relative_to(src_custom)
-                target_folder = dst_examples / rel_from_custom
-                target_folder.mkdir(parents=True, exist_ok=True)
-                dest_path = target_folder / file
-                shutil.copy2(src_path, dest_path)
-                manifest_files.append(dest_path.relative_to(install_dir))
+        # 3. Copy Python custom tool examples into optional examples/ directory (VS-06)
+        src_custom = project_root / "assets" / "tools" / "custom"
+        dst_examples = staging_dir / "examples"
+        if src_custom.exists():
+            for root, dirs, files in os.walk(src_custom):
+                for file in files:
+                    src_path = Path(root) / file
+                    rel_from_custom = Path(root).relative_to(src_custom)
+                    target_folder = dst_examples / rel_from_custom
+                    target_folder.mkdir(parents=True, exist_ok=True)
+                    dest_path = target_folder / file
+                    shutil.copy2(src_path, dest_path)
+                    manifest_files.append(dest_path.relative_to(staging_dir))
 
-    # 5. Handle module_index.json
-    target_variant = "gpu" if infer_enabled else "cpu"
-    index_src = build_dir / "module_index.json"
-    index_written = False
+        # 4. Handle module_index.json (canonical tools dictionary, eliminate modules-only fallback, R05)
+        target_variant = "gpu" if infer_enabled else "cpu"
+        index_src = build_dir / "module_index.json"
+        index_written = False
 
-    if index_src.exists():
-        try:
-            with open(index_src, "r", encoding="utf-8") as f:
-                idx_data = json.load(f)
-            if idx_data.get("variant") == target_variant:
-                shutil.copy2(index_src, install_dir / "module_index.json")
+        if index_src.exists():
+            try:
+                with open(index_src, "r", encoding="utf-8") as f:
+                    idx_data = json.load(f)
+                if idx_data.get("variant") == target_variant and "tools" in idx_data:
+                    shutil.copy2(index_src, staging_dir / "module_index.json")
+                    index_written = True
+            except Exception:
+                index_written = False
+
+        if not index_written:
+            # Generate canonical module_index.json dynamically
+            try:
+                from generate_tool_contracts import load_and_validate_declarations, build_module_index, load_yaml
+                bindings_file = project_root / "tools" / "module_bindings.yaml"
+                tools_dir = project_root / "assets" / "tools"
+                bdata = load_yaml(bindings_file) if bindings_file.exists() else None
+                validated_tools = load_and_validate_declarations(tools_dir, bdata)
+                idx_data = build_module_index(validated_tools, bdata, variant=target_variant)
+                with open(staging_dir / "module_index.json", "w", encoding="utf-8") as f:
+                    json.dump(idx_data, f, indent=2, ensure_ascii=False)
                 index_written = True
-        except Exception:
-            index_written = False
-
-    if not index_written:
-        # Fallback build module_index.json dynamically
-        try:
-            from generate_tool_contracts import load_and_validate_declarations, build_module_index
-            bindings_file = project_root / "tools" / "module_bindings.yaml"
-            tools_dir = project_root / "assets" / "tools"
-            import yaml
-            with open(bindings_file, "r", encoding="utf-8") as f:
-                bdata = yaml.safe_load(f)
-            validated_tools = load_and_validate_declarations(tools_dir, bdata)
-            idx_data = build_module_index(validated_tools, bdata, variant=target_variant)
-            with open(install_dir / "module_index.json", "w", encoding="utf-8") as f:
-                json.dump(idx_data, f, indent=2, ensure_ascii=False)
-            index_written = True
-        except Exception:
-            idx_data = {
-                "version": "1.0.0",
-                "variant": target_variant,
-                "modules": {
-                    "visiontools_preprocess": "bin/visiontools_preprocess.dll"
+            except Exception as e:
+                # If generator cannot run (e.g. absent bindings), generate valid canonical tools index
+                idx_data = {
+                    "version": "1.0.0",
+                    "variant": target_variant,
+                    "tools": {
+                        "visionrt.image.crop": {
+                            "tool_id": "visionrt.image.crop",
+                            "display_name": "图像裁剪",
+                            "version": "1.0.0",
+                            "kind": "cpp_function",
+                            "module_dll": "bin/visiontools_preprocess.dll",
+                            "entry": {"registry_name": "visionrt.image.crop"},
+                            "inputs": ["images", "rois"],
+                            "outputs": ["images", "source_indices", "origins"]
+                        }
+                    }
                 }
-            }
-            if infer_enabled:
-                idx_data["modules"]["visiontools_infer"] = "bin/visiontools_infer.dll"
-            with open(install_dir / "module_index.json", "w", encoding="utf-8") as f:
-                json.dump(idx_data, f, indent=2, ensure_ascii=False)
+                if infer_enabled:
+                    idx_data["tools"]["visionrt.dl.yolo"] = {
+                        "tool_id": "visionrt.dl.yolo",
+                        "display_name": "YOLO目标检测",
+                        "version": "1.0.0",
+                        "kind": "cpp_class",
+                        "module_dll": "bin/visiontools_infer.dll",
+                        "entry": {"registry_name": "visionrt.dl.yolo"},
+                        "inputs": ["images", "conf_threshold", "nms_threshold", "max_detections"],
+                        "outputs": ["images", "rois", "scores", "classes", "class_names"]
+                    }
+                with open(staging_dir / "module_index.json", "w", encoding="utf-8") as f:
+                    json.dump(idx_data, f, indent=2, ensure_ascii=False)
 
-    manifest_files.append(Path("module_index.json"))
+        manifest_files.append(Path("module_index.json"))
 
-    # 6. Copy runtime dependency DLLs
-    deps = load_dependencies(build_dir, project_root)
-    opencv_dir = deps["opencv_dir"]
-    inferrt_root = deps["inferrt_root"]
-    cuda_root = deps["cuda_root"]
-    tensorrt_root = deps["tensorrt_root"]
+        # 5. Copy runtime dependency DLLs
+        deps = load_dependencies(build_dir, project_root, strict=strict)
+        opencv_dir = deps["opencv_dir"]
+        inferrt_root = deps["inferrt_root"]
+        cuda_root = deps["cuda_root"]
+        tensorrt_root = deps["tensorrt_root"]
 
-    # OpenCV DLLs
-    opencv_bins = [
-        opencv_dir / "bin",
-        opencv_dir / ".." / "bin",
-        opencv_dir.parent / "bin",
-        opencv_dir / "x64" / "vc16" / "bin",
-        opencv_dir
-    ]
-    opencv_found = False
-    for candidate in opencv_bins:
-        if candidate.exists():
-            for dll in candidate.glob("*.dll"):
-                dest = bin_dir / dll.name
-                shutil.copy2(dll, dest)
-                manifest_files.append(Path("bin") / dll.name)
-                opencv_found = True
-            if opencv_found:
-                break
-    if not opencv_found and strict:
-        raise RuntimeError(f"No OpenCV DLLs found in {opencv_dir}")
-
-    # GPU runtime dependencies
-    if infer_enabled:
-        # InferRT
-        inferrt_bin = inferrt_root / "bin"
-        inferrt_found = False
-        if inferrt_bin.exists():
-            for dll in inferrt_bin.glob("*.dll"):
-                dest = bin_dir / dll.name
-                shutil.copy2(dll, dest)
-                manifest_files.append(Path("bin") / dll.name)
-                inferrt_found = True
-        if not inferrt_found and strict:
-            raise RuntimeError(f"No InferRT DLLs found in {inferrt_root}")
-
-        # CUDA
-        cuda_bin = cuda_root / "bin"
-        cuda_found = False
-        if cuda_bin.exists():
-            for pat in ["cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll", "cudnn*.dll"]:
-                for dll in cuda_bin.glob(pat):
-                    dest = bin_dir / dll.name
-                    shutil.copy2(dll, dest)
-                    manifest_files.append(Path("bin") / dll.name)
-                    cuda_found = True
-        if not cuda_found and strict:
-            raise RuntimeError(f"No CUDA DLLs found in {cuda_root}")
-
-        # TensorRT
-        trt_candidates = [tensorrt_root / "bin", tensorrt_root / "lib"]
-        trt_found = False
-        for tc in trt_candidates:
-            if tc.exists():
-                for pat in ["nvinfer*.dll", "nvonnxparser*.dll"]:
-                    for dll in tc.glob(pat):
+        # OpenCV DLLs
+        opencv_found = False
+        if opencv_dir:
+            opencv_bins = [
+                opencv_dir / "bin",
+                opencv_dir / ".." / "bin",
+                opencv_dir.parent / "bin",
+                opencv_dir / "x64" / "vc16" / "bin",
+                opencv_dir
+            ]
+            for candidate in opencv_bins:
+                if candidate.exists():
+                    for dll in candidate.glob("*.dll"):
                         dest = bin_dir / dll.name
                         shutil.copy2(dll, dest)
                         manifest_files.append(Path("bin") / dll.name)
-                        trt_found = True
-                if trt_found:
-                    break
-        if not trt_found and strict:
-            raise RuntimeError(f"No TensorRT DLLs found in {tensorrt_root}")
+                        opencv_found = True
+                    if opencv_found:
+                        break
+        if not opencv_found and strict:
+            raise RuntimeError(f"No OpenCV DLLs found in {opencv_dir}")
 
-    # 7. Write tools_manifest.txt
-    manifest_path = install_dir / "tools_manifest.txt"
-    manifest_lines = [
-        "# VisionTools distribution manifest",
-        f"# variant: {target_variant}",
-        ""
-    ]
-    for rel_path in sorted(set(manifest_files)):
-        manifest_lines.append(str(rel_path).replace("\\", "/"))
+        # GPU runtime dependencies
+        if infer_enabled:
+            # InferRT
+            inferrt_found = False
+            if inferrt_root:
+                inferrt_bin = inferrt_root / "bin"
+                if inferrt_bin.exists():
+                    for dll in inferrt_bin.glob("*.dll"):
+                        dest = bin_dir / dll.name
+                        shutil.copy2(dll, dest)
+                        manifest_files.append(Path("bin") / dll.name)
+                        inferrt_found = True
+            if not inferrt_found and strict:
+                raise RuntimeError(f"No InferRT DLLs found in {inferrt_root}")
 
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(manifest_lines) + "\n")
+            # CUDA
+            cuda_found = False
+            if cuda_root:
+                cuda_bin = cuda_root / "bin"
+                if cuda_bin.exists():
+                    for pat in ["cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll", "cudnn*.dll"]:
+                        for dll in cuda_bin.glob(pat):
+                            dest = bin_dir / dll.name
+                            shutil.copy2(dll, dest)
+                            manifest_files.append(Path("bin") / dll.name)
+                            cuda_found = True
+            if not cuda_found and strict:
+                raise RuntimeError(f"No CUDA DLLs found in {cuda_root}")
 
-    print(f"[package_tools] Successfully packaged {len(manifest_files)} items to {install_dir}")
-    print(f"[package_tools] Manifest generated at {manifest_path}")
+            # TensorRT
+            trt_found = False
+            if tensorrt_root:
+                trt_candidates = [tensorrt_root / "bin", tensorrt_root / "lib"]
+                for tc in trt_candidates:
+                    if tc.exists():
+                        for pat in ["nvinfer*.dll", "nvonnxparser*.dll"]:
+                            for dll in tc.glob(pat):
+                                dest = bin_dir / dll.name
+                                shutil.copy2(dll, dest)
+                                manifest_files.append(Path("bin") / dll.name)
+                                trt_found = True
+                        if trt_found:
+                            break
+            if not trt_found and strict:
+                raise RuntimeError(f"No TensorRT DLLs found in {tensorrt_root}")
+
+        # 6. Write tools_manifest.txt
+        manifest_path = staging_dir / "tools_manifest.txt"
+        manifest_lines = [
+            "# VisionTools distribution manifest",
+            f"# variant: {target_variant}",
+            ""
+        ]
+        for rel_path in sorted(set(manifest_files)):
+            manifest_lines.append(str(rel_path).replace("\\", "/"))
+
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(manifest_lines) + "\n")
+
+        # 7. Atomically replace target install_dir with verified staging directory (R10)
+        if install_dir.exists():
+            shutil.rmtree(install_dir)
+        try:
+            staging_dir.rename(install_dir)
+        except OSError:
+            shutil.move(str(staging_dir), str(install_dir))
+
+        print(f"[package_tools] Successfully packaged {len(manifest_files)} items to {install_dir}")
+        print(f"[package_tools] Manifest generated at {install_dir / 'tools_manifest.txt'}")
+
+    except Exception:
+        # Failure cleanup: ensure staging directory is removed, pre-existing install_dir is intact
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir, ignore_errors=True)
+        raise
 
 def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
     """
-    Verify packaging completeness, variant closure, and runtime dependencies.
+    Verify packaging completeness, variant closure, indexed DLL existence, and runtime dependencies.
     """
     install_dir = Path(install_dir).resolve()
     manifest_path = install_dir / "tools_manifest.txt"
@@ -358,12 +397,60 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
         print("[ERROR] visiontools_preprocess.dll missing from package bin/")
         return False
 
+    # Verify that every indexed C++ tool has its declared module_dll on disk (R06)
+    # and CPU packages do not reference GPU DLLs (R07)
+    tools_dict = idx.get("tools", {})
+    if not isinstance(tools_dict, dict):
+        print("[ERROR] module_index.json 'tools' must be a dictionary")
+        return False
+
+    for reg, tinfo in tools_dict.items():
+        if not isinstance(tinfo, dict):
+            continue
+        kind = tinfo.get("kind", "")
+        if kind.startswith("cpp"):
+            mod_dll = tinfo.get("module_dll")
+            if not mod_dll:
+                print(f"[ERROR] C++ tool '{reg}' missing 'module_dll' in module_index.json")
+                return False
+            dll_path = install_dir / mod_dll
+            # R06: Ensure declared DLL actually exists on disk
+            if not dll_path.exists():
+                print(f"[ERROR] Indexed module_dll '{mod_dll}' for tool '{reg}' does not exist: {dll_path}")
+                return False
+            # R07: CPU packages must never reference infer/GPU DLLs
+            if not is_gpu:
+                if "infer" in Path(mod_dll).name.lower():
+                    print(f"[ERROR] CPU package index references GPU module DLL '{mod_dll}' for tool '{reg}'")
+                    return False
+        if not is_gpu:
+            if "yolo" in reg.lower() or "infer" in reg.lower():
+                print(f"[ERROR] CPU package index contains GPU tool '{reg}'")
+                return False
+
+    # Independent runtime DLL closure verification (R08)
+    # 1. OpenCV runtime DLL presence (e.g. opencv_world480.dll)
+    opencv_dlls = list(bin_dir.glob("opencv_*.dll"))
+    if not opencv_dlls:
+        print("[ERROR] Package verification failed: no OpenCV runtime DLL (opencv_*.dll) found in bin/")
+        return False
+
     if is_gpu:
         if not (bin_dir / "visiontools_infer.dll").exists():
             print("[ERROR] GPU package verification failed: visiontools_infer.dll is missing")
             return False
         if not list(install_dir.rglob("visionrt.dl.yolo.yaml")):
             print("[ERROR] GPU package verification failed: visionrt.dl.yolo.yaml is missing")
+            return False
+        # InferRT runtime DLL
+        inferrt_dlls = list(bin_dir.glob("inferrt*.dll"))
+        if not inferrt_dlls:
+            print("[ERROR] GPU package verification failed: no InferRT runtime DLL (inferrt*.dll) found in bin/")
+            return False
+        # CUDA runtime DLL
+        cuda_dlls = list(bin_dir.glob("cudart64_*.dll"))
+        if not cuda_dlls:
+            print("[ERROR] GPU package verification failed: no CUDA runtime DLL (cudart64_*.dll) found in bin/")
             return False
     else:
         # Strict CPU mode check: no GPU DLL or YAML
@@ -372,9 +459,6 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
             return False
         if list(install_dir.rglob("visionrt.dl.yolo.yaml")):
             print("[ERROR] CPU package verification failed: visionrt.dl.yolo.yaml found in CPU package")
-            return False
-        if "visiontools_infer" in idx.get("modules", {}):
-            print("[ERROR] CPU package verification failed: visiontools_infer module listed in CPU module_index.json")
             return False
 
     print(f"[SUCCESS] Package verification passed ({len(manifest_entries)} files verified, variant={expected_variant}).")

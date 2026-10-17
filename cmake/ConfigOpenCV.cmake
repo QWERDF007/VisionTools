@@ -6,7 +6,7 @@ visiontools_resolve_path(_vt_opencv_home
     VARIABLES OpenCV_DIR OpenCV_HOME OpenCV_ROOT
     ENVIRONMENT_VARIABLES OpenCV_DIR OpenCV_HOME OpenCV_ROOT
     PATHS ${CMAKE_PREFIX_PATH}
-    REQUIRED_FILE "lib/OpenCVConfig.cmake"
+    REQUIRED_FILES "OpenCVConfig.cmake" "lib/OpenCVConfig.cmake" "x64/vc16/lib/OpenCVConfig.cmake"
     DEFAULT "D:/Software/dev/opencv-4.8.0/build/x64/vc16"
 )
 

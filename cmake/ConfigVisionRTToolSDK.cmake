@@ -2,7 +2,7 @@ include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/ConfigDependencyDefaults.cmake")
 
-# 支持传入根目录或 lib/cmake/VisionRTToolSDK 目录 (VS-01 / VS-06)
+# 支持传入根目录或 lib/cmake/VisionRTToolSDK 目录 (VS-01 / VS-06 / NS-04)
 # 优先级：显式 -D 变量 > 环境变量 > 默认路径 "C:/dev/visionrt-sdk"
 set(_explicit_sdk_dir "")
 if(DEFINED VisionRTToolSDK_DIR AND NOT "${VisionRTToolSDK_DIR}" STREQUAL "")
@@ -22,9 +22,9 @@ if(_explicit_sdk_dir)
     elseif(EXISTS "${_explicit_sdk_dir}/lib/cmake/VisionRTToolSDK/VisionRTToolSDKConfig.cmake")
         set(VisionRTToolSDK_DIR "${_explicit_sdk_dir}/lib/cmake/VisionRTToolSDK" CACHE PATH "VisionRTToolSDK config directory" FORCE)
     else()
-        # 显式路径无效，保持原样让 find_package 报错，禁止静默回退
-        set(VisionRTToolSDK_DIR "${_explicit_sdk_dir}" CACHE PATH "VisionRTToolSDK config directory" FORCE)
+        message(FATAL_ERROR "Explicit VisionRTToolSDK path '${_explicit_sdk_dir}' does not contain VisionRTToolSDKConfig.cmake (or lib/cmake/VisionRTToolSDK/VisionRTToolSDKConfig.cmake). Silent fallback rejected per NS-04.")
     endif()
+    find_package(VisionRTToolSDK CONFIG REQUIRED NO_DEFAULT_PATH)
 else()
     # 默认路径
     set(_default_sdk_root "C:/dev/visionrt-sdk")
@@ -33,9 +33,8 @@ else()
     elseif(EXISTS "${_default_sdk_root}/VisionRTToolSDKConfig.cmake")
         set(VisionRTToolSDK_DIR "${_default_sdk_root}" CACHE PATH "VisionRTToolSDK config directory" FORCE)
     endif()
+    find_package(VisionRTToolSDK CONFIG REQUIRED)
 endif()
-
-find_package(VisionRTToolSDK CONFIG REQUIRED)
 
 if(TARGET VisionRT::ToolSDK)
     message(STATUS "Found external VisionRTToolSDK: ${VisionRTToolSDK_DIR}")
