@@ -51,6 +51,7 @@ set "DO_TEST=0"
 set "DO_PACKAGE=0"
 set "BUILD_INFER=ON"
 set "PACKAGE_DIR="
+set "EXTRA_CMAKE_ARGS="
 
 :PARSE_ARGS
 if "%~1"=="" goto :START_BUILD
@@ -106,6 +107,12 @@ if /i "%~1"=="--build-dir" (
     shift
     goto :PARSE_ARGS
 )
+if /i "%~1"=="-B" (
+    set "BUILD_DIR=%~2"
+    shift
+    shift
+    goto :PARSE_ARGS
+)
 if /i "%~1"=="--package" (
     set "DO_PACKAGE=1"
     if not "%~2"=="" (
@@ -119,7 +126,8 @@ if /i "%~1"=="--package" (
     shift
     goto :PARSE_ARGS
 )
-echo [WARN] Unknown option: %~1, passing through as CMake argument.
+echo [INFO] Passing through CMake argument: %~1
+set "EXTRA_CMAKE_ARGS=!EXTRA_CMAKE_ARGS! %1"
 shift
 goto :PARSE_ARGS
 
@@ -130,10 +138,10 @@ if "%DO_CLEAN%"=="1" (
 )
 
 echo [INFO] Configuring VisionTools (Config=%CONFIG%, Infer=%BUILD_INFER%, BuildDir=%BUILD_DIR%)...
-cmake -B "%BUILD_DIR%" -G "Ninja" -DCMAKE_BUILD_TYPE=%CONFIG% -DVISIONTOOLS_BUILD_INFER=%BUILD_INFER% -DVISIONTOOLS_BUILD_TESTS=ON
+cmake -B "%BUILD_DIR%" -G "Ninja" -DCMAKE_BUILD_TYPE=%CONFIG% -DVISIONTOOLS_BUILD_INFER=%BUILD_INFER% -DVISIONTOOLS_BUILD_TESTS=ON !EXTRA_CMAKE_ARGS!
 if errorlevel 1 (
     echo [INFO] Ninja configuration failed, trying default generator...
-    cmake -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=%CONFIG% -DVISIONTOOLS_BUILD_INFER=%BUILD_INFER% -DVISIONTOOLS_BUILD_TESTS=ON
+    cmake -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=%CONFIG% -DVISIONTOOLS_BUILD_INFER=%BUILD_INFER% -DVISIONTOOLS_BUILD_TESTS=ON !EXTRA_CMAKE_ARGS!
     if errorlevel 1 (
         echo [ERROR] CMake configuration failed.
         popd
@@ -151,6 +159,7 @@ if errorlevel 1 (
 
 if "%DO_TEST%"=="1" (
     echo [INFO] Running CTest...
+    set "PATH=%BUILD_DIR%\src\preprocess;%BUILD_DIR%\src\infer;D:\Software\dev\opencv-4.8.0\build\x64\vc16\bin;F:\Projects\InferRT\InferRT-0.0.3\bin;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin;D:\Software\dev\TensorRT-10.16.1.11\bin;!PATH!"
     ctest --test-dir "%BUILD_DIR%" -C %CONFIG% --output-on-failure
     if errorlevel 1 (
         echo [ERROR] Some tests failed.
@@ -162,7 +171,9 @@ if "%DO_TEST%"=="1" (
 if "%DO_PACKAGE%"=="1" (
     echo [INFO] Packaging tools...
     if "%PACKAGE_DIR%"=="" set "PACKAGE_DIR=dist\VisionTools"
-    python tools\package_tools.py --config %CONFIG% --build-dir "%BUILD_DIR%" --install-dir "%PACKAGE_DIR%"
+    set "PKG_FLAGS=--config %CONFIG% --build-dir "%BUILD_DIR%" --install-dir "%PACKAGE_DIR%""
+    if "%BUILD_INFER%"=="OFF" set "PKG_FLAGS=!PKG_FLAGS! --no-infer"
+    python tools\package_tools.py !PKG_FLAGS!
     if errorlevel 1 (
         echo [ERROR] Tool packaging failed.
         popd
