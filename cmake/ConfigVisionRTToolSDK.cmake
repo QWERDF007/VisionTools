@@ -2,35 +2,43 @@ include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/ConfigDependencyDefaults.cmake")
 
-visiontools_resolve_path(_vt_sdk_root
-    VARIABLES VisionRTToolSDK_DIR VISIONRT_SDK_ROOT VisionRT_DIR
-    ENVIRONMENT_VARIABLES VisionRTToolSDK_DIR VISIONRT_SDK_ROOT VisionRT_DIR
-    PATHS ${CMAKE_PREFIX_PATH}
-    DEFAULT "C:/dev/visionrt-sdk"
-)
-
-if(_vt_sdk_root)
-    list(PREPEND CMAKE_PREFIX_PATH "${_vt_sdk_root}")
+# 支持传入根目录或 lib/cmake/VisionRTToolSDK 目录 (VS-01 / VS-06)
+# 优先级：显式 -D 变量 > 环境变量 > 默认路径 "C:/dev/visionrt-sdk"
+set(_explicit_sdk_dir "")
+if(DEFINED VisionRTToolSDK_DIR AND NOT "${VisionRTToolSDK_DIR}" STREQUAL "")
+    set(_explicit_sdk_dir "${VisionRTToolSDK_DIR}")
+elseif(DEFINED ENV{VisionRTToolSDK_DIR} AND NOT "$ENV{VisionRTToolSDK_DIR}" STREQUAL "")
+    set(_explicit_sdk_dir "$ENV{VisionRTToolSDK_DIR}")
+elseif(DEFINED VISIONRT_SDK_ROOT AND NOT "${VISIONRT_SDK_ROOT}" STREQUAL "")
+    set(_explicit_sdk_dir "${VISIONRT_SDK_ROOT}")
+elseif(DEFINED ENV{VISIONRT_SDK_ROOT} AND NOT "$ENV{VISIONRT_SDK_ROOT}" STREQUAL "")
+    set(_explicit_sdk_dir "$ENV{VISIONRT_SDK_ROOT}")
 endif()
 
-find_package(VisionRTToolSDK CONFIG QUIET)
+if(_explicit_sdk_dir)
+    file(TO_CMAKE_PATH "${_explicit_sdk_dir}" _explicit_sdk_dir)
+    if(EXISTS "${_explicit_sdk_dir}/VisionRTToolSDKConfig.cmake")
+        set(VisionRTToolSDK_DIR "${_explicit_sdk_dir}" CACHE PATH "VisionRTToolSDK config directory" FORCE)
+    elseif(EXISTS "${_explicit_sdk_dir}/lib/cmake/VisionRTToolSDK/VisionRTToolSDKConfig.cmake")
+        set(VisionRTToolSDK_DIR "${_explicit_sdk_dir}/lib/cmake/VisionRTToolSDK" CACHE PATH "VisionRTToolSDK config directory" FORCE)
+    else()
+        # 显式路径无效，保持原样让 find_package 报错，禁止静默回退
+        set(VisionRTToolSDK_DIR "${_explicit_sdk_dir}" CACHE PATH "VisionRTToolSDK config directory" FORCE)
+    endif()
+else()
+    # 默认路径
+    set(_default_sdk_root "C:/dev/visionrt-sdk")
+    if(EXISTS "${_default_sdk_root}/lib/cmake/VisionRTToolSDK/VisionRTToolSDKConfig.cmake")
+        set(VisionRTToolSDK_DIR "${_default_sdk_root}/lib/cmake/VisionRTToolSDK" CACHE PATH "VisionRTToolSDK config directory" FORCE)
+    elseif(EXISTS "${_default_sdk_root}/VisionRTToolSDKConfig.cmake")
+        set(VisionRTToolSDK_DIR "${_default_sdk_root}" CACHE PATH "VisionRTToolSDK config directory" FORCE)
+    endif()
+endif()
+
+find_package(VisionRTToolSDK CONFIG REQUIRED)
 
 if(TARGET VisionRT::ToolSDK)
-    message(STATUS "Found installed VisionRTToolSDK: ${VisionRTToolSDK_DIR}")
+    message(STATUS "Found external VisionRTToolSDK: ${VisionRTToolSDK_DIR}")
 else()
-    message(STATUS "VisionRTToolSDK not found in CMAKE_PREFIX_PATH, providing contract SDK target from shared specification...")
-    # Provide conforming standalone SDK target aligned with shared/SDK接口合同.md
-    if(NOT TARGET VisionRT::ToolSDK)
-        add_library(visionrt_toolsdk STATIC
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/sdk/Value.cpp"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/sdk/Tool.cpp"
-        )
-        target_include_directories(visionrt_toolsdk PUBLIC
-            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/sdk/include>"
-            "$<INSTALL_INTERFACE:include>"
-            ${OpenCV_INCLUDE_DIRS}
-        )
-        target_link_libraries(visionrt_toolsdk PUBLIC ${OpenCV_LIBS})
-        add_library(VisionRT::ToolSDK ALIAS visionrt_toolsdk)
-    endif()
+    message(FATAL_ERROR "VisionRTToolSDK target VisionRT::ToolSDK not found! Please ensure VisionRTToolSDK is installed and set VisionRTToolSDK_DIR.")
 endif()
