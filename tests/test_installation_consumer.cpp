@@ -1,10 +1,16 @@
 #include <visionrt/sdk/Module.h>
 #include <visionrt/sdk/Tool.h>
 
+#include <opencv2/core.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
+
 #include <iostream>
 #include <cassert>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <set>
 #include <span>
 #include <string>
 #include <vector>
@@ -47,11 +53,17 @@ int main(int argc, char** argv) {
     }
 
     std::filesystem::path dllPath = target;
+    std::filesystem::path packageDir;
     if (std::filesystem::is_directory(target)) {
+        packageDir = target;
         dllPath = target / "bin" / "visiontools_preprocess.dll";
         if (!std::filesystem::exists(dllPath)) {
             std::cerr << "[ERROR] visiontools_preprocess.dll not found in package directory: " << target.string() << std::endl;
             return 1;
+        }
+    } else {
+        if (target.parent_path().filename() == "bin") {
+            packageDir = target.parent_path().parent_path();
         }
     }
 
@@ -81,10 +93,18 @@ int main(int argc, char** argv) {
     REQUIRE(api->create != nullptr, "create pointer must be non-null");
     REQUIRE(api->destroy != nullptr, "destroy pointer must be non-null");
 
-    visionrt::ToolServices services;
+    visionrt::ToolServices services{visionrt::PathResolver(std::filesystem::current_path())};
     visionrt::ToolStatus status;
-    int toolsTested = 0;
-    int successfulCalls = 0;
+
+    std::set<std::string> expectedTools = {
+        "visiontools.preprocess.adaptive_binary",
+        "visionrt.image.crop",
+        "visionrt.detection.filter",
+        "visionrt.roi.projection",
+        "visionrt.image.preprocess",
+        "visionrt.image.read"
+    };
+    std::set<std::string> actualExecutedTools;
 
     // 1. Unknown registry -> error
     {
@@ -103,116 +123,200 @@ int main(int argc, char** argv) {
     // 3. Safe null destroy
     api->destroy(nullptr);
 
-    // 4. Test tool: adaptive_binary (valid + contract error)
+    // 4. Test tool: adaptive_binary
     visionrt::OwnedImage snapshotImage;
     {
-        visionrt::IToolInstance* inst = api->create("visiontools.preprocess.adaptive_binary", &services, &status);
+        const char* reg = "visiontools.preprocess.adaptive_binary";
+        visionrt::IToolInstance* inst = api->create(reg, &services, &status);
         REQUIRE(inst != nullptr, "Create adaptive_binary must return valid instance");
-        toolsTested++;
 
-        cv::Mat gray(32, 32, CV_8UC1, cv::Scalar(100));
+        cv::Mat gray(32, 32, CV_8UC1);
+        for (int r = 0; r < 32; ++r) {
+            for (int c = 0; c < 32; ++c) {
+                gray.at<unsigned char>(r, c) = static_cast<unsigned char>((r * 5 + c * 3 + 10) % 256);
+            }
+        }
         visionrt::Values inputs;
         inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(gray)}));
         inputs.emplace("block_size", std::int64_t(5));
-        inputs.emplace("constant_offset", 0.0);
+        inputs.emplace("constant_offset", 2.0);
 
         auto res = inst->execute(inputs);
         REQUIRE(res.status.code == 0, "Execution of adaptive_binary must succeed");
-        successfulCalls++;
 
         const auto* outBatch = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
         REQUIRE(outBatch != nullptr && !outBatch->images().empty(), "Adaptive binary output must contain images");
         snapshotImage = outBatch->images()[0];
 
-        // Contract error test: invalid block_size (non-odd / out of range) or wrong type
+        // Contract error test: wrong type for block_size
         visionrt::Values badInputs;
         badInputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(gray)}));
-        badInputs.emplace("block_size", "not_an_int"); // wrong type for contract validation
+        badInputs.emplace("block_size", "not_an_int");
         auto badRes = inst->execute(badInputs);
         REQUIRE(badRes.status.code == -2, "Contract validation failure must return status -2");
 
-        // Release idempotency
         REQUIRE(inst->release().code == 0, "Release 1 must succeed");
         REQUIRE(inst->release().code == 0, "Release 2 must succeed (idempotent)");
         api->destroy(inst);
+        actualExecutedTools.insert(reg);
     }
     // Snapshot persistence after release and destroy
     REQUIRE(snapshotImage.rows() == 32, "Snapshot image must remain valid after instance destroy");
-    // Explicitly reset snapshot owner while module DLL is still loaded (RS-05: module resides until owner destroyed)
     snapshotImage = visionrt::OwnedImage();
 
     // 5. Test tool: crop
     {
-        visionrt::IToolInstance* inst = api->create("visionrt.image.crop", &services, &status);
-        if (inst != nullptr) {
-            toolsTested++;
+        const char* reg = "visionrt.image.crop";
+        visionrt::IToolInstance* inst = api->create(reg, &services, &status);
+        REQUIRE(inst != nullptr, "Create crop must return valid instance");
 
-            cv::Mat colorImg(64, 64, CV_8UC3, cv::Scalar(10, 20, 30));
-            visionrt::Values inputs;
-            inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(colorImg)}));
-            auto roi = visionrt::Roi::rectangle(10.0F, 10.0F, 20.0F, 20.0F, 0.0F);
-            inputs.emplace("rois", visionrt::RoiBatch({{roi}}));
+        cv::Mat colorImg(64, 64, CV_8UC3, cv::Scalar(10, 20, 30));
+        visionrt::Values inputs;
+        inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(colorImg)}));
+        auto roi = visionrt::Roi::rectangle(10.0F, 10.0F, 20.0F, 20.0F, 0.0F);
+        inputs.emplace("rois", visionrt::RoiBatch({{roi}}));
 
-            auto res = inst->execute(inputs);
-            REQUIRE(res.status.code == 0, "Crop tool execution must succeed");
-            successfulCalls++;
+        auto res = inst->execute(inputs);
+        REQUIRE(res.status.code == 0, "Crop tool execution must succeed");
 
-            const auto* outBatch = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
-            REQUIRE(outBatch != nullptr && !outBatch->images().empty(), "Crop output must contain images");
-            REQUIRE(outBatch->images()[0].rows() == 20 && outBatch->images()[0].cols() == 20, "Cropped size must match ROI (20x20)");
+        const auto* outBatch = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
+        REQUIRE(outBatch != nullptr && !outBatch->images().empty(), "Crop output must contain images");
+        REQUIRE(outBatch->images()[0].rows() == 20 && outBatch->images()[0].cols() == 20, "Cropped size must match ROI (20x20)");
 
-            REQUIRE(inst->release().code == 0, "Crop release 1 must succeed");
-            REQUIRE(inst->release().code == 0, "Crop release 2 must succeed");
-            api->destroy(inst);
-        }
+        REQUIRE(inst->release().code == 0, "Crop release must succeed");
+        api->destroy(inst);
+        actualExecutedTools.insert(reg);
     }
 
     // 6. Test tool: detection_filter
     {
-        visionrt::IToolInstance* inst = api->create("visionrt.detection.filter", &services, &status);
-        if (inst != nullptr) {
-            toolsTested++;
+        const char* reg = "visionrt.detection.filter";
+        visionrt::IToolInstance* inst = api->create(reg, &services, &status);
+        REQUIRE(inst != nullptr, "Create detection.filter must return valid instance");
 
-            cv::Mat img(100, 100, CV_8UC1, cv::Scalar(0));
-            auto roi = visionrt::Roi::rectangle(10.0F, 10.0F, 20.0F, 20.0F, 0.0F);
-            std::vector<float> scores = {0.85F, 0.35F};
-            std::vector<std::int64_t> classes = {1, 2};
-            std::vector<std::string> names = {"cat", "dog"};
-            std::vector<std::int64_t> allowed = {1, 2};
+        cv::Mat img(100, 100, CV_8UC1, cv::Scalar(0));
+        auto roi = visionrt::Roi::rectangle(10.0F, 10.0F, 20.0F, 20.0F, 0.0F);
+        std::vector<float> scores = {0.85F, 0.35F};
+        std::vector<std::int64_t> classes = {1, 2};
+        std::vector<std::string> names = {"cat", "dog"};
+        std::vector<std::int64_t> allowed = {1, 2};
 
-            visionrt::Values inputs;
-            inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(img)}));
-            inputs.emplace("rois", visionrt::RoiBatch({{roi, roi}}));
-            inputs.emplace("scores", visionrt::NumericArray(visionrt::DType::Float32, 2, visionrt::Layout::BatchRagged,
-                {visionrt::NumericBuffer::copy(visionrt::DType::Float32, {2}, std::as_bytes(std::span(scores)))}));
-            inputs.emplace("classes", visionrt::NumericArray(visionrt::DType::Int64, 2, visionrt::Layout::BatchRagged,
-                {visionrt::NumericBuffer::copy(visionrt::DType::Int64, {2}, std::as_bytes(std::span(classes)))}));
-            inputs.emplace("class_names", visionrt::StringArray(2, visionrt::Layout::BatchRagged, {visionrt::StringBuffer({2}, names)}));
-            inputs.emplace("allowed_classes", visionrt::NumericArray(visionrt::DType::Int64, 1, visionrt::Layout::Dense,
-                {visionrt::NumericBuffer::copy(visionrt::DType::Int64, {2}, std::as_bytes(std::span(allowed)))}));
-            inputs.emplace("min_score", 0.5);
-            inputs.emplace("min_area", 0.0);
+        visionrt::Values inputs;
+        inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(img)}));
+        inputs.emplace("rois", visionrt::RoiBatch({{roi, roi}}));
+        inputs.emplace("scores", visionrt::NumericArray(visionrt::DType::Float32, 2, visionrt::Layout::BatchRagged,
+            {visionrt::NumericBuffer::copy(visionrt::DType::Float32, {2}, std::as_bytes(std::span(scores)))}));
+        inputs.emplace("classes", visionrt::NumericArray(visionrt::DType::Int64, 2, visionrt::Layout::BatchRagged,
+            {visionrt::NumericBuffer::copy(visionrt::DType::Int64, {2}, std::as_bytes(std::span(classes)))}));
+        inputs.emplace("class_names", visionrt::StringArray(2, visionrt::Layout::BatchRagged, {visionrt::StringBuffer({2}, names)}));
+        inputs.emplace("allowed_classes", visionrt::NumericArray(visionrt::DType::Int64, 1, visionrt::Layout::Dense,
+            {visionrt::NumericBuffer::copy(visionrt::DType::Int64, {2}, std::as_bytes(std::span(allowed)))}));
+        inputs.emplace("min_score", 0.5);
+        inputs.emplace("min_area", 0.0);
 
-            auto res = inst->execute(inputs);
-            REQUIRE(res.status.code == 0, "Detection filter execution must succeed");
-            successfulCalls++;
+        auto res = inst->execute(inputs);
+        REQUIRE(res.status.code == 0, "Detection filter execution must succeed");
 
-            // Contract error test: wrong type for min_score
-            visionrt::Values badInputs;
-            badInputs.emplace("min_score", "not_a_float");
-            auto badRes = inst->execute(badInputs);
-            REQUIRE(badRes.status.code == -2, "Contract validation failure on detection filter must return -2");
+        const auto* outRois = std::get_if<visionrt::RoiBatch>(&res.outputs["rois"]);
+        REQUIRE(outRois != nullptr && outRois->images()[0].size() == 1, "Only score >= 0.5 passes");
 
-            REQUIRE(inst->release().code == 0, "Filter release 1 must succeed");
-            REQUIRE(inst->release().code == 0, "Filter release 2 must succeed");
-            api->destroy(inst);
-        }
+        // Contract error test
+        visionrt::Values badInputs;
+        badInputs.emplace("min_score", "not_a_float");
+        auto badRes = inst->execute(badInputs);
+        REQUIRE(badRes.status.code == -2, "Contract validation failure on detection filter must return -2");
+
+        REQUIRE(inst->release().code == 0, "Filter release must succeed");
+        api->destroy(inst);
+        actualExecutedTools.insert(reg);
     }
 
+    // 7. Test tool: roi_projection
+    {
+        const char* reg = "visionrt.roi.projection";
+        visionrt::IToolInstance* inst = api->create(reg, &services, &status);
+        REQUIRE(inst != nullptr, "Create roi.projection must return valid instance");
+
+        cv::Mat img(100, 100, CV_8UC1, cv::Scalar(0));
+        img(cv::Rect(30, 30, 40, 40)).setTo(cv::Scalar(255));
+
+        visionrt::Values inputs;
+        inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(img)}));
+        inputs.emplace("axis", visionrt::Utf8("x"));
+        inputs.emplace("polarity", visionrt::Utf8("bright"));
+        inputs.emplace("threshold", std::int64_t(128));
+        inputs.emplace("min_pixels", std::int64_t(10));
+        inputs.emplace("min_extent", std::int64_t(10));
+
+        auto res = inst->execute(inputs);
+        REQUIRE(res.status.code == 0, "Roi projection execution must succeed");
+
+        const auto* rois = std::get_if<visionrt::RoiBatch>(&res.outputs["rois"]);
+        REQUIRE(rois != nullptr && rois->images().size() == 1 && rois->images()[0].size() == 1, "Expected 1 projected ROI");
+
+        REQUIRE(inst->release().code == 0, "Roi projection release must succeed");
+        api->destroy(inst);
+        actualExecutedTools.insert(reg);
+    }
+
+    // 8. Test tool: image.preprocess
+    {
+        const char* reg = "visionrt.image.preprocess";
+        visionrt::IToolInstance* inst = api->create(reg, &services, &status);
+        REQUIRE(inst != nullptr, "Create image.preprocess must return valid instance");
+
+        cv::Mat img(50, 50, CV_8UC1, cv::Scalar(150));
+        visionrt::Values inputs;
+        inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(img)}));
+        inputs.emplace("operation", visionrt::Utf8("threshold"));
+        inputs.emplace("threshold", std::int64_t(100));
+
+        auto res = inst->execute(inputs);
+        REQUIRE(res.status.code == 0, "Image preprocess execution must succeed");
+
+        const auto* out = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
+        REQUIRE(out != nullptr && !out->images().empty(), "Output must have ImageBatch");
+        REQUIRE(out->images()[0].readOnlyMat().at<unsigned char>(0, 0) == 255, "150 >= 100 -> 255");
+
+        REQUIRE(inst->release().code == 0, "Image preprocess release must succeed");
+        api->destroy(inst);
+        actualExecutedTools.insert(reg);
+    }
+
+    // 9. Test tool: image.read
+    {
+        const char* reg = "visionrt.image.read";
+        visionrt::IToolInstance* inst = api->create(reg, &services, &status);
+        REQUIRE(inst != nullptr, "Create image.read must return valid instance");
+
+        std::string tempPath = "test_consumer_temp_image.png";
+        cv::Mat sample(24, 24, CV_8UC3, cv::Scalar(10, 20, 30));
+        cv::imwrite(tempPath, sample);
+
+        visionrt::Values inputs;
+        inputs.emplace("mode", visionrt::Utf8("file"));
+        inputs.emplace("path", visionrt::Utf8(tempPath));
+        inputs.emplace("color", visionrt::Utf8("bgr"));
+
+        auto res = inst->execute(inputs);
+        std::filesystem::remove(tempPath);
+
+        REQUIRE(res.status.code == 0, "Image read execution must succeed");
+        const auto* batch = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
+        REQUIRE(batch && batch->images().size() == 1, "Must read 1 image");
+        REQUIRE(batch->images()[0].cols() == 24 && batch->images()[0].rows() == 24, "Image dims must match 24x24");
+
+        REQUIRE(inst->release().code == 0, "Image read release must succeed");
+        api->destroy(inst);
+        actualExecutedTools.insert(reg);
+    }
+
+    // Verify tool coverage: expected == actual
     std::cout << "[INFO] Installation consumer summary:" << std::endl;
     std::cout << "  DLL path: " << p.string() << std::endl;
-    std::cout << "  Tools tested: " << toolsTested << std::endl;
-    std::cout << "  Successful calls: " << successfulCalls << std::endl;
+    std::cout << "  Expected tools count: " << expectedTools.size() << std::endl;
+    std::cout << "  Actual executed tools count: " << actualExecutedTools.size() << std::endl;
+    REQUIRE(actualExecutedTools == expectedTools, "All expected tools must be tested and succeed without skipping");
 
     freeSharedLib(handle);
     std::cout << "[PASS] test_installation_consumer passed successfully." << std::endl;
