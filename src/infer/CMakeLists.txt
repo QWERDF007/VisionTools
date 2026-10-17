@@ -12,6 +12,7 @@ endif()
 target_include_directories(visiontools_infer PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../generated"
+    "${CMAKE_BINARY_DIR}/generated"
 )
 
 target_link_libraries(visiontools_infer PRIVATE
@@ -24,4 +25,5 @@ target_link_libraries(visiontools_infer PRIVATE
 set_target_properties(visiontools_infer PROPERTIES
     PREFIX ""
     OUTPUT_NAME visiontools_infer
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
 )

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 Tool Contract & Module Registry Generator for VisionTools.
-Implements shared SDK contract C03 and spec TS-02.
+Conforms to shared SDK contract C03 and specs TS-02 / VS-02.
 
 Validates tool YAML declarations against schema v1, ensures single source of truth,
 and generates:
-  1. C++ Port Constants header (<Module>PortConstants.h)
-  2. C++ Contract & Factory Dispatch (<Module>Bindings.h / .cpp)
-  3. Module Index JSON (module_index.json) for host runtime discovery.
+  1. C++ Port Constants header (<output-dir>/PortConstants.h)
+  2. C++ Module Factory dispatch header (<output-dir>/<module>_factory.inc)
+  3. Module Index JSON (<index-output>) for host runtime discovery.
 """
 
 import argparse
@@ -19,7 +19,11 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-# Supported types per shared SDK contract C02.2 / C04
+try:
+    import yaml
+except ImportError:
+    raise ImportError("PyYAML is required for tool contract generation. Please install pyyaml.")
+
 VALID_TYPES = {
     "Int", "Float", "Bool", "String",
     "ImageBatch", "NumericArray", "StringArray", "RoiBatch"
@@ -36,89 +40,17 @@ VALID_KINDS = {"cpp_function", "cpp_class", "python_function", "python_class"}
 class ContractValidationError(Exception):
     pass
 
-def parse_yaml_simple(file_path: Path) -> Dict[str, Any]:
-    """Parse YAML file using PyYAML if available, else a robust fallback parser."""
-    try:
-        import yaml
-        with open(file_path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    except ImportError:
-        pass
-
-    # Basic fallback YAML parser for schema v1 files
-    result = {}
-    current_list_key = None
-    current_list_item = None
-
+def load_yaml(file_path: Path) -> Dict[str, Any]:
     with open(file_path, "r", encoding="utf-8") as f:
-        lines = f.readlines()
+        return yaml.safe_load(f) or {}
 
-    for line in lines:
-        line_str = line.rstrip()
-        stripped = line_str.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-
-        indent = len(line_str) - len(line_str.lstrip())
-        
-        # Check list item start
-        if stripped.startswith("- "):
-            item_content = stripped[2:].strip()
-            if ":" in item_content:
-                k, v = [x.strip() for x in item_content.split(":", 1)]
-                current_list_item = {k: _parse_value(v)}
-                if current_list_key:
-                    result.setdefault(current_list_key, []).append(current_list_item)
-            else:
-                if current_list_key:
-                    result.setdefault(current_list_key, []).append(_parse_value(item_content))
-            continue
-
-        if stripped.startswith("-") and len(stripped) == 1:
-            current_list_item = {}
-            if current_list_key:
-                result.setdefault(current_list_key, []).append(current_list_item)
-            continue
-
-        if ":" in stripped:
-            key, val = [x.strip() for x in stripped.split(":", 1)]
-            if indent == 0:
-                current_list_key = None
-                current_list_item = None
-                if not val:
-                    current_list_key = key
-                    result[key] = []
-                else:
-                    result[key] = _parse_value(val)
-            elif current_list_item is not None:
-                current_list_item[key] = _parse_value(val)
-            elif indent > 0:
-                pass
-
-    return result
-
-def _parse_value(v: str) -> Any:
-    if v == "" or v == "''" or v == '""':
-        return ""
-    if v.lower() == "true":
-        return True
-    if v.lower() == "false":
-        return False
-    if v.lower() == "none" or v.lower() == "null":
-        return None
-    if v == "[]":
-        return []
-    if v == "{}":
-        return {}
-    try:
-        if "." in v or "e" in v.lower():
-            return float(v)
-        return int(v)
-    except ValueError:
-        return v.strip("'\"")
+def to_cpp_identifier(name: str) -> str:
+    cleaned = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+    if cleaned and cleaned[0].isdigit():
+        cleaned = "_" + cleaned
+    return cleaned
 
 def validate_tool_declaration(doc: Dict[str, Any], file_path: Path) -> Dict[str, Any]:
-    """Validate tool YAML against C03 specification rules."""
     prefix = f"[{file_path.name}] "
 
     # 1. Schema version
@@ -154,13 +86,14 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path) -> Dict[str,
         if not script_file or not symbol:
             raise ContractValidationError(f"{prefix}Python tool requires 'entry.file' and 'entry.symbol'")
 
-    # 4. Port lists validation
+    # 4. Port lists validation & identifier collision detection
     for port_group in ["init_params", "inputs", "outputs"]:
         ports = doc.get(port_group, [])
         if not isinstance(ports, list):
             raise ContractValidationError(f"{prefix}'{port_group}' must be a list")
 
         port_ids = set()
+        port_c_idents = set()
         for p in ports:
             if not isinstance(p, dict):
                 raise ContractValidationError(f"{prefix}Port in '{port_group}' must be an object")
@@ -170,6 +103,11 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path) -> Dict[str,
             if p_id in port_ids:
                 raise ContractValidationError(f"{prefix}Duplicate port id '{p_id}' in '{port_group}'")
             port_ids.add(p_id)
+
+            c_ident = to_cpp_identifier(p_id).upper()
+            if c_ident in port_c_idents:
+                raise ContractValidationError(f"{prefix}C++ identifier collision in '{port_group}' for port '{p_id}' ({c_ident})")
+            port_c_idents.add(c_ident)
 
             p_type = p.get("type")
             if p_type not in VALID_TYPES:
@@ -208,15 +146,15 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path) -> Dict[str,
                         raise ContractValidationError(f"{prefix}Default value for Int port '{p_id}' must be an integer (got {default_val})")
                 elif p_type == "Float":
                     if not isinstance(default_val, (int, float)) or isinstance(default_val, bool):
-                        raise ContractValidationError(f"{prefix}Default value for Float port '{p_id}' must be a number")
+                        raise ContractValidationError(f"{prefix}Default value for Float port '{p_id}' must be a number (got {default_val})")
                     if math.isnan(default_val) or math.isinf(default_val):
                         raise ContractValidationError(f"{prefix}Default value for Float port '{p_id}' must be finite")
                 elif p_type == "Bool":
                     if not isinstance(default_val, bool):
-                        raise ContractValidationError(f"{prefix}Default value for Bool port '{p_id}' must be boolean")
+                        raise ContractValidationError(f"{prefix}Default value for Bool port '{p_id}' must be boolean (got {default_val})")
                 elif p_type == "String":
                     if not isinstance(default_val, str):
-                        raise ContractValidationError(f"{prefix}Default value for String port '{p_id}' must be string")
+                        raise ContractValidationError(f"{prefix}Default value for String port '{p_id}' must be string (got {default_val})")
 
             # Range validation
             if "min" in p and "max" in p:
@@ -231,13 +169,10 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path) -> Dict[str,
 
     return doc
 
-def to_cpp_identifier(name: str) -> str:
-    cleaned = re.sub(r'[^a-zA-Z0-9_]', '_', name)
-    if cleaned and cleaned[0].isdigit():
-        cleaned = "_" + cleaned
-    return cleaned
+def generate_port_constants_header(tools: List[Dict[str, Any]]) -> str:
+    # Sort deterministically by tool_id to ensure semantic invariance under file ordering
+    sorted_tools = sorted(tools, key=lambda t: t["tool_id"])
 
-def generate_port_constants_header(tools: List[Dict[str, Any]], module_name: str) -> str:
     lines = [
         "// Generated by tools/generate_tool_contracts.py. DO NOT EDIT DIRECTLY.",
         "#pragma once",
@@ -246,9 +181,14 @@ def generate_port_constants_header(tools: List[Dict[str, Any]], module_name: str
         ""
     ]
 
-    for tool in tools:
+    seen_safe_ids = set()
+    for tool in sorted_tools:
         tool_id = tool["tool_id"]
         safe_id = to_cpp_identifier(tool_id)
+        if safe_id in seen_safe_ids:
+            raise ContractValidationError(f"C++ identifier collision for tool_id '{tool_id}' -> '{safe_id}'")
+        seen_safe_ids.add(safe_id)
+
         lines.append(f"namespace {safe_id} {{")
         lines.append(f"inline constexpr const char* TOOL_ID = \"{tool_id}\";")
         
@@ -257,75 +197,66 @@ def generate_port_constants_header(tools: List[Dict[str, Any]], module_name: str
             lines.append(f"inline constexpr const char* REGISTRY_NAME = \"{reg_name}\";")
 
         lines.append("namespace init {")
-        for p in tool.get("init_params", []):
+        for p in sorted(tool.get("init_params", []), key=lambda x: x["id"]):
             pid = p["id"]
             const_name = to_cpp_identifier(pid).upper()
             lines.append(f"inline constexpr const char* {const_name} = \"{pid}\";")
         lines.append("}")
 
         lines.append("namespace in {")
-        for p in tool.get("inputs", []):
+        for p in sorted(tool.get("inputs", []), key=lambda x: x["id"]):
             pid = p["id"]
             const_name = to_cpp_identifier(pid).upper()
             lines.append(f"inline constexpr const char* {const_name} = \"{pid}\";")
         lines.append("}")
 
         lines.append("namespace out {")
-        for p in tool.get("outputs", []):
+        for p in sorted(tool.get("outputs", []), key=lambda x: x["id"]):
             pid = p["id"]
             const_name = to_cpp_identifier(pid).upper()
             lines.append(f"inline constexpr const char* {const_name} = \"{pid}\";")
         lines.append("}")
 
-        lines.append("}") # namespace safe_id
+        lines.append(f"}} // namespace {safe_id}")
         lines.append("")
 
     lines.append("} // namespace visiontools::ports")
     return "\n".join(lines) + "\n"
 
-def generate_module_bindings(tools: List[Dict[str, Any]], module_name: str, class_bindings: Dict[str, str]) -> Tuple[str, str]:
+def generate_module_factory_inc(module_name: str, tools_dict: Dict[str, Dict[str, Any]], bindings: Dict[str, Any]) -> str:
     """
-    Generate ModuleApi bindings header and implementation.
-    class_bindings maps registry_name to C++ class name, e.g.
-    'visionrt.image.read' -> 'visiontools::preprocess::ReadImageTool'
+    Generate C++ factory dispatch code for a module.
+    tools_dict: mapping of registry_name to validated tool dict
+    bindings: module entry from module_bindings.yaml
     """
-    header_guard = f"VISIONTOOLS_{module_name.upper()}_BINDINGS_H"
-    header_lines = [
+    lines = [
         "// Generated by tools/generate_tool_contracts.py. DO NOT EDIT DIRECTLY.",
-        f"#ifndef {header_guard}",
-        f"#define {header_guard}",
+        "#pragma once",
         "",
         "#include <visionrt/sdk/Module.h>",
-        "#include <visionrt/sdk/Contract.h>",
-        "",
-        f"namespace visiontools::{module_name} {{",
-        "",
-        "const visionrt::ModuleApi* getModuleApi() noexcept;",
-        "",
-        f"}} // namespace visiontools::{module_name}",
-        "",
-        f"#endif // {header_guard}",
-        ""
-    ]
-
-    source_lines = [
-        "// Generated by tools/generate_tool_contracts.py. DO NOT EDIT DIRECTLY.",
-        f"#include \"{module_name}_bindings.h\"",
+        "#include <visionrt/sdk/Tool.h>",
         "#include <cstring>",
+        "#include <string>",
         "#include <stdexcept>",
         ""
     ]
 
-    # Include tool headers declared in class bindings
-    for reg_name, class_info in class_bindings.items():
-        if "header" in class_info:
-            source_lines.append(f"#include \"{class_info['header']}\"")
+    tool_bindings = bindings.get("tools", {})
+    # Include headers
+    included_headers = set()
+    for reg, b in sorted(tool_bindings.items()):
+        hdr = b.get("header")
+        if hdr and hdr not in included_headers:
+            lines.append(f'#include "{hdr}"')
+            included_headers.add(hdr)
 
-    source_lines.extend([
+    ns = bindings.get("namespace", f"visiontools::{module_name}")
+
+    lines.extend([
         "",
-        f"namespace visiontools::{module_name} {{",
+        f"namespace {ns} {{",
         "",
-        "static visionrt::IToolInstance* VT_CALL createToolInstance(",
+        "inline visionrt::IToolInstance* VT_CALL createToolInstance(",
         "    const char* registry_name,",
         "    const visionrt::ToolServices* services,",
         "    visionrt::ToolStatus* status) noexcept {",
@@ -333,88 +264,106 @@ def generate_module_bindings(tools: List[Dict[str, Any]], module_name: str, clas
         "        if (status) { status->code = -3; status->message = \"registry_name is null\"; }",
         "        return nullptr;",
         "    }",
-        "    try {"
+        "    try {",
+        "        const visionrt::ToolServices s = services ? *services : visionrt::ToolServices{};",
+        ""
     ])
 
-    for reg_name, class_info in class_bindings.items():
-        class_name = class_info["class"]
-        source_lines.extend([
-            f"        if (std::strcmp(registry_name, \"{reg_name}\") == 0) {{",
-            f"            if (status) {{ status->code = 0; status->message.clear(); }}",
-            f"            return new {class_name}(*services);",
+    for reg, b in sorted(tool_bindings.items()):
+        cls = b["class"]
+        lines.extend([
+            f'        if (std::strcmp(registry_name, "{reg}") == 0) {{',
+            "            if (status) { status->code = 0; status->message.clear(); }",
+            f"            return new {cls}(s);",
             "        }"
         ])
 
-    source_lines.extend([
+    lines.extend([
+        "",
         "        if (status) {",
         "            status->code = -3;",
-        "            status->message = std::string(\"Unknown registry_name: \") + registry_name;",
+        '            status->message = std::string("Unknown registry_name: ") + registry_name;',
         "        }",
         "        return nullptr;",
         "    } catch (const std::exception& e) {",
         "        if (status) { status->code = -3; status->message = e.what(); }",
         "        return nullptr;",
         "    } catch (...) {",
-        "        if (status) { status->code = -3; status->message = \"Unknown exception in create\"; }",
+        "        if (status) { status->code = -3; status->message = \"Unknown exception in createToolInstance\"; }",
         "        return nullptr;",
         "    }",
         "}",
         "",
-        "static void VT_CALL destroyToolInstance(visionrt::IToolInstance* instance) noexcept {",
+        "inline void VT_CALL destroyToolInstance(visionrt::IToolInstance* instance) noexcept {",
         "    delete instance;",
         "}",
         "",
-        "static const visionrt::ModuleApi s_api = {",
+        "inline const visionrt::ModuleApi s_generatedModuleApi = {",
         "    visionrt::MODULE_ABI_MAJOR,",
         "    sizeof(visionrt::ModuleApi),",
         "    &createToolInstance,",
         "    &destroyToolInstance",
         "};",
         "",
-        "const visionrt::ModuleApi* getModuleApi() noexcept {",
-        "    return &s_api;",
-        "}",
-        "",
-        f"}} // namespace visiontools::{module_name}",
-        "",
-        "// Public DLL export conforming to shared SDK contract C02.1",
-        "extern \"C\" VT_EXPORT const visionrt::ModuleApi* VT_CALL visiontoolsModuleApi() noexcept {",
-        f"    return visiontools::{module_name}::getModuleApi();",
-        "}",
+        f"}} // namespace {ns}",
         ""
     ])
 
-    return "\n".join(header_lines), "\n".join(source_lines)
+    return "\n".join(lines) + "\n"
 
-def build_module_index(tools: List[Dict[str, Any]], module_map: Dict[str, str]) -> Dict[str, Any]:
-    """Build module_index.json metadata for host loader."""
+def build_module_index(tools: List[Dict[str, Any]], bindings_data: Optional[Dict[str, Any]], variant: str = "gpu") -> Dict[str, Any]:
+    """
+    Generate module_index.json metadata for host loader.
+    Only includes tools matching the specified variant (e.g. CPU excludes GPU tools).
+    """
     entries = {}
-    for tool in tools:
+    reg_to_module = {}
+
+    if bindings_data and "modules" in bindings_data:
+        for mod_name, mod_info in bindings_data["modules"].items():
+            if variant == "cpu" and "infer" in mod_name:
+                continue
+            dll_path = mod_info.get("dll_name", f"bin/{mod_name}.dll")
+            for reg in mod_info.get("tools", {}):
+                reg_to_module[reg] = dll_path
+
+    for tool in sorted(tools, key=lambda t: t["tool_id"]):
         tid = tool["tool_id"]
         reg = tool.get("entry", {}).get("registry_name", tid)
-        mod_name = module_map.get(tid, "")
-        dll_name = f"{mod_name}.dll" if mod_name else ""
-        
+        kind = tool.get("kind", "cpp_function")
+
+        if kind.startswith("cpp"):
+            if reg not in reg_to_module:
+                # Excluded by variant or not a C++ bound tool
+                continue
+            dll = reg_to_module[reg]
+        else:
+            dll = None
+
         entries[reg] = {
             "tool_id": tid,
             "display_name": tool.get("display_name", ""),
             "version": tool.get("version", "1.0.0"),
-            "kind": tool.get("kind", "cpp_function"),
-            "module_dll": dll_name,
+            "kind": kind,
+            "module_dll": dll,
+            "entry": tool.get("entry", {}),
             "inputs": [p["id"] for p in tool.get("inputs", [])],
             "outputs": [p["id"] for p in tool.get("outputs", [])]
         }
 
     return {
         "version": "1.0.0",
+        "variant": variant,
         "tools": entries
     }
 
 def main():
     parser = argparse.ArgumentParser(description="Tool Contract and Registry Generator")
-    parser.add_argument("--tools-dir", default="assets/tools/builtin", help="Directory with tool YAMLs")
+    parser.add_argument("--tools-dir", default="assets/tools", help="Directory with tool YAMLs")
+    parser.add_argument("--bindings", default="tools/module_bindings.yaml", help="Path to module_bindings.yaml")
     parser.add_argument("--output-dir", default="src/generated", help="Directory for generated C++ files")
     parser.add_argument("--index-output", default="module_index.json", help="Output path for module index JSON")
+    parser.add_argument("--variant", default="gpu", choices=["gpu", "cpu"], help="Distribution variant")
     args = parser.parse_args()
 
     tools_dir = Path(args.tools_dir)
@@ -427,28 +376,72 @@ def main():
         return 0
 
     seen_tool_ids = set()
+    seen_reg_names = set()
     validated_tools = []
+    reg_to_tool = {}
 
     for yf in yaml_files:
         try:
-            doc = parse_yaml_simple(yf)
+            doc = load_yaml(yf)
             validated = validate_tool_declaration(doc, yf)
             tid = validated["tool_id"]
             if tid in seen_tool_ids:
                 raise ContractValidationError(f"Duplicate tool_id '{tid}' in {yf}")
             seen_tool_ids.add(tid)
+
+            reg = validated.get("entry", {}).get("registry_name")
+            if reg:
+                if reg in seen_reg_names:
+                    raise ContractValidationError(f"Duplicate registry_name '{reg}' in {yf}")
+                seen_reg_names.add(reg)
+                reg_to_tool[reg] = validated
+
             validated_tools.append(validated)
         except Exception as e:
             print(f"[ERROR] Contract validation failed: {e}", file=sys.stderr)
             return 1
 
+    # Load bindings if provided
+    bindings_path = Path(args.bindings)
+    bindings_data = None
+    if bindings_path.exists():
+        bindings_data = load_yaml(bindings_path)
+        # Validate that all C++ bound tools exist in declared YAMLs
+        bound_regs = set()
+        for mod_name, mod_info in bindings_data.get("modules", {}).items():
+            for reg in mod_info.get("tools", {}):
+                if reg not in reg_to_tool:
+                    print(f"[ERROR] Binding declared for unknown tool registry_name '{reg}' in module '{mod_name}'", file=sys.stderr)
+                    return 1
+                bound_regs.add(reg)
+
+        # Validate that all C++ declared tools have bindings
+        for reg in seen_reg_names:
+            if reg not in bound_regs:
+                print(f"[ERROR] C++ tool with registry_name '{reg}' has no implementation binding in {bindings_path}", file=sys.stderr)
+                return 1
+
+        # Generate module factory headers
+        for mod_name, mod_info in bindings_data.get("modules", {}).items():
+            factory_content = generate_module_factory_inc(mod_name, reg_to_tool, mod_info)
+            factory_file = out_dir / f"{mod_name}_factory.inc"
+            with open(factory_file, "w", encoding="utf-8") as f:
+                f.write(factory_content)
+
     # Generate constants header
-    constants_content = generate_port_constants_header(validated_tools, "all")
+    constants_content = generate_port_constants_header(validated_tools)
     constants_path = out_dir / "PortConstants.h"
     with open(constants_path, "w", encoding="utf-8") as f:
         f.write(constants_content)
 
-    print(f"[SUCCESS] Validated {len(validated_tools)} tool declarations and generated {constants_path}")
+    # Generate module_index.json
+    index_path = Path(args.index_output)
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    index_data = build_module_index(validated_tools, bindings_data, variant=args.variant)
+    with open(index_path, "w", encoding="utf-8") as f:
+        json.dump(index_data, f, indent=2, ensure_ascii=False)
+
+    print(f"[SUCCESS] Validated {len(validated_tools)} tool declarations, generated {constants_path} and {index_path}")
     return 0
 
 if __name__ == "__main__":

@@ -1,0 +1,35 @@
+# Module to C++ implementation class and header bindings.
+# Single source of truth for implementation mapping.
+# YAML declarations in assets/tools/ dictate all ports, types, and defaults.
+
+modules:
+  visiontools_preprocess:
+    dll_name: "bin/visiontools_preprocess.dll"
+    namespace: "visiontools::preprocess"
+    tools:
+      "visionrt.image.read":
+        class: "ReadImageTool"
+        header: "ReadImageTool.h"
+      "visionrt.roi.projection":
+        class: "RoiProjectionTool"
+        header: "RoiProjectionTool.h"
+      "visionrt.image.crop":
+        class: "ImageCropTool"
+        header: "ImageCropTool.h"
+      "visionrt.image.preprocess":
+        class: "ImagePreprocessTool"
+        header: "ImagePreprocessTool.h"
+      "visionrt.detection.filter":
+        class: "DetectionFilterTool"
+        header: "DetectionFilterTool.h"
+      "visiontools.preprocess.adaptive_binary":
+        class: "AdaptiveBinaryTool"
+        header: "AdaptiveBinaryTool.h"
+
+  visiontools_infer:
+    dll_name: "bin/visiontools_infer.dll"
+    namespace: "visionrt::infer"
+    tools:
+      "visionrt.dl.yolo":
+        class: "YoloTool"
+        header: "YoloModel.h"
