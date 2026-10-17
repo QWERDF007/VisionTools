@@ -53,13 +53,7 @@ add_executable(visiontools_infer_probe main.cpp)
 target_include_directories(visiontools_infer_probe PRIVATE
     ${OpenCV_INCLUDE_DIRS}
 )
-if(EXISTS "${VISIONTOOLS_SOURCE_ROOT}/src/infer/YoloModel.h")
-    target_include_directories(visiontools_infer_probe PRIVATE
-        "${VISIONTOOLS_SOURCE_ROOT}/src"
-        "${VISIONTOOLS_SOURCE_ROOT}/src/infer"
-        "${_gen_inc}"
-    )
-endif()
+
 target_link_libraries(visiontools_infer_probe PRIVATE
     visiontools_infer
     VisionRT::ToolSDK

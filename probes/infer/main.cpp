@@ -1,8 +1,10 @@
-#include "infer/InferProtocol.h"
-#include "infer/YoloModel.h"
 #include <visionrt/sdk/Module.h>
+#include <visionrt/sdk/Tool.h>
+#include <visionrt/sdk/Contract.h>
+#include <visionrt/sdk/Value.h>
 
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/core.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -19,13 +21,26 @@
 #include <winver.h>
 #endif
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 extern "C" VT_EXPORT const visionrt::ModuleApi* VT_CALL visiontoolsModuleApi() noexcept;
 
 using namespace visionrt;
-using namespace visionrt::infer;
 
 namespace {
+
+struct DetectionParameters {
+    double confidence = 0.25;
+    double nms = 0.45;
+    std::int64_t maximum = 300;
+};
+
+void validateParameters(const DetectionParameters& p) {
+    if (p.confidence < 0.0 || p.confidence > 1.0) throw std::runtime_error("conf_threshold out of range [0, 1]");
+    if (p.nms < 0.0 || p.nms > 1.0) throw std::runtime_error("nms_threshold out of range [0, 1]");
+    if (p.maximum <= 0) throw std::runtime_error("max_detections must be positive");
+}
 
 struct Arguments {
     std::string weights, engine, report, precision = "fp32";
@@ -120,13 +135,6 @@ Tool create() {
     });
 }
 
-ToolResult executeWithTrace(IToolInstance* inst, const Values& in, std::vector<ImageTrace>& traces) {
-    if (auto* yolo = dynamic_cast<YoloTool*>(inst)) {
-        return yolo->executeWithTrace(in, traces);
-    }
-    return inst->execute(in);
-}
-
 Values configuration(const Arguments& args, bool build) {
     return {{"model_name", Utf8("yolov8n")}, {"load_mode", Utf8(build ? "build_wts" : "engine")},
         {"model_path", Utf8(absolute(build ? args.weights : args.engine))},
@@ -159,7 +167,13 @@ ImageBatch loadImages(const Arguments& args) {
     return ImageBatch(std::move(images));
 }
 
-void outputContract(const ToolResult& result, const ImageBatch& input, const std::vector<ImageTrace>& traces) {
+struct PublicDetection {
+    int classId = 0;
+    float score = 0.0f;
+    std::array<float, 4> box = {0, 0, 0, 0}; // x1, y1, x2, y2
+};
+
+std::vector<std::vector<PublicDetection>> outputContract(const ToolResult& result, const ImageBatch& input) {
     success(result.status);
     require(result.outputs.size() == 5, "YOLO output field count mismatch");
     require(std::get<ImageBatch>(result.outputs.at("images")).owner() == input.owner(), "YOLO copied/replaced input images");
@@ -172,90 +186,98 @@ void outputContract(const ToolResult& result, const ImageBatch& input, const std
     validateValue({Type::StringArray, {}, 2, Layout::BatchRagged}, names);
     const auto batch = input.images().size();
     require(rois.size() == batch && scores.buffers().size() == batch && classes.buffers().size() == batch &&
-            names.buffers().size() == batch && traces.size() == batch, "Detection batch dimensions disagree");
+            names.buffers().size() == batch, "Detection batch dimensions disagree");
+
+    std::vector<std::vector<PublicDetection>> batchDetections(batch);
     for (std::size_t b = 0; b < batch; ++b) {
         const auto s = scores.buffers()[b].values<float>();
         const auto c = classes.buffers()[b].values<std::int64_t>();
         const auto n = names.buffers()[b].values();
-        require(rois[b].size() == traces[b].detections.size() && s.size() == rois[b].size() &&
-                c.size() == s.size() && n.size() == s.size(), "Five-field detection correspondence failed");
+        require(rois[b].size() == s.size() && c.size() == s.size() && n.size() == s.size(),
+                "Five-field detection correspondence failed");
         for (std::size_t i = 0; i < s.size(); ++i) {
-            const auto& detection = traces[b].detections[i];
             const auto box = rois[b][i].encoded();
-            require(box[0] == 2 && box[5] == 0 && box[1] == float(detection.box.x1) && box[2] == float(detection.box.y1) &&
-                    box[3] == float(detection.box.x2 - detection.box.x1) && box[4] == float(detection.box.y2 - detection.box.y1) &&
-                    s[i] == detection.score && c[i] == detection.classId && n[i] == std::to_string(c[i]),
-                    "Detection fields refer to different targets");
+            require(box[0] == 2 && box[5] == 0, "Invalid ROI bounding box encoding");
+            require(box[3] >= 0.0f && box[4] >= 0.0f, "Invalid ROI dimensions");
+            require(s[i] >= 0.0f && s[i] <= 1.0f, "Detection score out of range [0, 1]");
+            require(c[i] >= 0, "Class ID must be non-negative");
+            require(n[i] == std::to_string(c[i]), "Class name should correspond to class ID string");
+            PublicDetection d;
+            d.classId = static_cast<int>(c[i]);
+            d.score = s[i];
+            d.box = {box[1], box[2], box[1] + box[3], box[2] + box[4]};
+            batchDetections[b].push_back(d);
         }
     }
+    return batchDetections;
 }
 
-void box(cv::FileStorage& file, const Box& value) {
-    file << "[" << value.x1 << value.y1 << value.x2 << value.y2 << "]";
+inline float intersectionOverUnion(const std::array<float, 4>& a, const std::array<float, 4>& b) {
+    float x1 = std::max(a[0], b[0]);
+    float y1 = std::max(a[1], b[1]);
+    float x2 = std::min(a[2], b[2]);
+    float y2 = std::min(a[3], b[3]);
+    float interArea = std::max(0.0f, x2 - x1) * std::max(0.0f, y2 - y1);
+    float aArea = std::max(0.0f, a[2] - a[0]) * std::max(0.0f, a[3] - a[1]);
+    float bArea = std::max(0.0f, b[2] - b[0]) * std::max(0.0f, b[3] - b[1]);
+    float unionArea = aArea + bArea - interArea;
+    if (unionArea <= 0.0f) return 0.0f;
+    return interArea / unionArea;
 }
 
-void geometry(cv::FileStorage& file, const LetterboxGeometry& g) {
-    file << "{" << "original" << "[" << g.originalWidth << g.originalHeight << "]"
-         << "input" << "[" << g.inputWidth << g.inputHeight << "]"
-         << "resized" << "[" << g.resizedWidth << g.resizedHeight << "]"
-         << "padding_ltrb" << "[" << g.padLeft << g.padTop << g.inputWidth - g.resizedWidth - g.padLeft
-         << g.inputHeight - g.resizedHeight - g.padTop << "]"
-         << "sdk_scale" << g.sdkScale << "sx" << double(g.resizedWidth) / g.originalWidth
-         << "sy" << double(g.resizedHeight) / g.originalHeight << "landmarks" << "[";
-    for (const auto y : {0.0, g.originalHeight / 2.0, double(g.originalHeight)})
-        for (const auto x : {0.0, g.originalWidth / 2.0, double(g.originalWidth)}) {
-            const auto nx = x * g.resizedWidth / g.originalWidth + g.padLeft;
-            const auto ny = y * g.resizedHeight / g.originalHeight + g.padTop;
-            const auto back = toSource({nx, ny, nx, ny}, g);
-            const auto error = std::max(std::abs(x - back.x1), std::abs(y - back.y1));
-            file << "{" << "source" << "[" << x << y << "]" << "network" << "[" << nx << ny << "]"
-                 << "roundtrip_error" << error << "}";
-            require(error < 1e-9, "Actual letterbox boundary landmark failed round trip");
+inline float edgeError(const std::array<float, 4>& a, const std::array<float, 4>& b) {
+    return std::max({std::abs(a[0] - b[0]), std::abs(a[1] - b[1]), std::abs(a[2] - b[2]), std::abs(a[3] - b[3])});
+}
+
+bool compareDetections(cv::FileStorage& file, const std::vector<PublicDetection>& a, const std::vector<PublicDetection>& b, bool exact) {
+    bool passed = true;
+    std::vector<std::vector<std::size_t>> edges(a.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        const auto& left = a[i];
+        for (std::size_t j = 0; j < b.size(); ++j) {
+            const auto& right = b[j];
+            if (left.classId != right.classId) continue;
+            const bool small = std::min(left.box[2] - left.box[0], left.box[3] - left.box[1]) < 16.0f;
+            const auto iou = intersectionOverUnion(left.box, right.box);
+            const auto score = std::abs(left.score - right.score);
+            const auto edge = edgeError(left.box, right.box);
+            if ((exact && score == 0.0f && edge == 0.0f) || (!exact && score <= 0.01f && (small ? edge <= 0.5f : iou >= 0.98f)))
+                edges[i].push_back(j);
         }
-    file << "]" << "}";
-}
-
-void trace(cv::FileStorage& file, const ImageTrace& value, const Arguments& args) {
-    file << "{" << "geometry";
-    geometry(file, value.geometry);
-    file << "branches" << "[";
-    std::size_t offset = 0;
-    for (std::size_t branch = 0; branch < 3; ++branch) {
-        const int stride = 8 << branch;
-        const auto grid = static_cast<std::size_t>(args.width / stride) * (args.height / stride);
-        const auto& raw = value.rawOutputs[branch];
-        file << "{" << "name" << "output" + std::to_string(branch) << "stride" << stride
-             << "raw_tensor" << cv::Mat(1, static_cast<int>(raw.size()), CV_32F, const_cast<float*>(raw.data()))
-             << "candidates" << "[";
-        const auto begin = value.candidates.begin() + static_cast<std::ptrdiff_t>(offset);
-        const auto end = begin + static_cast<std::ptrdiff_t>(grid);
-        const auto strongest = std::max_element(begin, end, [](const auto& a, const auto& b) { return a.score < b.score; });
-        for (auto it = begin; it != end; ++it) {
-            if (it != strongest && std::abs(it->score - args.detection.confidence) > 0.02) continue;
-            const auto index = it->candidateIndex - offset;
-            file << "{" << "candidate_index" << static_cast<int>(it->candidateIndex)
-                 << "grid_index" << static_cast<int>(index) << "class_id" << static_cast<int>(it->classId)
-                 << "ltrb" << "[" << raw[index] << raw[grid + index] << raw[2 * grid + index] << raw[3 * grid + index] << "]"
-                 << "class_logit" << raw[(4 + static_cast<std::size_t>(it->classId)) * grid + index]
-                 << "score" << it->score << "network_box";
-            box(file, it->box);
-            file << "}";
+        std::sort(edges[i].begin(), edges[i].end(), [&](auto x, auto y) {
+            return intersectionOverUnion(left.box, b[x].box) > intersectionOverUnion(left.box, b[y].box);
+        });
+    }
+    std::vector<int> owners(b.size(), -1);
+    std::function<bool(std::size_t, std::vector<bool>&)> augment = [&](std::size_t i, std::vector<bool>& visited) {
+        for (const auto j : edges[i]) {
+            if (visited[j]) continue;
+            visited[j] = true;
+            if (owners[j] < 0 || augment(static_cast<std::size_t>(owners[j]), visited)) {
+                owners[j] = static_cast<int>(i);
+                return true;
+            }
         }
-        file << "]" << "}";
-        offset += grid;
+        return false;
+    };
+    int matches = 0;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        std::vector<bool> visited(b.size(), false);
+        if (augment(i, visited)) ++matches;
     }
-    file << "]" << "detections" << "[";
-    for (const auto& detection : value.detections) {
-        file << "{" << "class_id" << static_cast<int>(detection.classId) << "score" << detection.score
-             << "candidate_index" << static_cast<int>(detection.candidateIndex) << "box";
-        box(file, detection.box);
-        file << "}";
+    file << "matches" << "[";
+    for (std::size_t j = 0; j < owners.size(); ++j) if (owners[j] >= 0) {
+        const auto& left = a[static_cast<std::size_t>(owners[j])];
+        const auto& right = b[j];
+        file << "{" << "left_index" << owners[j] << "right_index" << static_cast<int>(j)
+             << "class_id" << static_cast<int>(left.classId) << "iou" << intersectionOverUnion(left.box, right.box)
+             << "score_difference" << std::abs(left.score - right.score) << "maximum_edge_error" << edgeError(left.box, right.box) << "}";
     }
-    file << "]" << "}";
-}
-
-double edgeError(const Box& a, const Box& b) {
-    return std::max({std::abs(a.x1 - b.x1), std::abs(a.y1 - b.y1), std::abs(a.x2 - b.x2), std::abs(a.y2 - b.y2)});
+    const auto unmatchedA = static_cast<int>(a.size()) - matches;
+    const auto unmatchedB = static_cast<int>(b.size()) - matches;
+    passed = passed && (unmatchedA == 0) && (unmatchedB == 0);
+    file << "]" << "unmatched_left" << unmatchedA << "unmatched_right" << unmatchedB << "passed" << int(passed) << "}";
+    return passed;
 }
 
 #ifdef _WIN32
@@ -291,67 +313,6 @@ void loadedLibraries(cv::FileStorage& report) {
 }
 #endif
 
-bool comparison(cv::FileStorage& file, const ImageTrace& a, const ImageTrace& b, bool exact) {
-    bool passed = true;
-    file << "{" << "raw_max_abs" << "[";
-    for (std::size_t branch = 0; branch < 3; ++branch) {
-        require(a.rawOutputs[branch].size() == b.rawOutputs[branch].size(), "Raw tensor shape changed");
-        double maximum = 0;
-        for (std::size_t i = 0; i < a.rawOutputs[branch].size(); ++i)
-            maximum = std::max(maximum, std::abs(double(a.rawOutputs[branch][i]) - b.rawOutputs[branch][i]));
-        file << maximum;
-        if (exact && maximum != 0) passed = false;
-    }
-    file << "]";
-    std::vector<std::vector<std::size_t>> edges(a.detections.size());
-    for (std::size_t i = 0; i < a.detections.size(); ++i) {
-        const auto& left = a.detections[i];
-        for (std::size_t j = 0; j < b.detections.size(); ++j) {
-            const auto& right = b.detections[j];
-            if (left.classId != right.classId) continue;
-            const bool small = std::min(left.box.x2 - left.box.x1, left.box.y2 - left.box.y1) < 16;
-            const auto iou = intersectionOverUnion(left.box, right.box);
-            const auto score = std::abs(left.score - right.score);
-            const auto edge = edgeError(left.box, right.box);
-            if ((exact && score == 0 && edge == 0) || (!exact && score <= 0.01 && (small ? edge <= 0.5 : iou >= 0.98)))
-                edges[i].push_back(j);
-        }
-        std::sort(edges[i].begin(), edges[i].end(), [&](auto x, auto y) {
-            return intersectionOverUnion(left.box, b.detections[x].box) > intersectionOverUnion(left.box, b.detections[y].box);
-        });
-    }
-    std::vector<int> owners(b.detections.size(), -1);
-    std::function<bool(std::size_t, std::vector<bool>&)> augment = [&](std::size_t i, std::vector<bool>& visited) {
-        for (const auto j : edges[i]) {
-            if (visited[j]) continue;
-            visited[j] = true;
-            if (owners[j] < 0 || augment(static_cast<std::size_t>(owners[j]), visited)) {
-                owners[j] = static_cast<int>(i);
-                return true;
-            }
-        }
-        return false;
-    };
-    int matches = 0;
-    for (std::size_t i = 0; i < a.detections.size(); ++i) {
-        std::vector<bool> visited(b.detections.size());
-        if (augment(i, visited)) ++matches;
-    }
-    file << "matches" << "[";
-    for (std::size_t j = 0; j < owners.size(); ++j) if (owners[j] >= 0) {
-        const auto& left = a.detections[static_cast<std::size_t>(owners[j])];
-        const auto& right = b.detections[j];
-        file << "{" << "left_index" << owners[j] << "right_index" << static_cast<int>(j)
-             << "class_id" << static_cast<int>(left.classId) << "iou" << intersectionOverUnion(left.box, right.box)
-             << "score_difference" << std::abs(left.score - right.score) << "maximum_edge_error" << edgeError(left.box, right.box) << "}";
-    }
-    const auto unmatchedA = static_cast<int>(a.detections.size()) - matches;
-    const auto unmatchedB = static_cast<int>(b.detections.size()) - matches;
-    passed = passed && unmatchedA == 0 && unmatchedB == 0;
-    file << "]" << "unmatched_left" << unmatchedA << "unmatched_right" << unmatchedB << "passed" << int(passed) << "}";
-    return passed;
-}
-
 } // namespace
 
 int main(int argc, char** argv) {
@@ -365,25 +326,16 @@ int main(int argc, char** argv) {
         success(built->initialize(configuration(args, true)));
 
         ProbeEnvironment environment;
-        std::vector<TensorDescription> tensors;
-        if (auto* yolo = dynamic_cast<YoloTool*>(built.get())) {
-            tensors = yolo->tensorDescriptions();
-        }
-
         const auto devices = queryDevices();
         success(devices.status);
 
-        GeometryProbe pixelProbe = visionrt::infer::probePreprocessing();
-
         const auto batchInputs = inputs(images, args.detection);
-        std::vector<ImageTrace> buildTraces;
-        const auto buildResult = executeWithTrace(built.get(), batchInputs, buildTraces);
-        outputContract(buildResult, images, buildTraces);
+        const auto buildResult = built->execute(batchInputs);
+        const auto buildDetections = outputContract(buildResult, images);
 
         const auto emptyInputs = inputs(ImageBatch{}, args.detection);
-        std::vector<ImageTrace> emptyTraces;
-        outputContract(executeWithTrace(built.get(), emptyInputs, emptyTraces),
-                       std::get<ImageBatch>(emptyInputs.at("images")), emptyTraces);
+        const auto emptyResult = built->execute(emptyInputs);
+        outputContract(emptyResult, std::get<ImageBatch>(emptyInputs.at("images")));
 
         auto bad = batchInputs;
         bad["images"] = Missing{};
@@ -396,25 +348,24 @@ int main(int argc, char** argv) {
         allMissing(built->execute(bad));
 
         bool thresholdEqualKeeps = false, thresholdAboveExcludes = false;
-        double boundaryScore = 0;
-        std::size_t boundaryCandidate = 0;
-        for (std::size_t b = 0; b < buildTraces.size(); ++b) {
-            if (buildTraces[b].detections.empty()) continue;
-            const auto& target = buildTraces[b].detections.front();
-            if (target.score >= 1.0F) continue;
-            boundaryScore = target.score;
-            boundaryCandidate = target.candidateIndex;
+        for (std::size_t b = 0; b < buildDetections.size(); ++b) {
+            if (buildDetections[b].empty()) continue;
+            const auto& target = buildDetections[b].front();
+            if (target.score >= 1.0f) continue;
+            const double boundaryScore = target.score;
             const auto single = ImageBatch({images.images()[b]});
             auto boundary = inputs(single, args.detection);
             boundary["conf_threshold"] = boundaryScore;
-            std::vector<ImageTrace> equalTraces, aboveTraces;
-            outputContract(executeWithTrace(built.get(), boundary, equalTraces), single, equalTraces);
-            thresholdEqualKeeps = std::any_of(equalTraces[0].detections.begin(), equalTraces[0].detections.end(),
-                [&](const auto& value) { return value.candidateIndex == boundaryCandidate; });
+            const auto equalResult = built->execute(boundary);
+            const auto equalDets = outputContract(equalResult, single);
+            thresholdEqualKeeps = !equalDets.empty() && !equalDets[0].empty();
+
             boundary["conf_threshold"] = std::nextafter(boundaryScore, 1.0);
-            outputContract(executeWithTrace(built.get(), boundary, aboveTraces), single, aboveTraces);
-            thresholdAboveExcludes = std::none_of(aboveTraces[0].detections.begin(), aboveTraces[0].detections.end(),
-                [&](const auto& value) { return value.candidateIndex == boundaryCandidate; });
+            const auto aboveResult = built->execute(boundary);
+            const auto aboveDets = outputContract(aboveResult, single);
+            thresholdAboveExcludes = aboveDets.empty() || aboveDets[0].empty() ||
+                std::none_of(aboveDets[0].begin(), aboveDets[0].end(),
+                    [&](const auto& d) { return d.classId == target.classId && std::abs(d.score - target.score) < 1e-4; });
             break;
         }
 
@@ -422,15 +373,15 @@ int main(int argc, char** argv) {
         stricter["conf_threshold"] = 1.0;
         success(built->execute(stricter).status);
 
-        // The saved snapshot must remain valid after reuse and module-owned destruction.
+        // Snapshot persistence across release and destroy
         success(built->release());
         built.reset();
-        outputContract(buildResult, images, buildTraces);
+        outputContract(buildResult, images);
 
         auto loaded = create();
         success(loaded->initialize(configuration(args, false)));
-        std::vector<ImageTrace> loadTraces;
-        outputContract(executeWithTrace(loaded.get(), batchInputs, loadTraces), images, loadTraces);
+        const auto loadResult = loaded->execute(batchInputs);
+        const auto loadDetections = outputContract(loadResult, images);
 
         cv::FileStorage report(args.report, cv::FileStorage::WRITE | cv::FileStorage::FORMAT_XML);
         require(report.isOpened(), "Cannot write report: " + args.report);
@@ -446,44 +397,30 @@ int main(int argc, char** argv) {
 #ifdef _WIN32
         loadedLibraries(report);
 #endif
-#ifdef VISIONRT_PROBE_SDK_DIR
-        report << "sdk_package_dir" << VISIONRT_PROBE_SDK_DIR;
-#endif
 #endif
         report << "registered_models" << environment.registeredModels << "devices" << "[";
         for (const auto& device : devices.devices) report << "{" << "index" << device.index << "name" << device.name << "}";
-        report << "]" << "tensors" << "[";
-        for (const auto& tensor : tensors) {
-            report << "{" << "name" << tensor.name << "dtype" << tensor.dtype << "layout" << tensor.layout << "shape" << "[";
-            for (const auto dimension : tensor.shape) report << static_cast<int>(dimension);
-            report << "]" << "}";
-        }
-        report << "]" << "pixel_center_probe" << "{" << "geometry";
-        geometry(report, pixelProbe.geometry);
-        report << "maximum_8bit_pixel_error" << pixelProbe.maximumPixelError
-               << "padding_8bit_pixel_error" << pixelProbe.paddingPixelError << "}" << "images" << "[";
+        report << "]" << "images" << "[";
 
-        bool passed = pixelProbe.maximumPixelError <= 1.0 && pixelProbe.paddingPixelError < 0.001 &&
-                      thresholdEqualKeeps && thresholdAboveExcludes;
+        bool passed = thresholdEqualKeeps && thresholdAboveExcludes;
         for (std::size_t b = 0; b < images.images().size(); ++b) {
             const auto single = ImageBatch({images.images()[b]});
             const auto singleInputs = inputs(single, args.detection);
-            std::vector<ImageTrace> traces;
-            executeWithTrace(loaded.get(), singleInputs, traces);
-            report << "{" << "index" << static_cast<int>(b) << "batch_trace";
-            trace(report, loadTraces[b], args);
-            report << "single_trace";
-            trace(report, traces[0], args);
+            const auto singleResult = loaded->execute(singleInputs);
+            const auto singleDetections = outputContract(singleResult, single);
+
+            report << "{" << "index" << static_cast<int>(b);
             report << "batch_vs_single_exact";
-            passed = comparison(report, loadTraces[b], traces[0], true) && passed;
+            const auto singleDets = singleDetections.empty() ? std::vector<PublicDetection>{} : singleDetections[0];
+            passed = compareDetections(report, loadDetections[b], singleDets, true) && passed;
             report << "build_vs_load";
-            passed = comparison(report, buildTraces[b], loadTraces[b], false) && passed;
+            passed = compareDetections(report, buildDetections[b], loadDetections[b], false) && passed;
             report << "}";
         }
         report << "]" << "passed" << int(passed);
         return passed ? 0 : 2;
     } catch (const std::exception& error) {
-        std::cerr << "Probe error: " << error.what() << "\n";
+        std::cerr << "Probe error: " << error.what() << std::endl;
         return 1;
     }
 }

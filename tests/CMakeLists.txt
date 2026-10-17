@@ -31,6 +31,12 @@ if(VISIONTOOLS_BUILD_INFER AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_infer_co
         SOURCES test_infer_contract.cpp "${CMAKE_SOURCE_DIR}/src/infer/YoloPostprocess.cpp"
         LIBRARIES visiontools_infer VisionRT::ToolSDK ${OpenCV_LIBS}
     )
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_infer_whitebox_trace.cpp")
+        visiontools_add_test(test_infer_whitebox_trace
+            SOURCES test_infer_whitebox_trace.cpp "${CMAKE_SOURCE_DIR}/src/infer/YoloPostprocess.cpp"
+            LIBRARIES visiontools_infer VisionRT::ToolSDK ${OpenCV_LIBS} InferRT::model CUDA::cudart
+        )
+    endif()
 endif()
 
 # 注册 Python 测试到 CTest (VS-02 / VS-06 / VS-07 / VS-08)
