@@ -35,6 +35,9 @@ def load_dependencies(build_dir: Path, project_root: Optional[Path] = None, stri
         project_root = Path(__file__).resolve().parent.parent
 
     resolved_file = build_dir / "resolved_dependencies.json"
+    if strict and not resolved_file.exists():
+        raise RuntimeError(f"Strict dependency resolution failed: missing required build metadata '{resolved_file}'")
+
     opencv_dir = None
     inferrt_root = None
     cuda_root = None
@@ -53,10 +56,12 @@ def load_dependencies(build_dir: Path, project_root: Optional[Path] = None, stri
             if data.get("tensorrt_root"):
                 tensorrt_root = Path(data["tensorrt_root"])
         except Exception as e:
+            if strict:
+                raise RuntimeError(f"Corrupt build metadata {resolved_file}: {e}")
             print(f"[WARN] Failed to read {resolved_file}: {e}")
 
-    # Fallback to tools/dependencies.yaml if any paths are missing
-    if not (opencv_dir and inferrt_root and cuda_root and tensorrt_root):
+    # Fallback to tools/dependencies.yaml only if NOT strict
+    if not strict and not (opencv_dir and inferrt_root and cuda_root and tensorrt_root):
         deps_yaml_file = project_root / "tools" / "dependencies.yaml"
         yaml_defaults = {}
         if deps_yaml_file.exists():
@@ -186,65 +191,30 @@ def package_tools(
                     shutil.copy2(src_path, dest_path)
                     manifest_files.append(dest_path.relative_to(staging_dir))
 
-        # 4. Handle module_index.json (canonical tools dictionary, eliminate modules-only fallback, R05)
+        # 4. Handle module_index.json (strictly consume build index, no generator fallback, RS-02)
         target_variant = "gpu" if infer_enabled else "cpu"
         index_src = build_dir / "module_index.json"
-        index_written = False
 
-        if index_src.exists():
-            try:
-                with open(index_src, "r", encoding="utf-8") as f:
-                    idx_data = json.load(f)
-                if idx_data.get("variant") == target_variant and "tools" in idx_data:
-                    shutil.copy2(index_src, staging_dir / "module_index.json")
-                    index_written = True
-            except Exception:
-                index_written = False
+        if not index_src.exists():
+            raise RuntimeError(f"Missing required build index: {index_src}")
 
-        if not index_written:
-            # Generate canonical module_index.json dynamically
-            try:
-                from generate_tool_contracts import load_and_validate_declarations, build_module_index, load_yaml
-                bindings_file = project_root / "tools" / "module_bindings.yaml"
-                tools_dir = project_root / "assets" / "tools"
-                bdata = load_yaml(bindings_file) if bindings_file.exists() else None
-                validated_tools = load_and_validate_declarations(tools_dir, bdata)
-                idx_data = build_module_index(validated_tools, bdata, variant=target_variant)
-                with open(staging_dir / "module_index.json", "w", encoding="utf-8") as f:
-                    json.dump(idx_data, f, indent=2, ensure_ascii=False)
-                index_written = True
-            except Exception as e:
-                # If generator cannot run (e.g. absent bindings), generate valid canonical tools index
-                idx_data = {
-                    "version": "1.0.0",
-                    "variant": target_variant,
-                    "tools": {
-                        "visionrt.image.crop": {
-                            "tool_id": "visionrt.image.crop",
-                            "display_name": "图像裁剪",
-                            "version": "1.0.0",
-                            "kind": "cpp_function",
-                            "module_dll": "bin/visiontools_preprocess.dll",
-                            "entry": {"registry_name": "visionrt.image.crop"},
-                            "inputs": ["images", "rois"],
-                            "outputs": ["images", "source_indices", "origins"]
-                        }
-                    }
-                }
-                if infer_enabled:
-                    idx_data["tools"]["visionrt.dl.yolo"] = {
-                        "tool_id": "visionrt.dl.yolo",
-                        "display_name": "YOLO目标检测",
-                        "version": "1.0.0",
-                        "kind": "cpp_class",
-                        "module_dll": "bin/visiontools_infer.dll",
-                        "entry": {"registry_name": "visionrt.dl.yolo"},
-                        "inputs": ["images", "conf_threshold", "nms_threshold", "max_detections"],
-                        "outputs": ["images", "rois", "scores", "classes", "class_names"]
-                    }
-                with open(staging_dir / "module_index.json", "w", encoding="utf-8") as f:
-                    json.dump(idx_data, f, indent=2, ensure_ascii=False)
+        try:
+            with open(index_src, "r", encoding="utf-8") as f:
+                idx_data = json.load(f)
+        except Exception as e:
+            raise RuntimeError(f"Corrupt build index {index_src}: {e}")
 
+        if idx_data.get("variant") != target_variant:
+            raise RuntimeError(f"Build index variant mismatch: expected '{target_variant}', got '{idx_data.get('variant')}'")
+
+        tools_map = idx_data.get("tools")
+        if not isinstance(tools_map, dict):
+            raise RuntimeError(f"Invalid build index {index_src}: 'tools' must be a dictionary")
+
+        if len(tools_map) == 0:
+            raise RuntimeError(f"Invalid build index {index_src}: 'tools' dictionary is empty")
+
+        shutil.copy2(index_src, staging_dir / "module_index.json")
         manifest_files.append(Path("module_index.json"))
 
         # 5. Copy runtime dependency DLLs
@@ -335,13 +305,34 @@ def package_tools(
         with open(manifest_path, "w", encoding="utf-8") as f:
             f.write("\n".join(manifest_lines) + "\n")
 
-        # 7. Atomically replace target install_dir with verified staging directory (R10)
+        # 7. Pre-verify staging directory BEFORE touching install_dir (RS-04 / Q03)
+        if not verify_package(staging_dir, is_gpu=infer_enabled):
+            raise RuntimeError(f"Package verification failed on staging directory {staging_dir}")
+
+        # 8. Atomically replace target install_dir with verified staging directory (RS-04 / Q03)
+        backup_dir = None
         if install_dir.exists():
-            shutil.rmtree(install_dir)
+            backup_dir = install_dir.parent / f"{install_dir.name}.backup"
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir, ignore_errors=True)
+            install_dir.rename(backup_dir)
+
         try:
             staging_dir.rename(install_dir)
         except OSError:
-            shutil.move(str(staging_dir), str(install_dir))
+            try:
+                shutil.move(str(staging_dir), str(install_dir))
+            except Exception as move_err:
+                # Rollback from backup_dir
+                if backup_dir and backup_dir.exists():
+                    if install_dir.exists():
+                        shutil.rmtree(install_dir, ignore_errors=True)
+                    backup_dir.rename(install_dir)
+                raise RuntimeError(f"Failed to replace install directory: {move_err}") from move_err
+
+        # Successful replacement, clean up backup
+        if backup_dir and backup_dir.exists():
+            shutil.rmtree(backup_dir, ignore_errors=True)
 
         print(f"[package_tools] Successfully packaged {len(manifest_files)} items to {install_dir}")
         print(f"[package_tools] Manifest generated at {install_dir / 'tools_manifest.txt'}")
@@ -367,7 +358,17 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
 
     missing = []
     for rel_path in manifest_entries:
-        target = install_dir / rel_path
+        p = Path(rel_path)
+        if p.is_absolute() or ".." in p.parts:
+            print(f"[ERROR] Manifest entry '{rel_path}' escapes package root")
+            return False
+        target = (install_dir / rel_path).resolve()
+        try:
+            if not target.is_relative_to(install_dir.resolve()):
+                print(f"[ERROR] Manifest entry '{rel_path}' escapes package root")
+                return False
+        except AttributeError:
+            pass
         if not target.exists():
             missing.append(rel_path)
 
@@ -399,29 +400,57 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
 
     # Verify that every indexed C++ tool has its declared module_dll on disk (R06)
     # and CPU packages do not reference GPU DLLs (R07)
-    tools_dict = idx.get("tools", {})
-    if not isinstance(tools_dict, dict):
-        print("[ERROR] module_index.json 'tools' must be a dictionary")
+    tools_dict = idx.get("tools")
+    if not isinstance(tools_dict, dict) or len(tools_dict) == 0:
+        print("[ERROR] module_index.json 'tools' must be a non-empty dictionary")
         return False
 
     for reg, tinfo in tools_dict.items():
         if not isinstance(tinfo, dict):
-            continue
+            print(f"[ERROR] Tool '{reg}' entry is not a dictionary: {tinfo}")
+            return False
         kind = tinfo.get("kind", "")
         if kind.startswith("cpp"):
             mod_dll = tinfo.get("module_dll")
             if not mod_dll:
                 print(f"[ERROR] C++ tool '{reg}' missing 'module_dll' in module_index.json")
                 return False
-            dll_path = install_dir / mod_dll
+            mod_path = Path(mod_dll)
+            if mod_path.is_absolute() or ".." in mod_path.parts:
+                print(f"[ERROR] Tool '{reg}' module_dll '{mod_dll}' escapes package root")
+                return False
+            dll_path = (install_dir / mod_dll).resolve()
+            try:
+                if not dll_path.is_relative_to(install_dir.resolve()):
+                    print(f"[ERROR] Tool '{reg}' module_dll '{mod_dll}' escapes package root")
+                    return False
+            except AttributeError:
+                pass
             # R06: Ensure declared DLL actually exists on disk
             if not dll_path.exists():
                 print(f"[ERROR] Indexed module_dll '{mod_dll}' for tool '{reg}' does not exist: {dll_path}")
                 return False
             # R07: CPU packages must never reference infer/GPU DLLs
             if not is_gpu:
-                if "infer" in Path(mod_dll).name.lower():
+                if "infer" in mod_path.name.lower():
                     print(f"[ERROR] CPU package index references GPU module DLL '{mod_dll}' for tool '{reg}'")
+                    return False
+        elif kind.startswith("python"):
+            script = tinfo.get("script")
+            if script:
+                script_path = Path(script)
+                if script_path.is_absolute() or ".." in script_path.parts:
+                    print(f"[ERROR] Tool '{reg}' script '{script}' escapes package root")
+                    return False
+                target_script = (install_dir / script).resolve()
+                try:
+                    if not target_script.is_relative_to(install_dir.resolve()):
+                        print(f"[ERROR] Tool '{reg}' script '{script}' escapes package root")
+                        return False
+                except AttributeError:
+                    pass
+                if not target_script.exists():
+                    print(f"[ERROR] Indexed script '{script}' for tool '{reg}' does not exist: {target_script}")
                     return False
         if not is_gpu:
             if "yolo" in reg.lower() or "infer" in reg.lower():
@@ -452,6 +481,11 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
         if not cuda_dlls:
             print("[ERROR] GPU package verification failed: no CUDA runtime DLL (cudart64_*.dll) found in bin/")
             return False
+        # TensorRT runtime DLL (Q04 / P06 / RS-03)
+        trt_dlls = list(bin_dir.glob("nvinfer*.dll"))
+        if not trt_dlls:
+            print("[ERROR] GPU package verification failed: no TensorRT runtime DLL (nvinfer*.dll) found in bin/")
+            return False
     else:
         # Strict CPU mode check: no GPU DLL or YAML
         if (bin_dir / "visiontools_infer.dll").exists():
@@ -459,6 +493,15 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
             return False
         if list(install_dir.rglob("visionrt.dl.yolo.yaml")):
             print("[ERROR] CPU package verification failed: visionrt.dl.yolo.yaml found in CPU package")
+            return False
+        if list(bin_dir.glob("inferrt*.dll")):
+            print("[ERROR] CPU package verification failed: inferrt*.dll found in CPU package")
+            return False
+        if list(bin_dir.glob("cudart64_*.dll")):
+            print("[ERROR] CPU package verification failed: cudart64_*.dll found in CPU package")
+            return False
+        if list(bin_dir.glob("nvinfer*.dll")):
+            print("[ERROR] CPU package verification failed: nvinfer*.dll found in CPU package")
             return False
 
     print(f"[SUCCESS] Package verification passed ({len(manifest_entries)} files verified, variant={expected_variant}).")

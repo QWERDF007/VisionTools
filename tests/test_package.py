@@ -53,8 +53,9 @@ class TestPackageTools(unittest.TestCase):
         self.mock_trt.mkdir(parents=True)
         (self.mock_trt / "nvinfer_10.dll").write_bytes(b"MOCK_TRT")
 
-        # Write resolved_dependencies.json
-        self._write_resolved_deps(is_gpu=True)
+        # Write resolved_dependencies.json and module_index.json
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -75,6 +76,25 @@ class TestPackageTools(unittest.TestCase):
         with open(self.build_dir / "resolved_dependencies.json", "w", encoding="utf-8") as f:
             json.dump(deps, f, indent=2)
 
+    def _write_module_index(self, is_gpu=True):
+        tools = {
+            "visionrt.image.crop": {
+                "kind": "cpp_function",
+                "module_dll": "bin/visiontools_preprocess.dll"
+            }
+        }
+        if is_gpu:
+            tools["visionrt.dl.yolo"] = {
+                "kind": "cpp_function",
+                "module_dll": "bin/visiontools_infer.dll"
+            }
+        idx = {
+            "variant": "gpu" if is_gpu else "cpu",
+            "tools": tools
+        }
+        with open(self.build_dir / "module_index.json", "w", encoding="utf-8") as f:
+            json.dump(idx, f, indent=2)
+
     def test_missing_preprocess_dll_raises(self):
         empty_build = self.t / "empty_build"
         empty_build.mkdir()
@@ -83,13 +103,18 @@ class TestPackageTools(unittest.TestCase):
 
     def test_missing_infer_dll_gpu_strict_raises(self):
         # build_dir does not have visiontools_infer.dll
+        self._write_resolved_deps(is_gpu=True)
+        self._write_module_index(is_gpu=True)
         with self.assertRaises(RuntimeError) as ctx:
             pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=True, strict=True)
         self.assertIn("visiontools_infer.dll", str(ctx.exception))
 
     def test_missing_infer_dll_gpu_verify_fails(self):
-        # Packaging without strict should not copy infer DLL, but verify MUST fail
-        pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=True, strict=False)
+        # Packaging without strict should not copy infer DLL, but stage verification MUST fail
+        self._write_resolved_deps(is_gpu=True)
+        self._write_module_index(is_gpu=True)
+        with self.assertRaises(RuntimeError):
+            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=True, strict=False)
         self.assertFalse((self.install_dir / "bin" / "visiontools_infer.dll").exists())
         self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=True))
 
@@ -97,6 +122,8 @@ class TestPackageTools(unittest.TestCase):
         infer_dir = self.build_dir / "src" / "infer"
         infer_dir.mkdir(parents=True)
         (infer_dir / "visiontools_infer.dll").write_bytes(b"MOCK_INFER_DLL")
+        self._write_resolved_deps(is_gpu=True)
+        self._write_module_index(is_gpu=True)
 
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=True, strict=True)
         self.assertTrue((self.install_dir / "bin" / "visiontools_preprocess.dll").exists())
@@ -105,6 +132,8 @@ class TestPackageTools(unittest.TestCase):
         self.assertTrue(pkg.verify_package(self.install_dir, is_gpu=True))
 
     def test_valid_cpu_package(self):
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
         self.assertTrue((self.install_dir / "bin" / "visiontools_preprocess.dll").exists())
         self.assertFalse((self.install_dir / "bin" / "visiontools_infer.dll").exists())
@@ -116,12 +145,15 @@ class TestPackageTools(unittest.TestCase):
         infer_dir = self.build_dir / "src" / "infer"
         infer_dir.mkdir(parents=True)
         (infer_dir / "visiontools_infer.dll").write_bytes(b"MOCK_INFER_DLL")
+        self._write_resolved_deps(is_gpu=True)
+        self._write_module_index(is_gpu=True)
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=True, strict=True)
         self.assertTrue((self.install_dir / "bin" / "visiontools_infer.dll").exists())
         self.assertTrue(bool(list(self.install_dir.rglob("visionrt.dl.yolo.yaml"))))
 
         # 2. Package CPU into the EXACT SAME directory
         self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
 
         # 3. Assert all GPU artifacts are gone
@@ -133,12 +165,16 @@ class TestPackageTools(unittest.TestCase):
         self.assertTrue(pkg.verify_package(self.install_dir, is_gpu=False))
 
     def test_verify_fails_if_cpu_package_contains_gpu_artifacts(self):
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
         # Poison CPU package with infer DLL
         (self.install_dir / "bin" / "visiontools_infer.dll").write_bytes(b"LEAKED_DLL")
         self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=False))
 
     def test_verify_fails_if_manifest_file_missing(self):
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
         # Delete an asset from package
         prep_yaml = next(self.install_dir.rglob("visionrt.image.crop.yaml"))
@@ -146,10 +182,118 @@ class TestPackageTools(unittest.TestCase):
         self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=False))
 
     def test_path_with_spaces(self):
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
         spaced_dir = self.t / "dist with spaces" / "Vision Tools"
         pkg.package_tools(self.build_dir, spaced_dir, infer_enabled=False, strict=True)
         self.assertTrue((spaced_dir / "bin" / "visiontools_preprocess.dll").exists())
         self.assertTrue(pkg.verify_package(spaced_dir, is_gpu=False))
+
+    def test_missing_build_index_raises(self):
+        (self.build_dir / "module_index.json").unlink()
+        self._write_resolved_deps(is_gpu=False)
+        with self.assertRaises(RuntimeError) as ctx:
+            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+        self.assertIn("Missing required build index", str(ctx.exception))
+
+    def test_corrupt_build_index_raises(self):
+        (self.build_dir / "module_index.json").write_text("{corrupt json")
+        self._write_resolved_deps(is_gpu=False)
+        with self.assertRaises(RuntimeError) as ctx:
+            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+        self.assertIn("Corrupt build index", str(ctx.exception))
+
+    def test_wrong_variant_build_index_raises(self):
+        self._write_module_index(is_gpu=True)
+        self._write_resolved_deps(is_gpu=False)
+        with self.assertRaises(RuntimeError) as ctx:
+            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+        self.assertIn("Build index variant mismatch", str(ctx.exception))
+
+    def test_missing_resolved_deps_strict_raises(self):
+        (self.build_dir / "resolved_dependencies.json").unlink()
+        with self.assertRaises(RuntimeError) as ctx:
+            pkg.load_dependencies(self.build_dir, ROOT, strict=True)
+        self.assertIn("missing required build metadata", str(ctx.exception))
+
+    def test_verify_fails_empty_tools(self):
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
+        pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+        (self.install_dir / "module_index.json").write_text(json.dumps({"variant": "cpu", "tools": {}}))
+        self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=False))
+
+    def test_verify_fails_bad_tool_entry(self):
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
+        pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+        (self.install_dir / "module_index.json").write_text(json.dumps({"variant": "cpu", "tools": {"bad": 123}}))
+        self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=False))
+
+    def test_verify_fails_escaping_module_dll(self):
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
+        pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+        (self.install_dir / "module_index.json").write_text(json.dumps({
+            "variant": "cpu",
+            "tools": {"tool": {"kind": "cpp_function", "module_dll": "../escape.dll"}}
+        }))
+        self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=False))
+
+    def test_verify_fails_missing_tensorrt_gpu(self):
+        infer_dir = self.build_dir / "src" / "infer"
+        infer_dir.mkdir(parents=True)
+        (infer_dir / "visiontools_infer.dll").write_bytes(b"MOCK_INFER_DLL")
+        self._write_resolved_deps(is_gpu=True)
+        self._write_module_index(is_gpu=True)
+        pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=True, strict=True)
+        # Delete nvinfer DLL
+        (self.install_dir / "bin" / "nvinfer_10.dll").unlink()
+        self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=True))
+
+    def test_package_preserves_previous_on_failure(self):
+        # Create an existing install dir with a marker file
+        self.install_dir.mkdir(parents=True)
+        marker = self.install_dir / "previous_release.txt"
+        marker.write_text("old release")
+
+        # Set module_index to point to a non-existent DLL
+        (self.build_dir / "module_index.json").write_text(json.dumps({
+            "variant": "cpu",
+            "tools": {"fake": {"kind": "cpp_function", "module_dll": "bin/missing.dll"}}
+        }))
+        self._write_resolved_deps(is_gpu=False)
+
+        with self.assertRaises(RuntimeError):
+            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+
+        # Previous release MUST be preserved!
+        self.assertTrue(marker.exists())
+        self.assertEqual(marker.read_text(), "old release")
+
+    def test_package_rollback_on_rename_failure(self):
+        self.install_dir.mkdir(parents=True)
+        marker = self.install_dir / "previous_release.txt"
+        marker.write_text("old release")
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
+
+        # Inject error when moving staging_dir to install_dir
+        orig_rename = pathlib.Path.rename
+        def failing_rename(inst, target, *args, **kwargs):
+            if ".tmp_pkg" in str(inst) or "staging" in str(inst):
+                raise OSError("Simulated rename error")
+            return orig_rename(inst, target, *args, **kwargs)
+
+        import unittest.mock as mock
+        with mock.patch.object(pathlib.Path, "rename", failing_rename):
+            with mock.patch("shutil.move", side_effect=OSError("Simulated move error")):
+                with self.assertRaises(RuntimeError):
+                    pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+
+        # Marker MUST still exist after rollback
+        self.assertTrue(marker.exists())
+        self.assertEqual(marker.read_text(), "old release")
 
 if __name__ == "__main__":
     unittest.main()
