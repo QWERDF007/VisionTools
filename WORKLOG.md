@@ -30,6 +30,67 @@
 - ...
 -->
 
+### 2026-10-17 — VisionTools 代码复验整改与下一阶段交付 (VT2-01 ~ VT2-08)
+
+**目标**
+- 依照《VisionTools 代码复验与下一阶段方案 (01c3795)》（N01 ~ N10，VT2-01 ~ VT2-08，NS-01 ~ NS-08，R01 ~ R10）完成第二轮复验问题修复与闭环验证。
+- 根除已提交的 `src/generated` 副本与 `__has_include` 回退逻辑，编译期严格单源消费构建目录产物 (VT2-01 / NS-01)。
+- 深度集成 SDK schema 枚举，生成完整 `TypeSpec` 与契约结构；`YoloModel.cpp` 全面接线生成常量；强化生成器负面静态检查 (VT2-02 / NS-02)。
+- 修复 `ImageCropTool` 采样中心覆盖判决 (R09)；`DetectionFilterTool` 严格限定有限 double 浮点；补齐 `ReadImageTool` 契约测试 (VT2-03 / NS-03)。
+- 修复 `package_tools.py` 幽灵导入与目录删除安全 (R10)；闭包校验增加针对 module_dll、GPU 隔离与 OpenCV/InferRT/CUDA 的独立物理文件校验 (R06~R08)；依赖解析失败严格报错 (VT2-04 / NS-04)。
+- 增加动态加载消费者测试 `test_installation_consumer`；强化单实例 100 次循环与 20 次生命周期循环测试及延迟与 RSS 统计 (VT2-05 / NS-05)。
+- 探针解耦独立配置能力 (VT2-06 / NS-06)。
+- 联合宿主验证与日志/规范闭环 (VT2-07, VT2-08)。
+
+**当前状态**
+- 已完成：
+  - VT2-01 (NS-01 / N01): 删除 `src/generated` 纳入 `.gitignore`；移除所有模块内 `__has_include` 兜底；头文件包含路径严格指向 `${CMAKE_BINARY_DIR}/generated`。
+  - VT2-02 (NS-02 / N02 / N03): `generate_tool_contracts.py` 深度对齐 SDK 导出枚举并生成 `TypeSpec` 规范契约结构与 `getToolContract()`；`YoloModel.cpp` 端口接线完全统一至 `visiontools::ports::visionrt_dl_yolo`；增加未定义绑定报错、工具目录为空报错、cross-module 重复注册拦截、bool rank 拦截、单边 range 默认值违例拦截、Python 入口文件与符号静态 AST 校验；`test_generator.py` 扩充至 17 项测试。
+  - VT2-03 (NS-03 / N04 / N08): `ImageCropTool` 引入 `coversEveryPixelCenter` 严格判定 ROI 覆盖所有像素中心方走 `image.region(bounds)` 零拷贝视图，小数/非对齐坐标走掩码路径；`DetectionFilterTool` 强制严格 double（拒绝 Int、Bool、String、NaN/Inf）；`test_preprocess_contract` 补齐小数裁剪与 `ReadImageTool` 全量契约测试。
+  - VT2-04 (NS-04 / N05 / N06 / N07): `package_tools.py` 移除无效导入与 modules-only 回退；引入 `.tmp_pkg_VisionTools_<pid>` 临时暂存目录，打包校验成功后再原子替换，防御打包到工程根目录并保护既有安装目录；`verify_package` 逐项核验 `tools[*].module_dll`、CPU 包 GPU DLL 隔离、以及 OpenCV/InferRT/CUDA 物理文件独立存在；修复 `tools/build.cmd` 中 `!PACKAGE_DIR!` 延迟变量展开；`ConfigDependencyDefaults.cmake` 与 `ConfigVisionRTToolSDK.cmake` 遇到显式无效路径严格报错退出。
+  - VT2-05 (NS-05 / N09): 新增 `tests/test_installation_consumer.cpp`，纯动态加载 (`LoadLibraryA` + `GetProcAddress`)，不链接算子实现库；`test_module_contract.cpp` 增加单实例 100 次循环、20 次 create/destroy 循环、double release 幂等与 RSS/延迟指标输出。
+  - VT2-06 (NS-06 / N10): `probes/infer/CMakeLists.txt` 支持独立外部 CMake 配置构建。
+  - VT2-08 (NS-08): 规范文档、真实记录验证证据，分阶段提交至 `origin/dev`。
+- 未完成（客观外部资源受限）：
+  - VT2-06: YOLO 真实权重实测未验证（当前环境无 `.wts` 权重文件，代码接线与探针已通过构建及模块调用测试）。
+  - VT2-07: 宿主联合加载未验证（当前独立仓库无外部宿主运行时环境；动态消费者测试与契约测试已独立通过）。
+
+**验证证据**
+- `python docs\VisionTools_代码复验与下一阶段方案_01c3795\VisionTools_复验交付\evidence\reproduce.py .`
+  - 10 项缺陷复现用例 (R01~R10) 全部验证通过 (exit code 0)：
+    - R01: missing bindings 严格拦截退出 (code 1)
+    - R02: TypeSpec present= True
+    - R03: 编译头文件仅包含 build/generated/PortConstants.h
+    - R04: 单边 range 默认值违例、bool rank、缺失 Python 文件均被 REJECTED
+    - R05: module_index.json 具备规范 tools 字典并验证通过
+    - R06: 假 DLL 索引被 verify_package 拦截 (verify=False)
+    - R07: CPU 索引包含 GPU DLL 被拦截 (verify=False)
+    - R08: 缺失 OpenCV 被独立物理文件核验拦截 (verify=False)
+    - R09: 浮点 ROI (0.75, 1.0) 与 (0.1, 0.1) 正确切换 mask / view
+    - R10: 打包失败预留既有安装目录完整 (previous release preserved= True)
+- `tools\build.cmd --clean --test`
+  - GPU 模式编译成功，CTest 7/7 全部通过 (100% tests passed):
+    - test_preprocess_contract: Passed (0.06 sec)
+    - test_module_contract: Passed (0.08 sec)
+    - test_installation_consumer: Passed (0.06 sec)
+    - test_infer_contract: Passed (0.05 sec)
+    - test_generator: Passed (0.31 sec, 17/17 tests)
+    - test_package: Passed (0.55 sec, 9/9 tests)
+    - test_python_tools: Passed (0.19 sec, 4/4 tests)
+- `tools\build.cmd -B build-cpu --no-infer --clean --test`
+  - CPU 独立模式编译成功，CTest 6/6 全部通过。
+- `tools\build.cmd --package`
+  - 成功打包 52 个文件至 `dist/VisionTools`，`verify_package` 通过 (variant=gpu)。
+- `tools\build.cmd -B build-cpu --no-infer --package`
+  - 成功打包 19 个文件至 `dist/VisionTools`，`verify_package` 通过 (variant=cpu)。
+- `.\build-cpu\tests\test_installation_consumer.exe .\dist\VisionTools\bin\visiontools_preprocess.dll`
+  - 动态消费者直接加载测试通过并输出 `[PASS] test_installation_consumer passed successfully.`。
+- `.\build-cpu\tests\test_module_contract.exe`
+  - 单实例 100 次循环与 20 次销毁重建通过，输出 `[METRICS] 100-run: p50=6.6us, p95=7.2us`。
+
+**下一步**
+- 推送变更至 `origin/dev`，交付成果等待复审。
+
 ### 2026-10-17 — VisionTools 验收与改进方案全面整改落地 (VT-01 ~ VT-08)
 
 **目标**
