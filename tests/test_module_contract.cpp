@@ -127,11 +127,12 @@ int main() {
     REQUIRE(snapshotImage.rows() == 60 && snapshotImage.readOnlyMat().at<unsigned char>(0, 0) == 255, "Snapshot must remain valid after destroy");
 
     // 6. Concurrency: 2 instances running concurrently with independent states (VS-05 / NS-05)
+    // Verify concurrent execution outputs are 100% equal to serial execution (RS-05)
     {
-        auto worker = [&](int val, int size) {
+        auto runWorker = [&](int val, int size) -> cv::Mat {
             visionrt::ToolStatus s;
             visionrt::IToolInstance* inst = api->create("visiontools.preprocess.adaptive_binary", &services, &s);
-            REQUIRE(inst != nullptr, "Concurrent create must succeed");
+            REQUIRE(inst != nullptr, "Create must succeed");
 
             cv::Mat img(size, size, CV_8UC1, cv::Scalar(val));
             visionrt::Values inputs;
@@ -139,26 +140,40 @@ int main() {
             inputs.emplace("block_size", std::int64_t(5));
             inputs.emplace("constant_offset", 0.0);
 
+            cv::Mat lastOutput;
             for (int i = 0; i < 10; ++i) {
                 auto res = inst->execute(inputs);
-                REQUIRE(res.status.code == 0, "Concurrent execute must succeed");
+                REQUIRE(res.status.code == 0, "Execute must succeed");
                 const auto* b = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
-                REQUIRE(b->images()[0].rows() == size, "Concurrent output size match");
+                REQUIRE(b != nullptr && !b->images().empty(), "Output images must be non-empty");
+                REQUIRE(b->images()[0].rows() == size && b->images()[0].cols() == size, "Concurrent output size match");
+                lastOutput = b->images()[0].readOnlyMat().clone();
             }
 
             inst->release();
             api->destroy(inst);
-            return true;
+            return lastOutput;
         };
 
-        auto f1 = std::async(std::launch::async, worker, 100, 32);
-        auto f2 = std::async(std::launch::async, worker, 200, 48);
-        REQUIRE(f1.get() && f2.get(), "Both concurrent worker threads must complete successfully");
+        // 1. Run serially to capture baseline outputs
+        cv::Mat serial1 = runWorker(100, 32);
+        cv::Mat serial2 = runWorker(200, 48);
+
+        // 2. Run concurrently across two independent threads
+        auto f1 = std::async(std::launch::async, runWorker, 100, 32);
+        auto f2 = std::async(std::launch::async, runWorker, 200, 48);
+
+        cv::Mat conc1 = f1.get();
+        cv::Mat conc2 = f2.get();
+
+        // 3. Bitwise full equality comparison between serial and concurrent outputs (RS-05)
+        REQUIRE(cv::countNonZero(conc1 != serial1) == 0, "Concurrent output 1 must match serial output 1 completely");
+        REQUIRE(cv::countNonZero(conc2 != serial2) == 0, "Concurrent output 2 must match serial output 2 completely");
     }
 
-    // 7. Lifecycle: 100 consecutive executions on the same instance (NS-05)
+    // 7. Lifecycle: 100 consecutive executions on the same instance with multi-point RSS sampling (NS-05 / RS-05)
     {
-        std::size_t rssBefore = getProcessRSS();
+        std::size_t rssBaseline = getProcessRSS();
         visionrt::ToolStatus s;
         visionrt::IToolInstance* inst = api->create("visiontools.preprocess.adaptive_binary", &services, &s);
         REQUIRE(inst != nullptr, "Create for 100 consecutive runs must succeed");
@@ -179,9 +194,11 @@ int main() {
             auto res = inst->execute(inputs);
             REQUIRE(res.status.code == 0, "Warmup execute must succeed");
         }
+        std::size_t rssWarmup = getProcessRSS();
 
         std::vector<double> latencies_us;
         latencies_us.reserve(100);
+        std::size_t rss25 = 0, rss50 = 0, rss75 = 0, rss100 = 0;
 
         for (int i = 0; i < 100; ++i) {
             auto t0 = std::chrono::high_resolution_clock::now();
@@ -189,6 +206,11 @@ int main() {
             auto t1 = std::chrono::high_resolution_clock::now();
             REQUIRE(res.status.code == 0, "100 consecutive execute must succeed");
             latencies_us.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
+
+            if (i == 24) rss25 = getProcessRSS();
+            else if (i == 49) rss50 = getProcessRSS();
+            else if (i == 74) rss75 = getProcessRSS();
+            else if (i == 99) rss100 = getProcessRSS();
         }
 
         std::sort(latencies_us.begin(), latencies_us.end());
@@ -196,11 +218,27 @@ int main() {
         double p95 = latencies_us[95];
 
         inst->release();
+        std::size_t rssPostRelease = getProcessRSS();
         api->destroy(inst);
-        std::size_t rssAfter = getProcessRSS();
+        std::size_t rssPostDestroy = getProcessRSS();
 
-        std::cout << "[METRICS] 100-run: p50=" << p50 << "us, p95=" << p95
-                  << "us, RSS_before=" << rssBefore << "B, RSS_after=" << rssAfter << "B" << std::endl;
+        std::cout << "[METRICS] 100-run: p50=" << p50 << "us, p95=" << p95 << "us" << std::endl;
+        if (rssBaseline == 0) {
+            std::cout << "[METRICS] RSS sequence: unavailable" << std::endl;
+        } else {
+            std::cout << "[METRICS] RSS sequence (bytes): baseline=" << rssBaseline
+                      << ", post_warmup=" << rssWarmup
+                      << ", loop25=" << rss25
+                      << ", loop50=" << rss50
+                      << ", loop75=" << rss75
+                      << ", loop100=" << rss100
+                      << ", post_release=" << rssPostRelease
+                      << ", post_destroy=" << rssPostDestroy << std::endl;
+            // Unexplained unbounded memory growth check: loop 100 vs post-warmup < 10MB
+            if (rss100 > rssWarmup) {
+                REQUIRE(rss100 - rssWarmup < 10 * 1024 * 1024, "Unexplained RSS growth during 100 runs must be under 10MB");
+            }
+        }
     }
 
     // 8. 20 separate create/destroy cycles (NS-05)

@@ -22,28 +22,44 @@ if(NOT EXISTS "${_gen_inc}/PortConstants.h" AND EXISTS "${VISIONTOOLS_SOURCE_ROO
 endif()
 
 if(NOT TARGET visiontools_infer)
-    find_library(VISIONTOOLS_INFER_LIB NAMES visiontools_infer PATHS
+    find_library(VISIONTOOLS_INFER_IMPLIB NAMES visiontools_infer PATHS
+        "${CMAKE_BINARY_DIR}/src/infer"
+        "${CMAKE_BINARY_DIR}/lib"
+        "${VISIONTOOLS_SOURCE_ROOT}/build/src/infer"
+        "${VISIONTOOLS_SOURCE_ROOT}/build/lib"
+        "${VISIONTOOLS_SOURCE_ROOT}/dist/VisionTools/lib"
+    )
+    find_file(VISIONTOOLS_INFER_DLL NAMES visiontools_infer.dll PATHS
         "${CMAKE_BINARY_DIR}/src/infer"
         "${CMAKE_BINARY_DIR}/bin"
         "${VISIONTOOLS_SOURCE_ROOT}/build/src/infer"
+        "${VISIONTOOLS_SOURCE_ROOT}/build/bin"
         "${VISIONTOOLS_SOURCE_ROOT}/dist/VisionTools/bin"
     )
-    if(VISIONTOOLS_INFER_LIB)
+    if(VISIONTOOLS_INFER_IMPLIB)
         add_library(visiontools_infer SHARED IMPORTED)
         set_target_properties(visiontools_infer PROPERTIES
-            IMPORTED_LOCATION "${VISIONTOOLS_INFER_LIB}"
-            IMPORTED_IMPLIB "${VISIONTOOLS_INFER_LIB}"
+            IMPORTED_IMPLIB "${VISIONTOOLS_INFER_IMPLIB}"
         )
+        if(VISIONTOOLS_INFER_DLL)
+            set_target_properties(visiontools_infer PROPERTIES
+                IMPORTED_LOCATION "${VISIONTOOLS_INFER_DLL}"
+            )
+        endif()
     endif()
 endif()
 
 add_executable(visiontools_infer_probe main.cpp)
 target_include_directories(visiontools_infer_probe PRIVATE
-    "${VISIONTOOLS_SOURCE_ROOT}/src"
-    "${VISIONTOOLS_SOURCE_ROOT}/src/infer"
-    "${_gen_inc}"
     ${OpenCV_INCLUDE_DIRS}
 )
+if(EXISTS "${VISIONTOOLS_SOURCE_ROOT}/src/infer/YoloModel.h")
+    target_include_directories(visiontools_infer_probe PRIVATE
+        "${VISIONTOOLS_SOURCE_ROOT}/src"
+        "${VISIONTOOLS_SOURCE_ROOT}/src/infer"
+        "${_gen_inc}"
+    )
+endif()
 target_link_libraries(visiontools_infer_probe PRIVATE
     visiontools_infer
     VisionRT::ToolSDK

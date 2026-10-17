@@ -23,6 +23,7 @@ visiontools_add_test(test_module_contract
 visiontools_add_test(test_installation_consumer
     SOURCES test_installation_consumer.cpp
     LIBRARIES VisionRT::ToolSDK ${OpenCV_LIBS}
+    COMMAND_ARGS "$<TARGET_FILE:visiontools_preprocess>"
 )
 
 if(VISIONTOOLS_BUILD_INFER AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_infer_contract.cpp")
