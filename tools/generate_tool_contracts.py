@@ -182,6 +182,9 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
             p_id = p.get("id")
             if not p_id or not isinstance(p_id, str):
                 raise ContractValidationError(f"{prefix}Port missing 'id' in '{port_group}'")
+            p_name = p.get("name")
+            if p_name is not None and (not isinstance(p_name, str) or not p_name.strip()):
+                raise ContractValidationError(f"{prefix}Port name must not be empty on port: '{p_id}'")
             if p_id in port_ids:
                 raise ContractValidationError(f"{prefix}Duplicate port id '{p_id}' in '{port_group}'")
             port_ids.add(p_id)
@@ -208,6 +211,16 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
                 for disallowed in ("color_order", "same_geometry_as_input", "image_port"):
                     if disallowed in p and p[disallowed] is not None:
                         raise ContractValidationError(f"{prefix}'{disallowed}' applies only to outputs on port: '{p_id}'")
+
+            if "editor" in p and p["editor"] is not None:
+                valid_editors = {"number", "text", "bool", "file", "directory", "array", "roi"}
+                if p["editor"] not in valid_editors:
+                    raise ContractValidationError(f"{prefix}Unknown editor '{p['editor']}' on port '{p_id}'")
+
+            if "tab" in p and p["tab"] is not None:
+                valid_tabs = {"基本输入", "预处理", "检测", "结果处理"}
+                if p["tab"] not in valid_tabs:
+                    raise ContractValidationError(f"{prefix}Unknown tab '{p['tab']}' on port '{p_id}'")
 
             # NumericArray validation
             if p_type == "NumericArray":
@@ -257,17 +270,30 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
                 step_val = p["step"]
                 if p_type not in ("Int", "Float"):
                     raise ContractValidationError(f"{prefix}Numeric constraint 'step' requires Int or Float port: '{p_id}'")
-                if not isinstance(step_val, (int, float)) or isinstance(step_val, bool) or step_val <= 0 or math.isnan(step_val) or math.isinf(step_val):
-                    raise ContractValidationError(f"{prefix}Port '{p_id}' step must be positive (got {step_val})")
+                if p_type == "Int":
+                    if not isinstance(step_val, int) or isinstance(step_val, bool) or step_val <= 0:
+                        raise ContractValidationError(f"{prefix}Port '{p_id}' step must be positive integer (got {step_val})")
+                elif p_type == "Float":
+                    if not isinstance(step_val, (int, float)) or isinstance(step_val, bool) or step_val <= 0 or math.isnan(step_val) or math.isinf(step_val):
+                        raise ContractValidationError(f"{prefix}Port '{p_id}' step must be positive (got {step_val})")
 
             # Numeric constraint type checks
-            for attr in ("min", "max", "decimals"):
+            for attr in ("min", "max"):
                 if attr in p and p[attr] is not None:
+                    val = p[attr]
                     if p_type not in ("Int", "Float"):
                         raise ContractValidationError(f"{prefix}Numeric constraint '{attr}' requires Int or Float port: '{p_id}'")
+                    if p_type == "Int":
+                        if not isinstance(val, int) or isinstance(val, bool):
+                            raise ContractValidationError(f"{prefix}Port '{p_id}' {attr} must be integer (got {val})")
+                    elif p_type == "Float":
+                        if not isinstance(val, (int, float)) or isinstance(val, bool) or math.isnan(val) or math.isinf(val):
+                            raise ContractValidationError(f"{prefix}Port '{p_id}' {attr} must be finite float (got {val})")
 
             if "decimals" in p and p["decimals"] is not None:
                 dec_val = p["decimals"]
+                if p_type not in ("Int", "Float"):
+                    raise ContractValidationError(f"{prefix}Numeric constraint 'decimals' requires Int or Float port: '{p_id}'")
                 if not isinstance(dec_val, int) or isinstance(dec_val, bool) or dec_val < 0:
                     raise ContractValidationError(f"{prefix}Port '{p_id}' decimals must be non-negative integer (got {dec_val})")
 
@@ -293,6 +319,36 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
                     if p["default"] not in opts:
                         raise ContractValidationError(f"{prefix}Port '{p_id}' default value is not one of declared options")
 
+    # 5. Image reference validation (SSOT with SDK Schema.cpp)
+    input_ports = {p.get("id"): p for p in doc.get("inputs", []) if isinstance(p, dict)}
+    output_ports = {p.get("id"): p for p in doc.get("outputs", []) if isinstance(p, dict)}
+
+    for p in doc.get("inputs", []):
+        if isinstance(p, dict) and p.get("image_input"):
+            ref = p["image_input"]
+            if p.get("type") != "RoiBatch":
+                raise ContractValidationError(f"{prefix}image_input requires a RoiBatch input on port: '{p.get('id')}'")
+            target = input_ports.get(ref)
+            if not target or target.get("type") != "ImageBatch":
+                raise ContractValidationError(f"{prefix}image_input must reference an ImageBatch port in inputs: '{ref}' on port: '{p.get('id')}'")
+
+    for p in doc.get("outputs", []):
+        if isinstance(p, dict):
+            if p.get("image_port"):
+                ref = p["image_port"]
+                if p.get("type") != "RoiBatch":
+                    raise ContractValidationError(f"{prefix}image_port requires a RoiBatch output on port: '{p.get('id')}'")
+                target = output_ports.get(ref)
+                if not target or target.get("type") != "ImageBatch":
+                    raise ContractValidationError(f"{prefix}image_port must reference an ImageBatch port in outputs: '{ref}' on port: '{p.get('id')}'")
+            if p.get("same_geometry_as_input"):
+                ref = p["same_geometry_as_input"]
+                if p.get("type") != "ImageBatch":
+                    raise ContractValidationError(f"{prefix}display.same_geometry_as_input requires an ImageBatch output on port: '{p.get('id')}'")
+                target = input_ports.get(ref)
+                if not target or target.get("type") != "ImageBatch":
+                    raise ContractValidationError(f"{prefix}same_geometry_as_input must reference an ImageBatch port in inputs: '{ref}' on port: '{p.get('id')}'")
+
     return doc
 
 def load_and_validate_declarations(tools_dir: Path, bindings_data: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
@@ -312,7 +368,11 @@ def load_and_validate_declarations(tools_dir: Path, bindings_data: Optional[Dict
     for yf in yaml_files:
         doc = load_yaml(yf)
         validated = validate_tool_declaration(doc, yf, tools_dir=tools_dir)
-        if any(part in yf.parts for part in ("custom", "示例", "examples")):
+        try:
+            rel_parts = yf.relative_to(tools_dir).parts
+        except ValueError:
+            rel_parts = yf.parts
+        if any(part in rel_parts for part in ("custom", "示例", "examples")):
             validated["is_example"] = True
         tid = validated["tool_id"]
         if tid in seen_tool_ids:
@@ -491,6 +551,13 @@ def generate_module_factory_inc(module_name: str, tools_dict: Dict[str, Dict[str
         "",
         "    visionrt::ToolStatus initialize(const visionrt::Values& initParams) override {",
         "        try {",
+        "            for (const auto& [k, v] : initParams) {",
+        "                const bool known = std::any_of(contract_.initParams.begin(), contract_.initParams.end(),",
+        "                    [&](const auto& p) { return p.id == k; });",
+        "                if (!known) {",
+        "                    throw visionrt::ContractError(\"Extra unexpected init parameter: \" + k);",
+        "                }",
+        "            }",
         "            visionrt::validateToolValues(contract_.initParams, initParams, false);",
         "        } catch (const visionrt::ContractError& e) {",
         "            return visionrt::ToolStatus{-2, e.what()};",
@@ -500,6 +567,13 @@ def generate_module_factory_inc(module_name: str, tools_dict: Dict[str, Dict[str
         "",
         "    visionrt::ToolResult execute(const visionrt::Values& inputs) override {",
         "        try {",
+        "            for (const auto& [k, v] : inputs) {",
+        "                const bool known = std::any_of(contract_.inputs.begin(), contract_.inputs.end(),",
+        "                    [&](const auto& p) { return p.id == k; });",
+        "                if (!known) {",
+        "                    throw visionrt::ContractError(\"Extra unexpected input port: \" + k);",
+        "                }",
+        "            }",
         "            visionrt::validateToolValues(contract_.inputs, inputs, false);",
         "        } catch (const visionrt::ContractError& e) {",
         "            visionrt::Values missingOutputs;",
@@ -509,16 +583,29 @@ def generate_module_factory_inc(module_name: str, tools_dict: Dict[str, Dict[str
         "            return visionrt::ToolResult{visionrt::ToolStatus{-2, e.what()}, std::move(missingOutputs)};",
         "        }",
         "        visionrt::ToolResult result = inner_->execute(inputs);",
-        "        if (result.status.code == 0) {",
-        "            try {",
-        "                visionrt::validateToolValues(contract_.outputs, result.outputs, false);",
-        "            } catch (const visionrt::ContractError& e) {",
-        "                visionrt::Values missingOutputs;",
-        "                for (const auto& out : contract_.outputs) {",
-        "                    missingOutputs.emplace(out.id, visionrt::Missing{});",
-        "                }",
-        "                return visionrt::ToolResult{visionrt::ToolStatus{-2, std::string(\"Output contract error: \") + e.what()}, std::move(missingOutputs)};",
+        "        if (result.status.code != 0) {",
+        "            visionrt::Values missingOutputs;",
+        "            for (const auto& out : contract_.outputs) {",
+        "                missingOutputs.emplace(out.id, visionrt::Missing{});",
         "            }",
+        "            result.outputs = std::move(missingOutputs);",
+        "            return result;",
+        "        }",
+        "        try {",
+        "            for (const auto& [k, v] : result.outputs) {",
+        "                const bool known = std::any_of(contract_.outputs.begin(), contract_.outputs.end(),",
+        "                    [&](const auto& p) { return p.id == k; });",
+        "                if (!known) {",
+        "                    throw visionrt::ContractError(\"Extra unexpected output port: \" + k);",
+        "                }",
+        "            }",
+        "            visionrt::validateToolValues(contract_.outputs, result.outputs, false);",
+        "        } catch (const visionrt::ContractError& e) {",
+        "            visionrt::Values missingOutputs;",
+        "            for (const auto& out : contract_.outputs) {",
+        "                missingOutputs.emplace(out.id, visionrt::Missing{});",
+        "            }",
+        "            return visionrt::ToolResult{visionrt::ToolStatus{-2, std::string(\"Output contract error: \") + e.what()}, std::move(missingOutputs)};",
         "        }",
         "        return result;",
         "    }",
@@ -701,7 +788,11 @@ def main():
         try:
             doc = load_yaml(yf)
             validated = validate_tool_declaration(doc, yf, tools_dir=tools_dir)
-            if any(part in yf.parts for part in ("custom", "示例", "examples")):
+            try:
+                rel_parts = yf.relative_to(tools_dir).parts
+            except ValueError:
+                rel_parts = yf.parts
+            if any(part in rel_parts for part in ("custom", "示例", "examples")):
                 validated["is_example"] = True
             tid = validated["tool_id"]
             if tid in seen_tool_ids:
