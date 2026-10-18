@@ -122,10 +122,17 @@ def package_tools(
         try:
             with open(resolved_file, "r", encoding="utf-8") as f:
                 deps_meta = json.load(f)
+            if strict:
+                required_fields = ["generator_variant", "build_infer", "config"]
+                for rf in required_fields:
+                    if rf not in deps_meta:
+                        raise RuntimeError(f"Missing required build metadata field '{rf}' in {resolved_file}")
             if "generator_variant" in deps_meta and deps_meta["generator_variant"] != target_variant:
                 raise RuntimeError(f"Build metadata variant mismatch: resolved_dependencies.json has '{deps_meta['generator_variant']}', packaging target is '{target_variant}'")
             if "build_infer" in deps_meta and bool(deps_meta["build_infer"]) != infer_enabled:
                 raise RuntimeError(f"Build metadata build_infer mismatch: resolved_dependencies.json has build_infer={deps_meta['build_infer']}, packaging target is infer_enabled={infer_enabled}")
+            if config is not None and "config" in deps_meta and deps_meta["config"] != config:
+                raise RuntimeError(f"Build metadata config mismatch: resolved_dependencies.json has config='{deps_meta['config']}', packaging target is '{config}'")
         except RuntimeError:
             raise
         except Exception as e:
@@ -423,17 +430,29 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
         print("[ERROR] module_index.json 'tools' must be a non-empty dictionary")
         return False
 
-    # Collect declared tool registries from packaged YAML files (if present)
+    # Collect declared tool registries from packaged YAML files
     declared_registries = set()
-    for yf in list(install_dir.glob("assets/tools/**/*.yaml")) + list(install_dir.glob("assets/tools/**/*.yml")):
+    yaml_files = list(install_dir.glob("assets/tools/**/*.yaml")) + list(install_dir.glob("assets/tools/**/*.yml"))
+    if not yaml_files:
+        print("[ERROR] No tool declaration YAML files found in assets/tools")
+        return False
+    for yf in yaml_files:
         try:
             import yaml
             yd = yaml.safe_load(yf.read_text(encoding="utf-8")) or {}
             r = yd.get("entry", {}).get("registry_name") or yd.get("tool_id")
             if r:
                 declared_registries.add(r)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[ERROR] Failed to parse tool declaration {yf}: {e}")
+            return False
+
+    index_registries = set(tools_dict.keys())
+    if index_registries != declared_registries:
+        missing_in_index = declared_registries - index_registries
+        extra_in_index = index_registries - declared_registries
+        print(f"[ERROR] module_index.json registry set does not match declared tool definitions: missing_in_index={missing_in_index}, extra_in_index={extra_in_index}")
+        return False
 
     for reg, tinfo in tools_dict.items():
         if not isinstance(tinfo, dict):

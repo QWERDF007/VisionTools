@@ -65,6 +65,7 @@ class TestPackageTools(unittest.TestCase):
             "version": "0.1.0",
             "build_infer": is_gpu,
             "generator_variant": "gpu" if is_gpu else "cpu",
+            "config": "Release",
             "opencv_dir": str(self.mock_opencv.parent).replace("\\", "/"),
             "visionrt_sdk_dir": "C:/dev/visionrt-sdk",
         }
@@ -78,7 +79,27 @@ class TestPackageTools(unittest.TestCase):
 
     def _write_module_index(self, is_gpu=True):
         tools = {
+            "visiontools.preprocess.adaptive_binary": {
+                "kind": "cpp_function",
+                "module_dll": "bin/visiontools_preprocess.dll"
+            },
             "visionrt.image.crop": {
+                "kind": "cpp_function",
+                "module_dll": "bin/visiontools_preprocess.dll"
+            },
+            "visionrt.detection.filter": {
+                "kind": "cpp_function",
+                "module_dll": "bin/visiontools_preprocess.dll"
+            },
+            "visionrt.roi.projection": {
+                "kind": "cpp_function",
+                "module_dll": "bin/visiontools_preprocess.dll"
+            },
+            "visionrt.image.preprocess": {
+                "kind": "cpp_function",
+                "module_dll": "bin/visiontools_preprocess.dll"
+            },
+            "visionrt.image.read": {
                 "kind": "cpp_function",
                 "module_dll": "bin/visiontools_preprocess.dll"
             }
