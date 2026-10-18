@@ -2,6 +2,8 @@
 #include <visionrt/sdk/Tool.h>
 #include <visionrt/sdk/Contract.h>
 #include <visionrt/sdk/Value.h>
+#include <visionrt/common/VersionDef.h>
+#include <cuda_runtime.h>
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/core.hpp>
@@ -95,10 +97,21 @@ std::string utf8(const std::filesystem::path& path) {
 std::string absolute(const std::string& path) { return utf8(std::filesystem::absolute(std::filesystem::u8path(path))); }
 
 struct ProbeEnvironment {
-    std::string sdkVersion = "0.1.0";
-    std::string cudaRuntimeVersion = "11.8";
-    std::string cudaDriverVersion = "11.8";
-    std::string registeredModels = "yolov8n";
+    std::string sdkVersion = VISIONRT_VERSION_STRING;
+    std::string cudaRuntimeVersion = "unavailable";
+    std::string cudaDriverVersion = "unavailable";
+    std::string registeredModels = "visionrt.dl.yolo";
+
+    ProbeEnvironment() {
+        int rt = 0;
+        if (cudaRuntimeGetVersion(&rt) == cudaSuccess && rt > 0) {
+            cudaRuntimeVersion = std::to_string(rt / 1000) + "." + std::to_string((rt % 100) / 10);
+        }
+        int drv = 0;
+        if (cudaDriverGetVersion(&drv) == cudaSuccess && drv > 0) {
+            cudaDriverVersion = std::to_string(drv / 1000) + "." + std::to_string((drv % 100) / 10);
+        }
+    }
 };
 
 struct GpuDevice {
@@ -113,8 +126,22 @@ struct GpuQueryResult {
 
 GpuQueryResult queryDevices() {
     GpuQueryResult result;
+    int count = 0;
+    cudaError_t err = cudaGetDeviceCount(&count);
+    if (err != cudaSuccess || count <= 0) {
+        result.status = {-1, "CUDA device query unavailable"};
+        result.devices.push_back({0, "unavailable"});
+        return result;
+    }
     result.status = {0, ""};
-    result.devices.push_back({0, "NVIDIA CUDA Device"});
+    for (int i = 0; i < count; ++i) {
+        cudaDeviceProp prop{};
+        if (cudaGetDeviceProperties(&prop, i) == cudaSuccess) {
+            result.devices.push_back({i, prop.name});
+        } else {
+            result.devices.push_back({i, "unavailable"});
+        }
+    }
     return result;
 }
 
@@ -265,7 +292,7 @@ bool compareDetections(cv::FileStorage& file, const std::vector<PublicDetection>
         std::vector<bool> visited(b.size(), false);
         if (augment(i, visited)) ++matches;
     }
-    file << "matches" << "[";
+    file << "{" << "matches" << "[";
     for (std::size_t j = 0; j < owners.size(); ++j) if (owners[j] >= 0) {
         const auto& left = a[static_cast<std::size_t>(owners[j])];
         const auto& right = b[j];
