@@ -35,4 +35,41 @@ elseif(DEFINED _vt_opencv_home AND EXISTS "${_vt_opencv_home}/bin")
     file(REAL_PATH "${_vt_opencv_home}/bin" VISIONTOOLS_OPENCV_BIN)
 endif()
 
-file(GLOB OPENCV_DLLS "${VISIONTOOLS_OPENCV_BIN}/*.dll")
+set(VISIONTOOLS_OPENCV_RELEASE_DLL "")
+set(VISIONTOOLS_OPENCV_DEBUG_DLL "")
+
+if(EXISTS "${VISIONTOOLS_OPENCV_BIN}")
+    file(GLOB _opencv_world_rel "${VISIONTOOLS_OPENCV_BIN}/opencv_world[0-9]*.dll")
+    file(GLOB _opencv_world_dbg "${VISIONTOOLS_OPENCV_BIN}/opencv_world[0-9]*d.dll")
+    
+    # Exclude debug from release list
+    foreach(_cand IN LISTS _opencv_world_rel)
+        if(NOT _cand MATCHES "d\\.dll$")
+            set(VISIONTOOLS_OPENCV_RELEASE_DLL "${_cand}")
+            break()
+        endif()
+    endforeach()
+    
+    if(_opencv_world_dbg)
+        list(GET _opencv_world_dbg 0 VISIONTOOLS_OPENCV_DEBUG_DLL)
+    endif()
+
+    # If opencv_world not present, fall back to core component
+    if(NOT VISIONTOOLS_OPENCV_RELEASE_DLL)
+        file(GLOB _opencv_core_rel "${VISIONTOOLS_OPENCV_BIN}/opencv_core[0-9]*.dll")
+        foreach(_cand IN LISTS _opencv_core_rel)
+            if(NOT _cand MATCHES "d\\.dll$")
+                set(VISIONTOOLS_OPENCV_RELEASE_DLL "${_cand}")
+                break()
+            endif()
+        endforeach()
+        file(GLOB _opencv_core_dbg "${VISIONTOOLS_OPENCV_BIN}/opencv_core[0-9]*d.dll")
+        if(_opencv_core_dbg)
+            list(GET _opencv_core_dbg 0 VISIONTOOLS_OPENCV_DEBUG_DLL)
+        endif()
+    endif()
+endif()
+
+if(NOT VISIONTOOLS_OPENCV_RELEASE_DLL)
+    message(FATAL_ERROR "Required OpenCV runtime DLL not found in ${VISIONTOOLS_OPENCV_BIN}")
+endif()

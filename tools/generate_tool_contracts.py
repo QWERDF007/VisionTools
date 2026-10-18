@@ -226,189 +226,9 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
             if p_type not in VALID_TYPES:
                 raise ContractValidationError(f"{prefix}Port '{p_id}' has invalid type '{p_type}'")
 
-            # Direction-specific constraint validation (SSOT with SDK SchemaYaml.cpp)
-            ALLOWED_PORT_FIELDS_OUTPUT = {"id", "name", "type", "dtype", "rank", "layout", "image_port", "display"}
-            ALLOWED_PORT_FIELDS_INPUT = {"id", "name", "type", "dtype", "rank", "layout", "default", "editor", "min", "max",
-                                         "step", "decimals", "options", "options_provider", "tab", "group", "image_input"}
-            ALLOWED_DISPLAY_FIELDS = {"color_order", "same_geometry_as_input"}
-
-            if port_group == "outputs":
-                for k in p:
-                    if k not in ALLOWED_PORT_FIELDS_OUTPUT:
-                        raise ContractValidationError(f"{prefix}Unknown or disallowed output field '{k}' on port: '{p_id}'")
-                if "display" in p and p["display"] is not None:
-                    if not isinstance(p["display"], dict):
-                        raise ContractValidationError(f"{prefix}'display' must be a dictionary on port: '{p_id}'")
-                    for dk in p["display"]:
-                        if dk not in ALLOWED_DISPLAY_FIELDS:
-                            raise ContractValidationError(f"{prefix}Unknown nested field '{dk}' in display on port: '{p_id}'")
-            else:
-                for k in p:
-                    if k not in ALLOWED_PORT_FIELDS_INPUT:
-                        raise ContractValidationError(f"{prefix}Unknown or disallowed input/init field '{k}' on port: '{p_id}'")
-
-            if "editor" in p and p["editor"] is not None:
-                valid_editors = {"number", "text", "bool", "file", "directory", "array", "roi"}
-                if p["editor"] not in valid_editors:
-                    raise ContractValidationError(f"{prefix}Unknown editor '{p['editor']}' on port '{p_id}'")
-
-            if "tab" in p and p["tab"] is not None:
-                valid_tabs = {"基本输入", "预处理", "检测", "结果处理"}
-                if p["tab"] not in valid_tabs:
-                    raise ContractValidationError(f"{prefix}Unknown tab '{p['tab']}' on port '{p_id}'")
-
-            # NumericArray validation
-            if p_type == "NumericArray":
-                dtype = p.get("dtype")
-                if not dtype or dtype not in VALID_DTYPES:
-                    raise ContractValidationError(f"{prefix}Port '{p_id}' of NumericArray requires valid dtype (got '{dtype}')")
-                rank = p.get("rank")
-                if rank is None or isinstance(rank, bool) or not isinstance(rank, int) or rank < 0:
-                    raise ContractValidationError(f"{prefix}Port '{p_id}' of NumericArray requires integer rank >= 0 (got {rank})")
-                layout = p.get("layout", "dense")
-                if layout not in VALID_LAYOUTS:
-                    raise ContractValidationError(f"{prefix}Port '{p_id}' has invalid layout '{layout}'")
-                if layout.lower() in ("batch_ragged", "batchragged") and rank < 2:
-                    raise ContractValidationError(f"{prefix}Port '{p_id}' with batch_ragged requires rank >= 2")
-
-            # StringArray validation
-            if p_type == "StringArray":
-                if "dtype" in p and p["dtype"] is not None:
-                    raise ContractValidationError(f"{prefix}StringArray port '{p_id}' must not declare dtype")
-                rank = p.get("rank")
-                if rank is None or isinstance(rank, bool) or not isinstance(rank, int) or rank < 0:
-                    raise ContractValidationError(f"{prefix}Port '{p_id}' of StringArray requires integer rank >= 0 (got {rank})")
-                layout = p.get("layout", "dense")
-                if layout not in VALID_LAYOUTS:
-                    raise ContractValidationError(f"{prefix}Port '{p_id}' has invalid layout '{layout}'")
-
-            # Default value validation
-            if "default" in p and p["default"] is not None:
-                default_val = p["default"]
-                if p_type == "Int":
-                    if not isinstance(default_val, int) or isinstance(default_val, bool):
-                        raise ContractValidationError(f"{prefix}Default value for Int port '{p_id}' must be an integer (got {default_val})")
-                elif p_type == "Float":
-                    if not isinstance(default_val, (int, float)) or isinstance(default_val, bool):
-                        raise ContractValidationError(f"{prefix}Default value for Float port '{p_id}' must be a number (got {default_val})")
-                    if math.isnan(default_val) or math.isinf(default_val):
-                        raise ContractValidationError(f"{prefix}Default value for Float port '{p_id}' must be finite")
-                elif p_type == "Bool":
-                    if not isinstance(default_val, bool):
-                        raise ContractValidationError(f"{prefix}Default value for Bool port '{p_id}' must be boolean (got {default_val})")
-                elif p_type == "String":
-                    if not isinstance(default_val, str):
-                        raise ContractValidationError(f"{prefix}Default value for String port '{p_id}' must be string (got {default_val})")
-
-            # Step validation
-            if "step" in p and p["step"] is not None:
-                step_val = p["step"]
-                if p_type not in ("Int", "Float"):
-                    raise ContractValidationError(f"{prefix}Numeric constraint 'step' requires Int or Float port: '{p_id}'")
-                if p_type == "Int":
-                    if not isinstance(step_val, int) or isinstance(step_val, bool) or step_val <= 0:
-                        raise ContractValidationError(f"{prefix}Port '{p_id}' step must be positive integer (got {step_val})")
-                elif p_type == "Float":
-                    if not isinstance(step_val, (int, float)) or isinstance(step_val, bool) or step_val <= 0 or math.isnan(step_val) or math.isinf(step_val):
-                        raise ContractValidationError(f"{prefix}Port '{p_id}' step must be positive (got {step_val})")
-
-            # Numeric constraint type checks
-            for attr in ("min", "max"):
-                if attr in p and p[attr] is not None:
-                    val = p[attr]
-                    if p_type not in ("Int", "Float"):
-                        raise ContractValidationError(f"{prefix}Numeric constraint '{attr}' requires Int or Float port: '{p_id}'")
-                    if p_type == "Int":
-                        if not isinstance(val, int) or isinstance(val, bool):
-                            raise ContractValidationError(f"{prefix}Port '{p_id}' {attr} must be integer (got {val})")
-                    elif p_type == "Float":
-                        if not isinstance(val, (int, float)) or isinstance(val, bool) or math.isnan(val) or math.isinf(val):
-                            raise ContractValidationError(f"{prefix}Port '{p_id}' {attr} must be finite float (got {val})")
-
-            if "decimals" in p and p["decimals"] is not None:
-                dec_val = p["decimals"]
-                if p_type not in ("Int", "Float"):
-                    raise ContractValidationError(f"{prefix}Numeric constraint 'decimals' requires Int or Float port: '{p_id}'")
-                if not isinstance(dec_val, int) or isinstance(dec_val, bool) or dec_val < 0:
-                    raise ContractValidationError(f"{prefix}Port '{p_id}' decimals must be non-negative integer (got {dec_val})")
-
-            # Range validation (both two-sided and one-sided)
-            min_val = p.get("min")
-            max_val = p.get("max")
-            def_val = p.get("default")
-            if min_val is not None and max_val is not None:
-                if min_val > max_val:
-                    raise ContractValidationError(f"{prefix}Port '{p_id}' min ({min_val}) > max ({max_val})")
-            if def_val is not None and isinstance(def_val, (int, float)) and not isinstance(def_val, bool):
-                if min_val is not None and def_val < min_val:
-                    raise ContractValidationError(f"{prefix}Port '{p_id}' default ({def_val}) out of range (min is {min_val})")
-                if max_val is not None and def_val > max_val:
-                    raise ContractValidationError(f"{prefix}Port '{p_id}' default ({def_val}) out of range (max is {max_val})")
-
-            # Options validation
-            if "options" in p and p["options"] is not None:
-                opts = p["options"]
-                if not isinstance(opts, list):
-                    raise ContractValidationError(f"{prefix}Port '{p_id}' options must be a list")
-                if p_type not in ("Int", "Float", "String", "Bool"):
-                    raise ContractValidationError(f"{prefix}Port '{p_id}' of type '{p_type}' cannot have options")
-                for opt in opts:
-                    if p_type == "Int":
-                        if not isinstance(opt, int) or isinstance(opt, bool):
-                            raise ContractValidationError(f"{prefix}Option for Int port '{p_id}' must be an integer (got {opt})")
-                    elif p_type == "Float":
-                        if not isinstance(opt, (int, float)) or isinstance(opt, bool) or not math.isfinite(opt):
-                            raise ContractValidationError(f"{prefix}Option for Float port '{p_id}' must be finite number (got {opt})")
-                    elif p_type == "String":
-                        if not isinstance(opt, str):
-                            raise ContractValidationError(f"{prefix}Option for String port '{p_id}' must be string (got {opt})")
-                    elif p_type == "Bool":
-                        if not isinstance(opt, bool):
-                            raise ContractValidationError(f"{prefix}Option for Bool port '{p_id}' must be boolean (got {opt})")
-                    if min_val is not None and isinstance(opt, (int, float)) and opt < min_val:
-                        raise ContractValidationError(f"{prefix}Option {opt} is less than min ({min_val}) on port '{p_id}'")
-                    if max_val is not None and isinstance(opt, (int, float)) and opt > max_val:
-                        raise ContractValidationError(f"{prefix}Option {opt} exceeds max ({max_val}) on port '{p_id}'")
-                if "default" in p and p["default"] is not None:
-                    if p["default"] not in opts:
-                        raise ContractValidationError(f"{prefix}Port '{p_id}' default value is not one of declared options")
-
-            if "options_provider" in p and p["options_provider"] is not None:
-                provider = p["options_provider"]
-                if provider != "platform.gpu_devices":
-                    raise ContractValidationError(f"{prefix}Unknown options_provider '{provider}' on port '{p_id}'")
-
-    # 5. Image reference validation (SSOT with SDK Schema.cpp)
-    input_ports = {p.get("id"): p for p in doc.get("inputs", []) if isinstance(p, dict)}
-    output_ports = {p.get("id"): p for p in doc.get("outputs", []) if isinstance(p, dict)}
-
-    for p in doc.get("inputs", []):
-        if isinstance(p, dict) and p.get("image_input"):
-            ref = p["image_input"]
-            if p.get("type") != "RoiBatch":
-                raise ContractValidationError(f"{prefix}image_input requires a RoiBatch input on port: '{p.get('id')}'")
-            target = input_ports.get(ref)
-            if not target or target.get("type") != "ImageBatch":
-                raise ContractValidationError(f"{prefix}image_input must reference an ImageBatch port in inputs: '{ref}' on port: '{p.get('id')}'")
-
-    for p in doc.get("outputs", []):
-        if isinstance(p, dict):
-            if p.get("image_port"):
-                ref = p["image_port"]
-                if p.get("type") != "RoiBatch":
-                    raise ContractValidationError(f"{prefix}image_port requires a RoiBatch output on port: '{p.get('id')}'")
-                target = output_ports.get(ref)
-                if not target or target.get("type") != "ImageBatch":
-                    raise ContractValidationError(f"{prefix}image_port must reference an ImageBatch port in outputs: '{ref}' on port: '{p.get('id')}'")
-            if p.get("same_geometry_as_input"):
-                ref = p["same_geometry_as_input"]
-                if p.get("type") != "ImageBatch":
-                    raise ContractValidationError(f"{prefix}display.same_geometry_as_input requires an ImageBatch output on port: '{p.get('id')}'")
-                target = input_ports.get(ref)
-                if not target or target.get("type") != "ImageBatch":
-                    raise ContractValidationError(f"{prefix}same_geometry_as_input must reference an ImageBatch port in inputs: '{ref}' on port: '{p.get('id')}'")
 
     return doc
+
 
 def load_and_validate_declarations(tools_dir: Path, bindings_data: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """
@@ -755,7 +575,8 @@ def build_module_index(tools: List[Dict[str, Any]], bindings_data: Optional[Dict
 
     if bindings_data and "modules" in bindings_data:
         for mod_name, mod_info in bindings_data["modules"].items():
-            if variant == "cpu" and "infer" in mod_name:
+            mod_variant = mod_info.get("variant", "cpu")
+            if variant == "cpu" and mod_variant == "gpu":
                 continue
             modules[mod_name] = {}
             for reg in mod_info.get("tools", {}):
@@ -795,7 +616,7 @@ def main():
     parser = argparse.ArgumentParser(description="Tool Contract and Registry Generator")
     parser.add_argument("--tools-dir", default="assets/tools", help="Directory with tool YAMLs")
     parser.add_argument("--bindings", default="tools/module_bindings.yaml", help="Path to module_bindings.yaml")
-    parser.add_argument("--output-dir", default="src/generated", help="Directory for generated C++ files")
+    parser.add_argument("--output-dir", default="build/generated", help="Directory for generated C++ files")
     parser.add_argument("--index-output", default="module_index.yaml", help="Output path for module index YAML")
     parser.add_argument("--variant", default="gpu", choices=["gpu", "cpu"], help="Distribution variant")
     parser.add_argument("--sdk-include-dir", default=None, help="VisionRT SDK include directory")

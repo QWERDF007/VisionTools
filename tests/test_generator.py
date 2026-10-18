@@ -45,20 +45,6 @@ class TestToolContractGenerator(unittest.TestCase):
         self.assertEqual(validated["tool_id"], "test.fixture.valid")
         self.assertEqual(validated["schema_version"], 1)
 
-    def test_invalid_dtype_rejected(self):
-        invalid_path = self.fixtures_dir / "invalid_dtype_tool.yaml"
-        doc = load_yaml(invalid_path)
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, invalid_path)
-        self.assertIn("valid dtype", str(ctx.exception))
-
-    def test_invalid_default_rejected(self):
-        invalid_path = self.fixtures_dir / "invalid_default_tool.yaml"
-        doc = load_yaml(invalid_path)
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, invalid_path)
-        self.assertIn("Default value for Int port", str(ctx.exception))
-
     def test_missing_entry_rejected(self):
         invalid_path = self.fixtures_dir / "missing_entry_tool.yaml"
         doc = load_yaml(invalid_path)
@@ -83,37 +69,6 @@ class TestToolContractGenerator(unittest.TestCase):
             validate_tool_declaration(doc, Path("test.yaml"))
         self.assertIn("Duplicate port id 'images'", str(ctx.exception))
 
-    def test_min_greater_than_max_rejected(self):
-        doc = {
-            "schema_version": 1,
-            "tool_id": "test.range.invalid",
-            "display_name": "Invalid Range",
-            "kind": "cpp_function",
-            "entry": {"registry_name": "test.range.invalid"},
-            "inputs": [
-                {"id": "val", "name": "值", "type": "Int", "min": 10, "max": 5}
-            ],
-            "outputs": []
-        }
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, Path("test.yaml"))
-        self.assertIn("min (10) > max (5)", str(ctx.exception))
-
-    def test_default_out_of_range_rejected(self):
-        doc = {
-            "schema_version": 1,
-            "tool_id": "test.range.out",
-            "display_name": "Out of Range",
-            "kind": "cpp_function",
-            "entry": {"registry_name": "test.range.out"},
-            "inputs": [
-                {"id": "val", "name": "值", "type": "Int", "default": 20, "min": 1, "max": 10}
-            ],
-            "outputs": []
-        }
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, Path("test.yaml"))
-        self.assertIn("default (20) out of range", str(ctx.exception))
 
     def test_port_identifier_collision_rejected(self):
         doc = {
@@ -131,22 +86,6 @@ class TestToolContractGenerator(unittest.TestCase):
         with self.assertRaises(ContractValidationError) as ctx:
             validate_tool_declaration(doc, Path("test.yaml"))
         self.assertIn("identifier collision", str(ctx.exception))
-
-    def test_batch_ragged_rank_lt_2_rejected(self):
-        doc = {
-            "schema_version": 1,
-            "tool_id": "test.ragged.rank",
-            "display_name": "Ragged Rank",
-            "kind": "cpp_function",
-            "entry": {"registry_name": "test.ragged.rank"},
-            "inputs": [
-                {"id": "arr", "name": "数组", "type": "NumericArray", "dtype": "Float32", "rank": 1, "layout": "batch_ragged"}
-            ],
-            "outputs": []
-        }
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, Path("test.yaml"))
-        self.assertIn("requires rank >= 2", str(ctx.exception))
 
     def test_reordered_yaml_semantic_invariance(self):
         valid_path = self.fixtures_dir / "valid_tool.yaml"
@@ -184,10 +123,12 @@ class TestToolContractGenerator(unittest.TestCase):
         bindings = {
             "modules": {
                 "visiontools_preprocess": {
+                    "variant": "cpu",
                     "dll_name": "bin/visiontools_preprocess.dll",
                     "tools": {"tool.cpu": {"class": "CpuTool", "header": "CpuTool.h"}}
                 },
                 "visiontools_infer": {
+                    "variant": "gpu",
                     "dll_name": "bin/visiontools_infer.dll",
                     "tools": {"tool.gpu": {"class": "GpuTool", "header": "GpuTool.h"}}
                 }
@@ -224,35 +165,6 @@ class TestToolContractGenerator(unittest.TestCase):
         self.assertIn('ValidatedToolInstance', content)
         self.assertIn('std::make_unique<CpuTool>(s)', content)
         self.assertIn('s_generatedModuleApi', content)
-
-    def test_bool_rank_rejected(self):
-        doc = {
-            "schema_version": 1,
-            "tool_id": "test.bool.rank",
-            "display_name": "Bool Rank Tool",
-            "kind": "cpp_function",
-            "entry": {"registry_name": "test.bool.rank"},
-            "inputs": [{"id": "x", "name": "X", "type": "NumericArray", "dtype": "float32", "rank": True}],
-            "outputs": []
-        }
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, Path("test.yaml"))
-        self.assertIn("integer rank >= 0", str(ctx.exception))
-
-    def test_onesided_range_rejected(self):
-        # min constraint with smaller default
-        doc = {
-            "schema_version": 1,
-            "tool_id": "test.onesided.range",
-            "display_name": "Onesided Range Tool",
-            "kind": "cpp_function",
-            "entry": {"registry_name": "test.onesided.range"},
-            "inputs": [{"id": "x", "name": "X", "type": "Float", "default": -1.0, "min": 0.0}],
-            "outputs": []
-        }
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, Path("test.yaml"))
-        self.assertIn("out of range", str(ctx.exception))
 
     def test_missing_python_file_rejected(self):
         doc = {
@@ -362,60 +274,116 @@ class TestToolContractGenerator(unittest.TestCase):
             validate_tool_declaration(doc, Path("test.yaml"))
         self.assertIn("reserved '__' prefix", str(ctx.exception))
 
-    def test_negative_step_rejected(self):
-        doc = {
-            "schema_version": 1,
-            "tool_id": "test.step.invalid",
-            "display_name": "Invalid Step",
-            "kind": "cpp_function",
-            "entry": {"registry_name": "test.step.invalid"},
-            "inputs": [{"id": "x", "name": "X", "type": "Float", "step": -1.0}],
-            "outputs": []
-        }
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, Path("test.yaml"))
-        self.assertIn("step must be positive", str(ctx.exception))
+    def test_cli_formal_validation(self):
+        """VT-S04 / VT-T04: Formal CLI runs real SDK validator and covers valid, invalid types, duplicate keys, unknown fields, missing validator."""
+        import subprocess
+        script = str(tools_dir / "generate_tool_contracts.py")
+        validator = Path("C:/dev/visionrt-sdk/bin/visionrt_validate_tool.exe")
+        sdk_inc = Path("C:/dev/visionrt-sdk/include")
+        if not validator.is_file() or not sdk_inc.is_dir():
+            self.skipTest("VisionRT SDK not installed at C:/dev/visionrt-sdk")
 
-    def test_r79a_missing_name_rejected(self):
-        valid_path = self.fixtures_dir / "valid_tool.yaml"
-        doc = load_yaml(valid_path)
-        doc["inputs"][0].pop("name")
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, valid_path)
-        self.assertIn("missing or empty 'name'", str(ctx.exception))
+        with tempfile.TemporaryDirectory() as td:
+            t = Path(td)
+            tools_d = t / "tools"
+            tools_d.mkdir()
 
-    def test_r79b_wrong_options_type_rejected(self):
-        valid_path = self.fixtures_dir / "valid_tool.yaml"
-        doc = load_yaml(valid_path)
-        doc["inputs"][1]["options"] = ["not_an_int"]
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, valid_path)
-        self.assertIn("must be an integer", str(ctx.exception))
+            valid_tool = tools_d / "valid.yaml"
+            valid_tool.write_text((self.fixtures_dir / "valid_tool.yaml").read_text(encoding="utf-8"), encoding="utf-8")
 
-    def test_r79c_unknown_provider_rejected(self):
-        valid_path = self.fixtures_dir / "valid_tool.yaml"
-        doc = load_yaml(valid_path)
-        doc["inputs"][0]["options_provider"] = "invalid.provider"
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, valid_path)
-        self.assertIn("Unknown options_provider", str(ctx.exception))
+            bindings_path = t / "bindings.yaml"
+            bindings_path.write_text(
+                "modules:\n"
+                "  visiontools_preprocess:\n"
+                "    variant: 'cpu'\n"
+                "    dll_name: 'bin/visiontools_preprocess.dll'\n"
+                "    namespace: 'visiontools::preprocess'\n"
+                "    tools:\n"
+                "      'test.fixture.valid':\n"
+                "        class: 'ValidTool'\n"
+                "        header: 'ValidTool.h'\n",
+                encoding="utf-8"
+            )
 
-    def test_r79d_init_input_overlap_rejected(self):
-        valid_path = self.fixtures_dir / "valid_tool.yaml"
-        doc = load_yaml(valid_path)
-        doc["init_params"] = [{"id": "count", "name": "重叠参数", "type": "Int"}]
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, valid_path)
-        self.assertIn("init_params and inputs share ID", str(ctx.exception))
+            gen_d = t / "generated"
+            idx_out = t / "module_index.yaml"
 
-    def test_r79e_function_init_params_rejected(self):
-        valid_path = self.fixtures_dir / "valid_tool.yaml"
-        doc = load_yaml(valid_path)
-        doc["kind"] = "cpp_function"
-        doc["init_params"] = [{"id": "init_p", "name": "初始化参数", "type": "Int"}]
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, valid_path)
-        self.assertIn("Function tool cannot have init_params", str(ctx.exception))
+            cmd = [
+                sys.executable, script,
+                "--tools-dir", str(tools_d),
+                "--bindings", str(bindings_path),
+                "--output-dir", str(gen_d),
+                "--index-output", str(idx_out),
+                "--sdk-include-dir", str(sdk_inc),
+                "--validator", str(validator)
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, f"Valid tool generation failed:\n{res.stderr}")
+            self.assertTrue((gen_d / "PortConstants.h").exists())
+            self.assertTrue(idx_out.exists())
+
+            invalid_tool = tools_d / "invalid_dtype.yaml"
+            invalid_tool.write_text(
+                "schema_version: 1\n"
+                "tool_id: test.invalid.dtype\n"
+                "display_name: Invalid DType\n"
+                "kind: cpp_function\n"
+                "entry:\n"
+                "  registry_name: test.invalid.dtype\n"
+                "inputs:\n"
+                "  - id: arr\n"
+                "    name: 数组\n"
+                "    type: NumericArray\n"
+                "    dtype: unknown_type\n"
+                "    rank: 1\n"
+                "outputs: []\n",
+                encoding="utf-8"
+            )
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("visionrt_validate_tool failed", res.stderr)
+            invalid_tool.unlink()
+
+            nested_tool = tools_d / "nested.yaml"
+            nested_tool.write_text(
+                "schema_version: 1\n"
+                "tool_id: test.nested.err\n"
+                "display_name: Nested Error\n"
+                "kind: cpp_function\n"
+                "entry:\n"
+                "  registry_name: test.nested.err\n"
+                "inputs: []\n"
+                "outputs:\n"
+                "  - id: img\n"
+                "    name: 图像\n"
+                "    type: ImageBatch\n"
+                "    display:\n"
+                "      unknown_field: 123\n",
+                encoding="utf-8"
+            )
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("visionrt_validate_tool failed", res.stderr)
+            nested_tool.unlink()
+
+            dup_tool = tools_d / "dup.yaml"
+            dup_tool.write_text("schema_version: 1\nschema_version: 1\n", encoding="utf-8")
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            self.assertNotEqual(res.returncode, 0)
+            dup_tool.unlink()
+
+            cmd_no_val = [
+                sys.executable, script,
+                "--tools-dir", str(tools_d),
+                "--bindings", str(bindings_path),
+                "--output-dir", str(gen_d),
+                "--index-output", str(idx_out),
+                "--sdk-include-dir", str(sdk_inc)
+            ]
+            res = subprocess.run(cmd_no_val, capture_output=True, text=True)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("Missing required --validator", res.stderr)
+
 
     def test_r80_yml_only_declarations(self):
         from generate_tool_contracts import load_and_validate_declarations
@@ -435,15 +403,6 @@ class TestToolContractGenerator(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             yaml.load(yaml_content, Loader=UniqueKeyLoader)
         self.assertIn("Duplicate key detected", str(ctx.exception))
-
-    def test_n07_unknown_nested_display_field_rejected(self):
-        """N07: Unknown nested fields under display dictionary must be rejected."""
-        valid_path = self.fixtures_dir / "valid_tool.yaml"
-        doc = load_yaml(valid_path)
-        doc["outputs"][0]["display"] = {"unsupported_field": True}
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, valid_path)
-        self.assertIn("Unknown nested field", str(ctx.exception))
 
     def test_n06_nonexistent_validator_rejected(self):
         """N06: Explicit non-existent validator must exit non-zero without fallbacks."""

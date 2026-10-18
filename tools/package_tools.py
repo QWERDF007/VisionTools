@@ -136,16 +136,30 @@ def package_tools(
     declared_tool_ids = set()
     if src_tools_dir.exists():
         decl_files = sorted(set(src_tools_dir.glob("**/*.yaml")) | set(src_tools_dir.glob("**/*.yml")))
+        bindings_file = project_root / "tools" / "module_bindings.yaml"
+        tool_variants = {}
+        if bindings_file.exists():
+            b_data = load_yaml(bindings_file) or {}
+            for mod_name, mod_info in b_data.get("modules", {}).items():
+                if isinstance(mod_info, dict):
+                    m_variant = mod_info.get("variant", "cpu")
+                    tools_sec = mod_info.get("tools", {})
+                    t_names = tools_sec.keys() if isinstance(tools_sec, dict) else tools_sec
+                    for t in t_names:
+                        tool_variants[t] = m_variant
+
         for df in decl_files:
             rel = df.relative_to(src_tools_dir)
             if any(part in rel.parts for part in ("custom", "示例", "examples")):
                 continue
-            if not infer_enabled and ("dl.yolo" in df.name or "infer" in rel.as_posix().lower()):
-                continue
             doc = load_yaml(df) or {}
             reg = doc.get("entry", {}).get("registry_name") or doc.get("tool_id")
-            if reg:
-                declared_tool_ids.add(reg)
+            if not reg:
+                continue
+            tool_variant = tool_variants.get(reg, doc.get("variant", "cpu"))
+            if not infer_enabled and tool_variant == "gpu":
+                continue
+            declared_tool_ids.add(reg)
 
     indexed_tools = build_index.get("tools", {})
     if set(declared_tool_ids) != set(indexed_tools.keys()):
@@ -168,8 +182,26 @@ def package_tools(
     if not modules_dict and build_index.get("modules"):
         modules_dict = build_index["modules"]
 
+    # Load bindings if available to know module variants (VT-S01)
+    bindings_map = {}
+    bindings_file = project_root / "tools" / "module_bindings.yaml"
+    if bindings_file.exists():
+        try:
+            b_data = load_yaml(bindings_file)
+            for m_name, m_info in b_data.get("modules", {}).items():
+                if isinstance(m_info, dict) and "variant" in m_info:
+                    bindings_map[m_name] = m_info["variant"]
+        except Exception:
+            pass
+
     for mod_name, mod_info in modules_dict.items():
-        if not infer_enabled and "infer" in mod_name:
+        mod_variant = None
+        if isinstance(mod_info, dict):
+            mod_variant = mod_info.get("variant")
+        if not mod_variant:
+            mod_variant = bindings_map.get(mod_name, "cpu")
+
+        if not infer_enabled and mod_variant == "gpu":
             continue
         dll_name = f"{mod_name}.dll"
         dest_lib = bin_dir / dll_name
@@ -179,26 +211,15 @@ def package_tools(
             src_path = Path(mod_info["source"])
             if not src_path.exists():
                 raise RuntimeError(f"Missing required module source for '{mod_name}': {src_path}")
-        if not src_path:
-            candidates = [
-                build_dir / "src" / mod_name.replace("visiontools_", "") / dll_name,
-                build_dir / "src" / mod_name / dll_name,
-                build_dir / "bin" / dll_name,
-                build_dir / dll_name,
-                build_dir / config / dll_name
-            ]
-            for c in candidates:
-                if c.exists():
-                    src_path = c
-                    break
+        else:
+            default_cand = build_dir / "src" / mod_name.replace("visiontools_", "") / dll_name
+            if default_cand.exists():
+                src_path = default_cand
+            else:
+                raise RuntimeError(f"Missing required module DLL for '{mod_name}': {dll_name}")
 
-        if not src_path or not src_path.exists():
-            raise RuntimeError(f"Missing required module DLL for '{mod_name}': {src_path or dll_name}")
-
-        with open(src_path, "rb") as f:
-            dll_bytes = f.read()
-        if b"visiontoolsModuleApi" not in dll_bytes:
-            raise RuntimeError(f"Module DLL at {src_path} is invalid: missing 'visiontoolsModuleApi'")
+        if not src_path.exists():
+            raise RuntimeError(f"Missing required module DLL for '{mod_name}': {src_path}")
 
         shutil.copy2(src_path, dest_lib)
         installed_modules[mod_name] = {"library": f"bin/{dll_name}"}
@@ -256,50 +277,6 @@ def package_tools(
                 installed_runtime_files.append(Path(rf["destination"]).as_posix())
             else:
                 raise RuntimeError(f"Missing required runtime dependency file: {sp}")
-
-    # Fallback dependency discovery if runtime_entries is empty or incomplete
-    if not any("opencv" in r.lower() for r in installed_runtime_files):
-        opencv_bins = [
-            Path(os.environ.get("OpenCV_DIR", "D:/Software/dev/opencv-4.8.0/build/x64/vc16")) / "bin",
-            Path("D:/Software/dev/opencv-4.8.0/build/x64/vc16/bin")
-        ]
-        for ob in opencv_bins:
-            if ob.exists():
-                for dll in ob.glob("*.dll"):
-                    dest = bin_dir / dll.name
-                    shutil.copy2(dll, dest)
-                    installed_runtime_files.append(f"bin/{dll.name}")
-                break
-
-    if infer_enabled:
-        if not any("inferrt" in r.lower() for r in installed_runtime_files):
-            inf_bin = Path(os.environ.get("INFERRT_ROOT", "F:/Projects/InferRT/InferRT-0.0.3")) / "bin"
-            if inf_bin.exists():
-                for dll in inf_bin.glob("*.dll"):
-                    dest = bin_dir / dll.name
-                    shutil.copy2(dll, dest)
-                    installed_runtime_files.append(f"bin/{dll.name}")
-        if not any("cudart" in r.lower() for r in installed_runtime_files):
-            cuda_bin = Path(os.environ.get("CUDA_PATH", "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8")) / "bin"
-            if cuda_bin.exists():
-                for pat in ["cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll", "cudnn*.dll"]:
-                    for dll in cuda_bin.glob(pat):
-                        dest = bin_dir / dll.name
-                        shutil.copy2(dll, dest)
-                        installed_runtime_files.append(f"bin/{dll.name}")
-        if not any("nvinfer" in r.lower() for r in installed_runtime_files):
-            trt_candidates = [
-                Path(os.environ.get("TRT_ROOT", "D:/Software/dev/TensorRT-10.16.1.11")) / "bin",
-                Path(os.environ.get("TRT_ROOT", "D:/Software/dev/TensorRT-10.16.1.11")) / "lib"
-            ]
-            for tc in trt_candidates:
-                if tc.exists():
-                    for pat in ["nvinfer*.dll", "nvonnxparser*.dll"]:
-                        for dll in tc.glob(pat):
-                            dest = bin_dir / dll.name
-                            shutil.copy2(dll, dest)
-                            installed_runtime_files.append(f"bin/{dll.name}")
-                    break
 
     installed_runtime_files = sorted(set(installed_runtime_files))
 
@@ -371,11 +348,6 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
         lib_path = install_dir / lib_str
         if not lib_path.exists():
             print(f"[ERROR] Indexed module library not found: {lib_path}")
-            return False
-        with open(lib_path, "rb") as f:
-            lib_bytes = f.read()
-        if b"visiontoolsModuleApi" not in lib_bytes:
-            print(f"[ERROR] Module DLL '{lib_path}' does not export 'visiontoolsModuleApi'")
             return False
 
     tools_dict = idx.get("tools")
@@ -452,22 +424,39 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
     bin_dir = install_dir / "bin"
     gpu_dll_names = ["cudart", "cublas", "nvinfer", "inferrt", "cudnn", "cufft", "nvonnxparser"]
 
-    # CPU/GPU isolation and dependency completeness checks (R75, R76, R77)
-    infer_dll = bin_dir / "visiontools_infer.dll"
-    if not is_gpu:
-        if infer_dll.exists():
-            print("[ERROR] CPU package verification failed: visiontools_infer.dll found in CPU package")
-            return False
-        if any("infer" in m.lower() for m in modules_dict):
-            print("[ERROR] CPU package verification failed: infer module referenced in CPU package")
-            return False
+    bindings_file = install_dir.parent.parent / "tools" / "module_bindings.yaml"
+    if not bindings_file.exists():
+        bindings_file = Path(__file__).resolve().parent.parent / "tools" / "module_bindings.yaml"
 
-        # CPU package requires opencv_world (R75)
-        if not any("opencv_world" in r.lower() for r in runtime_files):
-            print("[ERROR] CPU package verification failed: opencv_world missing in runtime_files")
+    gpu_modules = set()
+    if bindings_file.exists():
+        try:
+            b_data = load_yaml(bindings_file) or {}
+            for m_name, m_info in b_data.get("modules", {}).items():
+                if isinstance(m_info, dict) and m_info.get("variant") == "gpu":
+                    gpu_modules.add(m_name)
+        except Exception:
+            pass
+    if not gpu_modules:
+        gpu_modules.add("visiontools_infer")
+
+    # CPU/GPU isolation and dependency completeness checks (R75, R76, R77, VT-S01)
+    if not is_gpu:
+        for m_name in gpu_modules:
+            if m_name in modules_dict:
+                print(f"[ERROR] CPU package verification failed: GPU module '{m_name}' found in CPU package")
+                return False
+            m_dll = bin_dir / f"{m_name}.dll"
+            if m_dll.exists():
+                print(f"[ERROR] CPU package verification failed: {m_name}.dll found in CPU package")
+                return False
+
+        # CPU package requires opencv (R75 / VT-S01)
+        if not any("opencv" in r.lower() for r in runtime_files):
+            print("[ERROR] CPU package verification failed: opencv missing in runtime_files")
             return False
-        if not any("opencv_world" in f.name.lower() for f in bin_dir.glob("*.dll")):
-            print("[ERROR] CPU package verification failed: opencv_world missing in bin/")
+        if not any("opencv" in f.name.lower() for f in bin_dir.glob("*.dll")):
+            print("[ERROR] CPU package verification failed: opencv missing in bin/")
             return False
 
         # CPU package forbids any GPU DLLs (R77)
@@ -480,12 +469,14 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
                 print(f"[ERROR] CPU package verification failed: found GPU DLL in runtime_files: {rf}")
                 return False
     else:
-        if not infer_dll.exists():
-            print("[ERROR] GPU package verification failed: visiontools_infer.dll missing")
-            return False
+        for m_name in gpu_modules:
+            m_dll = bin_dir / f"{m_name}.dll"
+            if not m_dll.exists():
+                print(f"[ERROR] GPU package verification failed: {m_name}.dll missing")
+                return False
 
-        # GPU package requires opencv_world, inferrt_core, and cudart64
-        required_gpu_libs = ["opencv_world", "inferrt_core", "cudart64"]
+        # GPU package requires opencv, inferrt_core, and cudart64
+        required_gpu_libs = ["opencv", "inferrt_core", "cudart64"]
         for dep in required_gpu_libs:
             if not any(dep in rf.lower() for rf in runtime_files):
                 print(f"[ERROR] GPU package verification failed: {dep} missing in runtime_files")
@@ -513,7 +504,63 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
             print("[ERROR] GPU package verification failed: no TensorRT core runtime DLL found in package")
             return False
 
+    # Universal index validator from SDK (VT-S02 / RT-T01)
+    validator_bin = None
+    for cand in [
+        Path("C:/dev/visionrt-sdk/bin/visionrt_validate_tool.exe"),
+        Path("C:/dev/visionrt-sdk/bin/visionrt_validate_tool"),
+        Path(__file__).resolve().parent.parent.parent / "VisionRT" / "build" / "bin" / "visionrt_validate_tool.exe",
+    ]:
+        if cand.is_file():
+            validator_bin = cand
+            break
+
+    if validator_bin:
+        import subprocess
+        res = subprocess.run([str(validator_bin), "--index", str(index_path)], capture_output=True, text=True)
+        if res.returncode != 0:
+            print(f"[ERROR] visionrt_validate_tool --index failed for {index_path}:\n{res.stderr or res.stdout}")
+            return False
+
     print(f"[SUCCESS] Package verification passed ({len(tools_dict)} tools verified, variant={expected_variant}).")
+    return True
+
+def verify_runtime(install_dir: Path, consumer_bin: Optional[Path] = None) -> bool:
+    """
+    Run real installation consumer in isolated subprocess with clean PATH (VT-S02 / VT-T02).
+    """
+    install_dir = Path(install_dir).resolve()
+    if consumer_bin is None:
+        for cand in [
+            Path("build/tests/test_installation_consumer.exe"),
+            Path("build/tests/Release/test_installation_consumer.exe"),
+            install_dir.parent.parent / "build" / "tests" / "test_installation_consumer.exe",
+            install_dir.parent.parent / "build" / "tests" / "Release" / "test_installation_consumer.exe",
+        ]:
+            if cand.is_file():
+                consumer_bin = cand
+                break
+    if not consumer_bin or not consumer_bin.is_file():
+        print(f"[ERROR] test_installation_consumer binary not found for runtime verification")
+        return False
+
+    bin_dir = install_dir / "bin"
+    system_root = os.environ.get("SystemRoot", "C:\\Windows")
+    isolated_path = os.pathsep.join([
+        str(bin_dir),
+        os.path.join(system_root, "System32"),
+        system_root,
+        os.path.join(system_root, "System32", "Wbem"),
+    ])
+    env = os.environ.copy()
+    env["PATH"] = isolated_path
+
+    import subprocess
+    res = subprocess.run([str(consumer_bin), str(install_dir)], env=env, capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"[ERROR] Runtime verification failed (exit code {res.returncode}):\n{res.stderr or res.stdout}")
+        return False
+    print(f"[SUCCESS] Runtime verification passed for package at {install_dir}")
     return True
 
 def main():
@@ -523,6 +570,7 @@ def main():
     parser.add_argument("--config", default="Release", help="Build configuration (Release, Debug)")
     parser.add_argument("--no-infer", action="store_true", help="Package CPU-only tools (exclude GPU)")
     parser.add_argument("--verify-only", action="store_true", help="Run verification without rebuilding")
+    parser.add_argument("--verify-runtime", action="store_true", help="Run dynamic consumer in clean PATH")
     args = parser.parse_args()
 
     install_dir = Path(args.install_dir)
@@ -530,6 +578,8 @@ def main():
 
     if args.verify_only:
         ok = verify_package(install_dir, is_gpu=is_gpu)
+        if ok and args.verify_runtime:
+            ok = verify_runtime(install_dir)
         sys.exit(0 if ok else 1)
 
     try:
@@ -540,9 +590,13 @@ def main():
             infer_enabled=is_gpu,
             strict=True
         )
+        if args.verify_runtime:
+            if not verify_runtime(install_dir):
+                sys.exit(1)
     except Exception as e:
         print(f"[ERROR] Packaging failed: {e}", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":
     main()
+

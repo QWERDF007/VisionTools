@@ -32,13 +32,39 @@ inline void freeSharedLib(LibHandle h) { dlclose(h); }
 #include <visionrt/sdk/SchemaYaml.h>
 #include <yaml-cpp/yaml.h>
 
-#define REQUIRE(cond, msg) \
+#define REQUIRE_STRUCTURE(cond, msg) \
     do { \
         if (!(cond)) { \
-            std::cerr << "Assertion failed: " << #cond << " (" << msg << ") at line " << __LINE__ << std::endl; \
-            std::exit(1); \
+            std::cerr << "[STRUCTURE_ERROR] " << (msg) << " (" #cond ") at line " << __LINE__ << std::endl; \
+            std::exit(2); \
         } \
     } while(0)
+
+#define REQUIRE_LOADING(cond, msg) \
+    do { \
+        if (!(cond)) { \
+            std::cerr << "[LOADING_ERROR] " << (msg) << " (" #cond ") at line " << __LINE__ << std::endl; \
+            std::exit(3); \
+        } \
+    } while(0)
+
+#define REQUIRE_ABI(cond, msg) \
+    do { \
+        if (!(cond)) { \
+            std::cerr << "[ABI_ERROR] " << (msg) << " (" #cond ") at line " << __LINE__ << std::endl; \
+            std::exit(4); \
+        } \
+    } while(0)
+
+#define REQUIRE_EXECUTION(cond, msg) \
+    do { \
+        if (!(cond)) { \
+            std::cerr << "[EXECUTION_ERROR] " << (msg) << " (" #cond ") at line " << __LINE__ << std::endl; \
+            std::exit(5); \
+        } \
+    } while(0)
+
+#define REQUIRE(cond, msg) REQUIRE_EXECUTION(cond, msg)
 
 inline std::set<std::string> loadExpectedToolsFromIndex(const std::filesystem::path& indexPath, const std::string& moduleName) {
     std::set<std::string> registries;
@@ -102,19 +128,19 @@ int main(int argc, char** argv) {
     if (std::filesystem::is_directory(target)) {
         packageDir = target;
         std::filesystem::path indexYaml = packageDir / "module_index.yaml";
-        REQUIRE(std::filesystem::exists(indexYaml), "Package directory must contain module_index.yaml (YS-01 / YS-04)");
+        REQUIRE_STRUCTURE(std::filesystem::exists(indexYaml), "Package directory must contain module_index.yaml (YS-01 / YS-04)");
         try {
             const auto indexData = visionrt::parseModuleIndexFile(indexYaml);
             auto it = indexData.modules.find("visiontools_preprocess");
-            REQUIRE(it != indexData.modules.end() && !it->second.library.empty(), "module_index.yaml must declare visiontools_preprocess module");
+            REQUIRE_STRUCTURE(it != indexData.modules.end() && !it->second.library.empty(), "module_index.yaml must declare visiontools_preprocess module");
             dllPath = target / it->second.library;
         } catch (const std::exception& e) {
-            std::cerr << "[ERROR] Failed reading module_index.yaml: " << e.what() << std::endl;
-            return 1;
+            std::cerr << "[STRUCTURE_ERROR] Failed reading module_index.yaml: " << e.what() << std::endl;
+            return 2;
         }
         if (!std::filesystem::exists(dllPath)) {
-            std::cerr << "[ERROR] Module library not found in package directory: " << dllPath.string() << std::endl;
-            return 1;
+            std::cerr << "[STRUCTURE_ERROR] Module library not found in package directory: " << dllPath.string() << std::endl;
+            return 2;
         }
     } else {
         if (target.parent_path().filename() == "bin") {
@@ -130,23 +156,23 @@ int main(int argc, char** argv) {
     LibHandle handle = loadSharedLib(p);
     if (!handle) {
 #ifdef _WIN32
-        std::cerr << "[ERROR] Failed to load library: " << p.string() << " (GetLastError=" << GetLastError() << ")" << std::endl;
+        std::cerr << "[LOADING_ERROR] Failed to load library: " << p.string() << " (GetLastError=" << GetLastError() << ")" << std::endl;
 #else
-        std::cerr << "[ERROR] Failed to load library: " << p.string() << " (" << dlerror() << ")" << std::endl;
+        std::cerr << "[LOADING_ERROR] Failed to load library: " << p.string() << " (" << dlerror() << ")" << std::endl;
 #endif
     }
-    REQUIRE(handle != nullptr, "loadSharedLib must succeed");
+    REQUIRE_LOADING(handle != nullptr, "loadSharedLib must succeed");
 
     using ModuleApiFn = const visionrt::ModuleApi*(*)();
     auto* apiFn = reinterpret_cast<ModuleApiFn>(getProcAddr(handle, "visiontoolsModuleApi"));
-    REQUIRE(apiFn != nullptr, "getProcAddr(visiontoolsModuleApi) must succeed");
+    REQUIRE_ABI(apiFn != nullptr, "getProcAddr(visiontoolsModuleApi) must succeed");
 
     const visionrt::ModuleApi* api = apiFn();
-    REQUIRE(api != nullptr, "visiontoolsModuleApi() must return non-null pointer");
-    REQUIRE(api->abi_major == visionrt::MODULE_ABI_MAJOR, "ABI major must match SDK MODULE_ABI_MAJOR");
-    REQUIRE(api->struct_bytes == sizeof(visionrt::ModuleApi), "struct_bytes must match sizeof(visionrt::ModuleApi)");
-    REQUIRE(api->create != nullptr, "create pointer must be non-null");
-    REQUIRE(api->destroy != nullptr, "destroy pointer must be non-null");
+    REQUIRE_ABI(api != nullptr, "visiontoolsModuleApi() must return non-null pointer");
+    REQUIRE_ABI(api->abi_major == visionrt::MODULE_ABI_MAJOR, "ABI major must match SDK MODULE_ABI_MAJOR");
+    REQUIRE_ABI(api->struct_bytes == sizeof(visionrt::ModuleApi), "struct_bytes must match sizeof(visionrt::ModuleApi)");
+    REQUIRE_ABI(api->create != nullptr, "create pointer must be non-null");
+    REQUIRE_ABI(api->destroy != nullptr, "destroy pointer must be non-null");
 
     visionrt::ToolServices services{visionrt::PathResolver(std::filesystem::current_path())};
     visionrt::ToolStatus status;
@@ -239,19 +265,23 @@ int main(int argc, char** argv) {
         REQUIRE(inst->initialize({}).code == 0, "Initialize crop must succeed");
 
         cv::Mat colorImg(64, 64, CV_8UC3, cv::Scalar(10, 20, 30));
+        visionrt::OwnedImage inImg = visionrt::OwnedImage::copyOf(colorImg);
         visionrt::Values inputs;
-        inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(colorImg)}));
+        inputs.emplace("images", visionrt::ImageBatch({inImg}));
         auto roi = visionrt::Roi::rectangle(10.0F, 10.0F, 20.0F, 20.0F, 0.0F);
         inputs.emplace("rois", visionrt::RoiBatch({{roi}}));
 
         auto res = inst->execute(inputs);
-        REQUIRE(res.status.code == 0, "Crop tool execution must succeed");
+        REQUIRE_EXECUTION(res.status.code == 0, "Crop tool execution must succeed");
 
         const auto* outBatch = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
-        REQUIRE(outBatch != nullptr && !outBatch->images().empty(), "Crop output must contain images");
-        REQUIRE(outBatch->images()[0].rows() == 20 && outBatch->images()[0].cols() == 20, "Cropped size must match ROI (20x20)");
+        REQUIRE_EXECUTION(outBatch != nullptr && !outBatch->images().empty(), "Crop output must contain images");
+        const auto& cropped = outBatch->images()[0];
+        REQUIRE_EXECUTION(cropped.rows() == 20 && cropped.cols() == 20, "Cropped size must match ROI (20x20)");
+        REQUIRE_EXECUTION(cropped.rowStride() == inImg.rowStride(), "Cropped image rowStride must match source rowStride for zero-copy view");
+        REQUIRE_EXECUTION(cropped.readOnlyMat().datastart == inImg.readOnlyMat().datastart, "Cropped image must share datastart pointer (zero-copy view)");
 
-        REQUIRE(inst->release().code == 0, "Crop release must succeed");
+        REQUIRE_EXECUTION(inst->release().code == 0, "Crop release must succeed");
         api->destroy(inst);
         actualExecutedTools.insert(reg);
     }

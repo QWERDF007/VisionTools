@@ -171,7 +171,7 @@ if "%DO_TEST%"=="1" (
 if "%DO_PACKAGE%"=="1" (
     echo [INFO] Packaging tools...
     if "!PACKAGE_DIR!"=="" set "PACKAGE_DIR=dist\VisionTools"
-    set "PKG_FLAGS=--config !CONFIG! --build-dir "!BUILD_DIR!" --install-dir "!PACKAGE_DIR!""
+    set "PKG_FLAGS=--config !CONFIG! --build-dir "!BUILD_DIR!" --install-dir "!PACKAGE_DIR!" --verify-runtime"
     if "!BUILD_INFER!"=="OFF" set "PKG_FLAGS=!PKG_FLAGS! --no-infer"
     python tools\package_tools.py !PKG_FLAGS!
     if errorlevel 1 (

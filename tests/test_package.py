@@ -397,15 +397,78 @@ class TestPackageTools(unittest.TestCase):
             pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
         self.assertIn("Strict packaging requires build metadata", str(ctx.exception))
 
-    def test_fake_source_missing_module_api_rejected(self):
-        """N03: Module DLL missing visiontoolsModuleApi is rejected."""
-        fake_prep = self.build_dir / "src" / "preprocess" / "visiontools_preprocess.dll"
-        fake_prep.write_bytes(b"FAKE_DLL_NO_API")
+    def test_missing_required_dependency_in_manifest_fails_even_if_in_env(self):
+        """VT-S01 / VT-T01: Missing required dependency in manifest fails packaging/verification even if available in env."""
         self._write_resolved_deps(is_gpu=False)
+        cfg_file = self.build_dir / "Release" / "resolved_dependencies.yaml"
+        deps = pkg.load_yaml(cfg_file)
+        deps["runtime_files"] = []  # Omit opencv
+        pkg.save_yaml(deps, cfg_file)
         self._write_module_index(is_gpu=False)
-        with self.assertRaises(RuntimeError) as ctx:
-            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
-        self.assertIn("missing 'visiontoolsModuleApi'", str(ctx.exception))
+
+        env_backup = os.environ.get("OPENCV_DIR")
+        os.environ["OPENCV_DIR"] = str(self.mock_opencv)
+        try:
+            with self.assertRaises(RuntimeError):
+                pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+            self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=False))
+        finally:
+            if env_backup is not None:
+                os.environ["OPENCV_DIR"] = env_backup
+            else:
+                os.environ.pop("OPENCV_DIR", None)
+
+    def test_non_yolo_gpu_module_variant_filtering(self):
+        """VT-S01 / VT-T01: Non-YOLO GPU module fixture is filtered by module_bindings variant without string heuristics."""
+        custom_bindings = {
+            "modules": {
+                "visiontools_preprocess": {
+                    "variant": "cpu",
+                    "tools": {
+                        "visionrt.image.crop": {"class": "Crop"}
+                    }
+                },
+                "visiontools_segmentation": {
+                    "variant": "gpu",
+                    "tools": {
+                        "visiontools.sam.segment": {"class": "Sam"}
+                    }
+                }
+            }
+        }
+        tools_dict = {
+            "visionrt.image.crop": {
+                "module": "visiontools_preprocess",
+                "definition": "assets/tools/crop.yaml"
+            }
+        }
+        idx = {
+            "variant": "cpu",
+            "modules": {"visiontools_preprocess": {"library": "bin/visiontools_preprocess.dll"}},
+            "tools": tools_dict,
+            "runtime_files": ["bin/opencv_world480.dll"]
+        }
+        (self.install_dir / "bin").mkdir(parents=True, exist_ok=True)
+        pkg.save_yaml(idx, self.install_dir / "module_index.yaml")
+        (self.install_dir / "bin" / "visiontools_preprocess.dll").write_bytes(b"PREPROCESS")
+        (self.install_dir / "bin" / "opencv_world480.dll").write_bytes(b"OPENCV")
+        (self.install_dir / "assets" / "tools").mkdir(parents=True, exist_ok=True)
+        (self.install_dir / "assets" / "tools" / "crop.yaml").write_text("entry:\n  registry_name: visionrt.image.crop\n")
+
+        self.assertTrue(pkg.verify_package(self.install_dir, is_gpu=False))
+
+        (self.install_dir / "bin" / "visiontools_segmentation.dll").write_bytes(b"GPU_SEG")
+        bindings_file = self.install_dir.parent.parent / "tools" / "module_bindings.yaml"
+        bindings_file.parent.mkdir(parents=True, exist_ok=True)
+        existing_bindings = bindings_file.read_text(encoding="utf-8") if bindings_file.exists() else None
+        try:
+            pkg.save_yaml(custom_bindings, bindings_file)
+            self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=False))
+        finally:
+            if existing_bindings is not None:
+                bindings_file.write_text(existing_bindings, encoding="utf-8")
+            elif bindings_file.exists():
+                bindings_file.unlink()
 
     def test_omitted_tool_in_build_index_rejected(self):
         """N01: Build index missing an active declared tool is rejected."""

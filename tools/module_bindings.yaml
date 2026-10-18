@@ -4,6 +4,7 @@
 
 modules:
   visiontools_preprocess:
+    variant: "cpu"
     dll_name: "bin/visiontools_preprocess.dll"
     namespace: "visiontools::preprocess"
     tools:
@@ -27,6 +28,7 @@ modules:
         header: "AdaptiveBinaryTool.h"
 
   visiontools_infer:
+    variant: "gpu"
     dll_name: "bin/visiontools_infer.dll"
     namespace: "visionrt::infer"
     tools:
