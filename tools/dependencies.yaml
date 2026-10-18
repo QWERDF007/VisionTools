@@ -62,3 +62,12 @@ dependencies:
     default: C:/dev/visionrt-sdk
     destinations:
       - bin
+
+  - name: yaml_cpp
+    cmake: cmake/ConfigYamlCpp.cmake
+    root: YAML_CPP_DIR
+    default: D:/Software/anaconda3/Library
+    destinations:
+      - bin
+    windows:
+      - bin/yaml-cpp.dll

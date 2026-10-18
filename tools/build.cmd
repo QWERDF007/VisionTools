@@ -159,7 +159,7 @@ if errorlevel 1 (
 
 if "%DO_TEST%"=="1" (
     echo [INFO] Running CTest...
-    set "PATH=%BUILD_DIR%\src\preprocess;%BUILD_DIR%\src\infer;D:\Software\dev\opencv-4.8.0\build\x64\vc16\bin;F:\Projects\InferRT\InferRT-0.0.3\bin;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin;D:\Software\dev\TensorRT-10.16.1.11\bin;!PATH!"
+    set "PATH=%BUILD_DIR%\src\preprocess;%BUILD_DIR%\src\infer;D:\Software\anaconda3\Library\bin;D:\Software\dev\opencv-4.8.0\build\x64\vc16\bin;F:\Projects\InferRT\InferRT-0.0.3\bin;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin;D:\Software\dev\TensorRT-10.16.1.11\bin;!PATH!"
     ctest --test-dir "%BUILD_DIR%" -C %CONFIG% --output-on-failure
     if errorlevel 1 (
         echo [ERROR] Some tests failed.

@@ -34,6 +34,9 @@ function(visiontools_add_test test_name)
         if(DEFINED TRT_ROOT AND EXISTS "${TRT_ROOT}/bin")
             list(APPEND _test_paths "${TRT_ROOT}/bin")
         endif()
+        if(EXISTS "D:/Software/anaconda3/Library/bin")
+            list(APPEND _test_paths "D:/Software/anaconda3/Library/bin")
+        endif()
 
         # 转换为 Windows 路径分隔符分号列表
         string(REPLACE ";" "\\;" _escaped_paths "${_test_paths}")
