@@ -10,6 +10,9 @@
 #include <algorithm>
 
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #include <psapi.h>
 #pragma comment(lib, "psapi.lib")
@@ -244,7 +247,12 @@ int main() {
                       << ", loop100=" << rss100
                       << ", post_release=" << rssPostRelease
                       << ", post_destroy=" << rssPostDestroy << std::endl;
-            // Plateau check: verify memory stabilization without arbitrary constant threshold
+            // Plateau check: verify memory stabilization across sample windows
+            std::size_t maxWindowDiff = 0;
+            if (rss50 >= rss25 && (rss50 - rss25) > maxWindowDiff) maxWindowDiff = rss50 - rss25;
+            if (rss75 >= rss50 && (rss75 - rss50) > maxWindowDiff) maxWindowDiff = rss75 - rss50;
+            if (rss100 >= rss75 && (rss100 - rss75) > maxWindowDiff) maxWindowDiff = rss100 - rss75;
+            REQUIRE(maxWindowDiff < 1024 * 1024, "Working set window growth must remain bounded");
             std::cout << "[INFO] RSS sequence analysis: working set reached plateau after warmup." << std::endl;
         }
     }

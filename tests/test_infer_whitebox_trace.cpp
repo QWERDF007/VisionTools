@@ -39,11 +39,32 @@ void testWhiteboxLetterboxRoundtrip() {
     std::cout << "[PASS] testWhiteboxLetterboxRoundtrip passed." << std::endl;
 }
 
+void testWhiteboxYoloTrace() {
+    std::cout << "[TEST] Running testWhiteboxYoloTrace..." << std::endl;
+    const visionrt::ToolServices services{visionrt::PathResolver(std::filesystem::current_path())};
+    YoloTool tool(services);
+
+    // 1. Verify tensorDescriptions interface
+    auto desc = tool.tensorDescriptions();
+    std::cout << "  Uninitialized tensor descriptions count: " << desc.size() << std::endl;
+
+    // 2. Verify executeWithTrace interface
+    std::vector<ImageTrace> traces;
+    visionrt::Values inputs;
+    inputs.emplace("images", visionrt::ImageBatch{});
+    inputs.emplace("conf_threshold", 0.25);
+    inputs.emplace("nms_threshold", 0.45);
+    auto res = tool.executeWithTrace(inputs, traces);
+    REQUIRE(res.status.code != 0 || traces.empty(), "Uninitialized tool execution must not succeed with traces");
+    std::cout << "[PASS] testWhiteboxYoloTrace passed." << std::endl;
+}
+
 int main() {
     std::cout << "[TEST] Running test_infer_whitebox_trace (isolated whitebox test)..." << std::endl;
     try {
         testWhiteboxGeometryProbe();
         testWhiteboxLetterboxRoundtrip();
+        testWhiteboxYoloTrace();
         std::cout << "[ALL TESTS PASSED] test_infer_whitebox_trace passed successfully." << std::endl;
         return 0;
     } catch (const std::exception& e) {

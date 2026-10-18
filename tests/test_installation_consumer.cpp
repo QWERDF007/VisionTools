@@ -18,13 +18,13 @@
 #ifdef _WIN32
 #include <windows.h>
 using LibHandle = HMODULE;
-inline LibHandle loadSharedLib(const std::string& path) { return LoadLibraryA(path.c_str()); }
+inline LibHandle loadSharedLib(const std::filesystem::path& path) { return LoadLibraryW(path.wstring().c_str()); }
 inline void* getProcAddr(LibHandle h, const char* name) { return reinterpret_cast<void*>(GetProcAddress(h, name)); }
 inline void freeSharedLib(LibHandle h) { FreeLibrary(h); }
 #else
 #include <dlfcn.h>
 using LibHandle = void*;
-inline LibHandle loadSharedLib(const std::string& path) { return dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL); }
+inline LibHandle loadSharedLib(const std::filesystem::path& path) { return dlopen(path.string().c_str(), RTLD_NOW | RTLD_LOCAL); }
 inline void* getProcAddr(LibHandle h, const char* name) { return dlsym(h, name); }
 inline void freeSharedLib(LibHandle h) { dlclose(h); }
 #endif
@@ -37,16 +37,86 @@ inline void freeSharedLib(LibHandle h) { dlclose(h); }
         } \
     } while(0)
 
+inline std::set<std::string> loadExpectedToolsFromIndex(const std::filesystem::path& indexPath, const std::string& moduleDllName) {
+    std::set<std::string> registries;
+    std::ifstream file(indexPath);
+    if (!file.is_open()) return registries;
+    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    auto toolsPos = content.find("\"tools\"");
+    if (toolsPos == std::string::npos) return registries;
+    auto bracePos = content.find('{', toolsPos);
+    if (bracePos == std::string::npos) return registries;
+
+    size_t pos = bracePos + 1;
+    while (pos < content.size()) {
+        auto keyStart = content.find('\"', pos);
+        if (keyStart == std::string::npos) break;
+        auto keyEnd = content.find('\"', keyStart + 1);
+        if (keyEnd == std::string::npos) break;
+        std::string key = content.substr(keyStart + 1, keyEnd - keyStart - 1);
+
+        auto colon = content.find(':', keyEnd);
+        if (colon == std::string::npos) break;
+        auto objStart = content.find('{', colon);
+        if (objStart == std::string::npos) break;
+
+        int depth = 1;
+        size_t objEnd = objStart + 1;
+        while (objEnd < content.size() && depth > 0) {
+            if (content[objEnd] == '{') depth++;
+            else if (content[objEnd] == '}') depth--;
+            objEnd++;
+        }
+        std::string toolObj = content.substr(objStart, objEnd - objStart);
+        if (moduleDllName.empty() || toolObj.find(moduleDllName) != std::string::npos) {
+            registries.insert(key);
+        }
+        pos = objEnd;
+        size_t nextComma = content.find(',', pos);
+        size_t nextClose = content.find('}', pos);
+        if (nextClose < nextComma || (nextComma == std::string::npos && nextClose != std::string::npos)) {
+            break;
+        }
+    }
+    return registries;
+}
+
+inline void verifyInitFailureAndCleanup(const visionrt::ModuleApi* api, const char* reg, const visionrt::ToolServices* services) {
+    visionrt::ToolStatus status;
+    visionrt::IToolInstance* errInst = api->create(reg, services, &status);
+    REQUIRE(errInst != nullptr, "Create for init failure test must succeed");
+    visionrt::Values badInit;
+    badInit.emplace("bad_param_invalid", std::int64_t(123));
+    auto initStatus = errInst->initialize(badInit);
+    REQUIRE(initStatus.code == -2, "Unknown init parameter must return status code -2");
+    REQUIRE(errInst->release().code == 0, "Release after init failure must succeed");
+    api->destroy(errInst);
+}
+
 int main(int argc, char** argv) {
     std::cout << "[TEST] Running test_installation_consumer (dynamic loading)..." << std::endl;
 
+#ifdef _WIN32
+    (void)argc;
+    (void)argv;
+    int wargc = 0;
+    LPWSTR* wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+    if (!wargv || wargc < 2) {
+        if (wargv) LocalFree(wargv);
+        std::cerr << "[ERROR] Missing required DLL or package path argument." << std::endl;
+        std::cerr << "Usage: test_installation_consumer <path-to-module-dll-or-package-dir>" << std::endl;
+        return 1;
+    }
+    std::filesystem::path target(wargv[1]);
+    LocalFree(wargv);
+#else
     if (argc < 2) {
         std::cerr << "[ERROR] Missing required DLL or package path argument." << std::endl;
         std::cerr << "Usage: test_installation_consumer <path-to-module-dll-or-package-dir>" << std::endl;
         return 1;
     }
-
     std::filesystem::path target(argv[1]);
+#endif
     if (!std::filesystem::exists(target)) {
         std::cerr << "[ERROR] Target path does not exist: " << target.string() << std::endl;
         return 1;
@@ -69,10 +139,10 @@ int main(int argc, char** argv) {
 
     std::filesystem::path p = std::filesystem::absolute(dllPath);
 #ifdef _WIN32
-    SetDllDirectoryA(p.parent_path().string().c_str());
+    SetDllDirectoryW(p.parent_path().wstring().c_str());
 #endif
     std::cout << "[INFO] Loading module dynamically: " << p.string() << std::endl;
-    LibHandle handle = loadSharedLib(p.string());
+    LibHandle handle = loadSharedLib(p);
     if (!handle) {
 #ifdef _WIN32
         std::cerr << "[ERROR] Failed to load library: " << p.string() << " (GetLastError=" << GetLastError() << ")" << std::endl;
@@ -104,6 +174,14 @@ int main(int argc, char** argv) {
         "visionrt.image.preprocess",
         "visionrt.image.read"
     };
+
+    if (!packageDir.empty() && std::filesystem::exists(packageDir / "module_index.json")) {
+        auto indexTools = loadExpectedToolsFromIndex(packageDir / "module_index.json", "visiontools_preprocess.dll");
+        if (!indexTools.empty()) {
+            expectedTools = std::move(indexTools);
+        }
+    }
+
     std::set<std::string> actualExecutedTools;
 
     // 1. Unknown registry -> error
@@ -127,8 +205,10 @@ int main(int argc, char** argv) {
     visionrt::OwnedImage snapshotImage;
     {
         const char* reg = "visiontools.preprocess.adaptive_binary";
+        verifyInitFailureAndCleanup(api, reg, &services);
         visionrt::IToolInstance* inst = api->create(reg, &services, &status);
         REQUIRE(inst != nullptr, "Create adaptive_binary must return valid instance");
+        REQUIRE(inst->initialize({}).code == 0, "Initialize adaptive_binary must succeed");
 
         cv::Mat gray(32, 32, CV_8UC1);
         for (int r = 0; r < 32; ++r) {
@@ -167,8 +247,10 @@ int main(int argc, char** argv) {
     // 5. Test tool: crop
     {
         const char* reg = "visionrt.image.crop";
+        verifyInitFailureAndCleanup(api, reg, &services);
         visionrt::IToolInstance* inst = api->create(reg, &services, &status);
         REQUIRE(inst != nullptr, "Create crop must return valid instance");
+        REQUIRE(inst->initialize({}).code == 0, "Initialize crop must succeed");
 
         cv::Mat colorImg(64, 64, CV_8UC3, cv::Scalar(10, 20, 30));
         visionrt::Values inputs;
@@ -191,8 +273,10 @@ int main(int argc, char** argv) {
     // 6. Test tool: detection_filter
     {
         const char* reg = "visionrt.detection.filter";
+        verifyInitFailureAndCleanup(api, reg, &services);
         visionrt::IToolInstance* inst = api->create(reg, &services, &status);
         REQUIRE(inst != nullptr, "Create detection.filter must return valid instance");
+        REQUIRE(inst->initialize({}).code == 0, "Initialize detection.filter must succeed");
 
         cv::Mat img(100, 100, CV_8UC1, cv::Scalar(0));
         auto roi = visionrt::Roi::rectangle(10.0F, 10.0F, 20.0F, 20.0F, 0.0F);
@@ -234,8 +318,10 @@ int main(int argc, char** argv) {
     // 7. Test tool: roi_projection
     {
         const char* reg = "visionrt.roi.projection";
+        verifyInitFailureAndCleanup(api, reg, &services);
         visionrt::IToolInstance* inst = api->create(reg, &services, &status);
         REQUIRE(inst != nullptr, "Create roi.projection must return valid instance");
+        REQUIRE(inst->initialize({}).code == 0, "Initialize roi.projection must succeed");
 
         cv::Mat img(100, 100, CV_8UC1, cv::Scalar(0));
         img(cv::Rect(30, 30, 40, 40)).setTo(cv::Scalar(255));
@@ -262,8 +348,10 @@ int main(int argc, char** argv) {
     // 8. Test tool: image.preprocess
     {
         const char* reg = "visionrt.image.preprocess";
+        verifyInitFailureAndCleanup(api, reg, &services);
         visionrt::IToolInstance* inst = api->create(reg, &services, &status);
         REQUIRE(inst != nullptr, "Create image.preprocess must return valid instance");
+        REQUIRE(inst->initialize({}).code == 0, "Initialize image.preprocess must succeed");
 
         cv::Mat img(50, 50, CV_8UC1, cv::Scalar(150));
         visionrt::Values inputs;
@@ -286,8 +374,10 @@ int main(int argc, char** argv) {
     // 9. Test tool: image.read
     {
         const char* reg = "visionrt.image.read";
+        verifyInitFailureAndCleanup(api, reg, &services);
         visionrt::IToolInstance* inst = api->create(reg, &services, &status);
         REQUIRE(inst != nullptr, "Create image.read must return valid instance");
+        REQUIRE(inst->initialize({}).code == 0, "Initialize image.read must succeed");
 
         std::string tempPath = "test_consumer_temp_image.png";
         cv::Mat sample(24, 24, CV_8UC3, cv::Scalar(10, 20, 30));
