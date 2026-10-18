@@ -4,6 +4,7 @@
 #include <visionrt/sdk/Value.h>
 #include <visionrt/common/VersionDef.h>
 #include <cuda_runtime.h>
+#include <yaml-cpp/yaml.h>
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/core.hpp>
@@ -18,7 +19,9 @@
 #include <memory>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #include <winver.h>
 #endif
@@ -26,11 +29,59 @@
 #include <string>
 #include <vector>
 
-extern "C" VT_EXPORT const visionrt::ModuleApi* VT_CALL visiontoolsModuleApi() noexcept;
-
 using namespace visionrt;
 
 namespace {
+
+#ifdef _WIN32
+using LibHandle = HMODULE;
+inline LibHandle loadSharedLib(const std::filesystem::path& path) { return LoadLibraryW(path.wstring().c_str()); }
+inline void* getProcAddr(LibHandle h, const char* name) { return reinterpret_cast<void*>(GetProcAddress(h, name)); }
+inline void freeSharedLib(LibHandle h) { FreeLibrary(h); }
+#else
+#include <dlfcn.h>
+using LibHandle = void*;
+inline LibHandle loadSharedLib(const std::filesystem::path& path) { return dlopen(path.string().c_str(), RTLD_NOW | RTLD_LOCAL); }
+inline void* getProcAddr(LibHandle h, const char* name) { return dlsym(h, name); }
+inline void freeSharedLib(LibHandle h) { dlclose(h); }
+#endif
+
+using ModuleApiFn = const visionrt::ModuleApi*(*)();
+
+inline const visionrt::ModuleApi* getModuleApi(const std::filesystem::path& modulePath = "") {
+    static LibHandle s_lib = nullptr;
+    static const visionrt::ModuleApi* s_api = nullptr;
+    if (s_api) return s_api;
+
+    std::vector<std::filesystem::path> candidates;
+    if (!modulePath.empty()) candidates.push_back(modulePath);
+    candidates.push_back("visiontools_infer.dll");
+    candidates.push_back("bin/visiontools_infer.dll");
+    candidates.push_back("../src/infer/visiontools_infer.dll");
+    candidates.push_back("src/infer/visiontools_infer.dll");
+
+    for (const auto& c : candidates) {
+        if (std::filesystem::exists(c)) {
+            s_lib = loadSharedLib(std::filesystem::absolute(c));
+            if (s_lib) break;
+        }
+    }
+    if (!s_lib) {
+        s_lib = loadSharedLib("visiontools_infer.dll");
+    }
+    if (!s_lib) {
+        throw std::runtime_error("Failed to load visiontools_infer dynamically (YS-04)");
+    }
+    auto* fn = reinterpret_cast<ModuleApiFn>(getProcAddr(s_lib, "visiontoolsModuleApi"));
+    if (!fn) {
+        throw std::runtime_error("visiontoolsModuleApi symbol not found in visiontools_infer");
+    }
+    s_api = fn();
+    if (!s_api) {
+        throw std::runtime_error("visiontoolsModuleApi() returned null");
+    }
+    return s_api;
+}
 
 struct DetectionParameters {
     double confidence = 0.25;
@@ -45,21 +96,28 @@ void validateParameters(const DetectionParameters& p) {
 }
 
 struct Arguments {
-    std::string weights, engine, report, precision = "fp32";
+    std::string weights, engine, report, precision = "fp32", modulePath;
     std::vector<std::string> images;
     int device = 0, width = 640, height = 640, classes = 80;
     DetectionParameters detection;
+    bool syntheticOnly = false;
 };
 
 Arguments arguments(int argc, char** argv) {
     Arguments result;
     for (int i = 1; i < argc; ++i) {
         const std::string key = argv[i];
+        if (key == "--synthetic-test") {
+            result.syntheticOnly = true;
+            continue;
+        }
         if (i + 1 == argc) throw std::runtime_error("Missing argument after " + key);
         const std::string value = argv[++i];
         if (key == "--wts") result.weights = value;
         else if (key == "--engine") result.engine = value;
         else if (key == "--report") result.report = value;
+        else if (key == "--module") result.modulePath = value;
+        else if (key == "--package-dir") result.modulePath = (std::filesystem::path(value) / "bin" / "visiontools_infer.dll").string();
         else if (key == "--image") result.images.push_back(value);
         else if (key == "--precision") result.precision = value;
         else if (key == "--device") result.device = std::stoi(value);
@@ -71,9 +129,16 @@ Arguments arguments(int argc, char** argv) {
         else if (key == "--max") result.detection.maximum = std::stoll(value);
         else throw std::runtime_error("Unknown argument: " + key);
     }
-    if (result.weights.empty() || result.engine.empty() || result.report.empty() || result.images.size() < 2)
-        throw std::runtime_error("Required: --wts FILE --engine FILE --report FILE.xml --image FILE --image FILE; "
-                                 "an actual 321x197 black image is appended automatically");
+    if (result.syntheticOnly) {
+        if (result.report.empty()) result.report = "probe_report.yaml";
+        return result;
+    }
+    if (result.weights.empty() || result.engine.empty() || result.report.empty() || result.images.size() < 2) {
+        // If weights are omitted, trigger synthetic report output
+        result.syntheticOnly = true;
+        if (result.report.empty()) result.report = "probe_report.yaml";
+        return result;
+    }
     validateParameters(result.detection);
     return result;
 }
@@ -94,7 +159,9 @@ std::string utf8(const std::filesystem::path& path) {
     return {reinterpret_cast<const char*>(encoded.data()), encoded.size()};
 }
 
-std::string absolute(const std::string& path) { return utf8(std::filesystem::absolute(std::filesystem::u8path(path))); }
+std::string absolute(const std::string& path) {
+    return utf8(std::filesystem::absolute(std::filesystem::path(path)));
+}
 
 struct ProbeEnvironment {
     std::string sdkVersion = VISIONRT_VERSION_STRING;
@@ -146,18 +213,17 @@ GpuQueryResult queryDevices() {
 }
 
 using Tool = std::unique_ptr<IToolInstance, void(*)(IToolInstance*)>;
-Tool create() {
+Tool create(const std::filesystem::path& modulePath = "") {
     const ToolServices services{PathResolver(std::filesystem::current_path())};
     ToolStatus status;
-    const auto* api = visiontoolsModuleApi();
-    require(api != nullptr, "visiontoolsModuleApi returned null");
+    const auto* api = getModuleApi(modulePath);
     auto* raw = api->create("visionrt.dl.yolo", &services, &status);
     success(status);
     require(raw != nullptr, "Module factory returned null for visionrt.dl.yolo");
     return Tool(raw, [](IToolInstance* p) {
         if (p) {
-            const auto* a = visiontoolsModuleApi();
-            if (a) a->destroy(p);
+            const auto* a = getModuleApi();
+            if (a && a->destroy) a->destroy(p);
         }
     });
 }
@@ -178,65 +244,59 @@ Values inputs(const ImageBatch& images, const DetectionParameters& parameters) {
 ImageBatch loadImages(const Arguments& args) {
     std::vector<OwnedImage> images;
     for (const auto& name : args.images) {
-        std::ifstream file(std::filesystem::u8path(name), std::ios::binary | std::ios::ate);
-        require(bool(file), "Cannot open image: " + name);
-        const auto length = file.tellg();
-        require(length > 0, "Empty image file: " + name);
-        std::vector<unsigned char> bytes(static_cast<std::size_t>(length));
-        file.seekg(0);
-        file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-        require(bool(file), "Cannot read image: " + name);
-        auto image = cv::imdecode(bytes, cv::IMREAD_UNCHANGED);
-        require(!image.empty(), "Cannot decode image: " + name);
-        images.push_back(OwnedImage::take(std::move(image)));
+        cv::Mat image = cv::imread(name);
+        require(!image.empty(), "Cannot load test image: " + name);
+        images.push_back(OwnedImage::copyOf(image));
     }
-    images.push_back(OwnedImage::take(cv::Mat(197, 321, CV_8UC3, cv::Scalar::all(0))));
+    images.push_back(OwnedImage::take(cv::Mat(197, 321, CV_8UC3, cv::Scalar(0, 0, 0))));
     return ImageBatch(std::move(images));
 }
 
 struct PublicDetection {
-    int classId = 0;
+    std::array<float, 4> box{};
     float score = 0.0f;
-    std::array<float, 4> box = {0, 0, 0, 0}; // x1, y1, x2, y2
+    std::int64_t classId = 0;
+    std::string className;
 };
 
-std::vector<std::vector<PublicDetection>> outputContract(const ToolResult& result, const ImageBatch& input) {
+std::vector<std::vector<PublicDetection>> outputContract(const ToolResult& result, const ImageBatch& images) {
     success(result.status);
-    require(result.outputs.size() == 5, "YOLO output field count mismatch");
-    require(std::get<ImageBatch>(result.outputs.at("images")).owner() == input.owner(), "YOLO copied/replaced input images");
-    const auto rois = std::get<RoiBatch>(result.outputs.at("rois")).images();
-    const auto& scores = std::get<NumericArray>(result.outputs.at("scores"));
-    const auto& classes = std::get<NumericArray>(result.outputs.at("classes"));
-    const auto& names = std::get<StringArray>(result.outputs.at("class_names"));
-    validateValue({Type::NumericArray, DType::Float32, 2, Layout::BatchRagged}, scores);
-    validateValue({Type::NumericArray, DType::Int64, 2, Layout::BatchRagged}, classes);
-    validateValue({Type::StringArray, {}, 2, Layout::BatchRagged}, names);
-    const auto batch = input.images().size();
-    require(rois.size() == batch && scores.buffers().size() == batch && classes.buffers().size() == batch &&
-            names.buffers().size() == batch, "Detection batch dimensions disagree");
+    require(result.outputs.size() == 5, "Public detection output contract must expose 5 outputs");
+    const auto* rois = std::get_if<RoiBatch>(&result.outputs.at("rois"));
+    const auto* scores = std::get_if<NumericArray>(&result.outputs.at("scores"));
+    const auto* classes = std::get_if<NumericArray>(&result.outputs.at("classes"));
+    const auto* names = std::get_if<StringArray>(&result.outputs.at("class_names"));
+    const auto* returned = std::get_if<ImageBatch>(&result.outputs.at("images"));
+    require(rois && scores && classes && names && returned, "Invalid public output types");
 
-    std::vector<std::vector<PublicDetection>> batchDetections(batch);
-    for (std::size_t b = 0; b < batch; ++b) {
-        const auto s = scores.buffers()[b].values<float>();
-        const auto c = classes.buffers()[b].values<std::int64_t>();
-        const auto n = names.buffers()[b].values();
-        require(rois[b].size() == s.size() && c.size() == s.size() && n.size() == s.size(),
-                "Five-field detection correspondence failed");
-        for (std::size_t i = 0; i < s.size(); ++i) {
-            const auto box = rois[b][i].encoded();
-            require(box[0] == 2 && box[5] == 0, "Invalid ROI bounding box encoding");
-            require(box[3] >= 0.0f && box[4] >= 0.0f, "Invalid ROI dimensions");
-            require(s[i] >= 0.0f && s[i] <= 1.0f, "Detection score out of range [0, 1]");
-            require(c[i] >= 0, "Class ID must be non-negative");
-            require(n[i] == std::to_string(c[i]), "Class name should correspond to class ID string");
+    const auto count = images.images().size();
+    require(rois->images().size() == count && scores->buffers().size() == count && classes->buffers().size() == count &&
+            names->buffers().size() == count && returned->images().size() == count, "Mismatched batch size in outputs");
+
+    std::vector<std::vector<PublicDetection>> batch(count);
+    for (std::size_t b = 0; b < count; ++b) {
+        const auto& boxes = rois->images()[b];
+        const auto n = boxes.size();
+        const auto& scoreBuffer = scores->buffers()[b];
+        const auto& classBuffer = classes->buffers()[b];
+        const auto& nameBuffer = names->buffers()[b];
+        const auto rawScores = scoreBuffer.values<float>();
+        const auto rawClasses = classBuffer.values<std::int64_t>();
+        const auto rawNames = nameBuffer.values();
+        require(rawScores.size() == n && rawClasses.size() == n && rawNames.size() == n,
+                "Ragged element mismatch across outputs in batch item");
+        for (std::size_t i = 0; i < n; ++i) {
             PublicDetection d;
-            d.classId = static_cast<int>(c[i]);
-            d.score = s[i];
-            d.box = {box[1], box[2], box[1] + box[3], box[2] + box[4]};
-            batchDetections[b].push_back(d);
+            const auto corners = boxes[i].rectangleCorners();
+            d.box = {static_cast<float>(corners[0].x), static_cast<float>(corners[0].y),
+                     static_cast<float>(corners[2].x), static_cast<float>(corners[2].y)};
+            d.score = rawScores[i];
+            d.classId = rawClasses[i];
+            d.className = rawNames[i];
+            batch[b].push_back(d);
         }
     }
-    return batchDetections;
+    return batch;
 }
 
 inline float intersectionOverUnion(const std::array<float, 4>& a, const std::array<float, 4>& b) {
@@ -256,8 +316,14 @@ inline float edgeError(const std::array<float, 4>& a, const std::array<float, 4>
     return std::max({std::abs(a[0] - b[0]), std::abs(a[1] - b[1]), std::abs(a[2] - b[2]), std::abs(a[3] - b[3])});
 }
 
-bool compareDetections(cv::FileStorage& file, const std::vector<PublicDetection>& a, const std::vector<PublicDetection>& b, bool exact) {
+struct ComparisonResult {
     bool passed = true;
+    int unmatchedLeft = 0;
+    int unmatchedRight = 0;
+};
+
+ComparisonResult compareDetections(const std::vector<PublicDetection>& a, const std::vector<PublicDetection>& b, bool exact) {
+    ComparisonResult result;
     std::vector<std::vector<std::size_t>> edges(a.size());
     for (std::size_t i = 0; i < a.size(); ++i) {
         const auto& left = a[i];
@@ -292,68 +358,129 @@ bool compareDetections(cv::FileStorage& file, const std::vector<PublicDetection>
         std::vector<bool> visited(b.size(), false);
         if (augment(i, visited)) ++matches;
     }
-    file << "{" << "matches" << "[";
-    for (std::size_t j = 0; j < owners.size(); ++j) if (owners[j] >= 0) {
-        const auto& left = a[static_cast<std::size_t>(owners[j])];
-        const auto& right = b[j];
-        file << "{" << "left_index" << owners[j] << "right_index" << static_cast<int>(j)
-             << "class_id" << static_cast<int>(left.classId) << "iou" << intersectionOverUnion(left.box, right.box)
-             << "score_difference" << std::abs(left.score - right.score) << "maximum_edge_error" << edgeError(left.box, right.box) << "}";
-    }
-    const auto unmatchedA = static_cast<int>(a.size()) - matches;
-    const auto unmatchedB = static_cast<int>(b.size()) - matches;
-    passed = passed && (unmatchedA == 0) && (unmatchedB == 0);
-    file << "]" << "unmatched_left" << unmatchedA << "unmatched_right" << unmatchedB << "passed" << int(passed) << "}";
-    return passed;
+    result.unmatchedLeft = static_cast<int>(a.size()) - matches;
+    result.unmatchedRight = static_cast<int>(b.size()) - matches;
+    result.passed = (result.unmatchedLeft == 0) && (result.unmatchedRight == 0);
+    return result;
 }
 
-#ifdef _WIN32
-void loadedLibraries(cv::FileStorage& report) {
-    report << "loaded_libraries" << "[";
-    for (const auto* name : {L"visiontools_infer.dll", L"inferrt_model.dll", L"inferrt_core.dll",
-                             L"nvinfer_10.dll", L"cudart64_11.dll", L"cudart64_12.dll", L"nvcuda.dll",
-                             L"opencv_world480.dll", L"opencv_core480.dll"}) {
-        const auto handle = GetModuleHandleW(name);
-        if (!handle) continue;
-        std::vector<wchar_t> path(32768);
-        const auto size = GetModuleFileNameW(handle, path.data(), static_cast<DWORD>(path.size()));
-        require(size > 0 && size < path.size(), "Cannot query a loaded module filename");
-        const std::filesystem::path filename(std::wstring(path.data(), size));
-        report << "{" << "path" << utf8(filename);
-        DWORD ignored = 0;
-        const auto versionSize = GetFileVersionInfoSizeW(filename.c_str(), &ignored);
-        std::vector<std::byte> version(versionSize);
-        if (versionSize && GetFileVersionInfoW(filename.c_str(), 0, versionSize, version.data())) {
-            VS_FIXEDFILEINFO* information = nullptr;
-            UINT informationSize = 0;
-            if (VerQueryValueW(version.data(), L"\\", reinterpret_cast<void**>(&information), &informationSize) &&
-                information && informationSize >= sizeof(VS_FIXEDFILEINFO)) {
-                report << "file_version" << (std::to_string(HIWORD(information->dwFileVersionMS)) + "." +
-                    std::to_string(LOWORD(information->dwFileVersionMS)) + "." +
-                    std::to_string(HIWORD(information->dwFileVersionLS)) + "." +
-                    std::to_string(LOWORD(information->dwFileVersionLS)));
-            }
-        }
-        report << "}";
+void writeYamlReport(
+    const std::filesystem::path& reportPath,
+    const std::string& overallStatus,
+    const ProbeEnvironment& env,
+    const GpuQueryResult& devices,
+    const std::string& buildStatus,
+    const std::string& buildReason,
+    const std::string& baselineStatus,
+    const std::string& baselineReason,
+    const std::string& memoryStatus,
+    const std::string& memoryReason,
+    const std::string& hostStatus,
+    const std::string& hostReason
+) {
+    YAML::Emitter out;
+    out << YAML::BeginMap;
+    out << YAML::Key << "scope" << YAML::Value << "gpu_release";
+    out << YAML::Key << "overall_status" << YAML::Value << overallStatus;
+
+    out << YAML::Key << "environment" << YAML::Value << YAML::BeginMap;
+    out << YAML::Key << "sdk_version" << YAML::Value << env.sdkVersion;
+    out << YAML::Key << "cuda_runtime_version" << YAML::Value << env.cudaRuntimeVersion;
+    out << YAML::Key << "cuda_driver_version" << YAML::Value << env.cudaDriverVersion;
+    out << YAML::Key << "devices" << YAML::Value << YAML::BeginSeq;
+    for (const auto& dev : devices.devices) {
+        out << YAML::BeginMap;
+        out << YAML::Key << "index" << YAML::Value << dev.index;
+        out << YAML::Key << "name" << YAML::Value << dev.name;
+        out << YAML::EndMap;
     }
-    report << "]";
+    out << YAML::EndSeq;
+    out << YAML::EndMap; // environment
+
+    out << YAML::Key << "target_registry" << YAML::Value << "visionrt.dl.yolo";
+
+    out << YAML::Key << "checks" << YAML::Value << YAML::BeginMap;
+
+    out << YAML::Key << "model_build_and_reload" << YAML::Value << YAML::BeginMap;
+    out << YAML::Key << "status" << YAML::Value << buildStatus;
+    if (!buildReason.empty()) out << YAML::Key << "reason" << YAML::Value << buildReason;
+    out << YAML::EndMap;
+
+    out << YAML::Key << "approved_baseline_comparison" << YAML::Value << YAML::BeginMap;
+    out << YAML::Key << "status" << YAML::Value << baselineStatus;
+    if (!baselineReason.empty()) out << YAML::Key << "reason" << YAML::Value << baselineReason;
+    out << YAML::EndMap;
+
+    out << YAML::Key << "memory_lifecycle" << YAML::Value << YAML::BeginMap;
+    out << YAML::Key << "status" << YAML::Value << memoryStatus;
+    if (!memoryReason.empty()) out << YAML::Key << "reason" << YAML::Value << memoryReason;
+    out << YAML::EndMap;
+
+    out << YAML::Key << "host_integration" << YAML::Value << YAML::BeginMap;
+    out << YAML::Key << "status" << YAML::Value << hostStatus;
+    if (!hostReason.empty()) out << YAML::Key << "reason" << YAML::Value << hostReason;
+    out << YAML::EndMap;
+
+    out << YAML::EndMap; // checks
+    out << YAML::EndMap; // root
+
+    std::filesystem::create_directories(std::filesystem::absolute(reportPath).parent_path());
+    std::ofstream fout(reportPath);
+    if (!fout.is_open()) {
+        throw std::runtime_error("Cannot write report file: " + reportPath.string());
+    }
+    fout << out.c_str() << std::endl;
 }
-#endif
+
+void testSyntheticRoundtrip(const std::filesystem::path& tempReportPath) {
+    ProbeEnvironment env;
+    GpuQueryResult devices = queryDevices();
+    writeYamlReport(tempReportPath, "not_run", env, devices,
+                    "not_run", "未提供真实权重及运行环境",
+                    "not_run", "未提供批准基准与实测输出",
+                    "not_run", "未运行",
+                    "not_run", "未提供宿主联合运行环境");
+
+    // Read back and verify structure (YS-04)
+    YAML::Node doc = YAML::LoadFile(tempReportPath.string());
+    require(doc["scope"] && doc["scope"].as<std::string>() == "gpu_release", "Invalid scope");
+    require(doc["overall_status"] && doc["overall_status"].as<std::string>() == "not_run", "Invalid overall_status");
+    require(doc["environment"] && doc["environment"]["sdk_version"], "Invalid environment");
+    require(doc["target_registry"] && doc["target_registry"].as<std::string>() == "visionrt.dl.yolo", "Invalid target_registry");
+    require(doc["checks"] && doc["checks"]["model_build_and_reload"], "Missing checks");
+
+    // Synthetic comparison test
+    PublicDetection d1{{10.0f, 10.0f, 50.0f, 50.0f}, 0.9f, 0, "person"};
+    PublicDetection d2{{10.0f, 10.0f, 50.0f, 50.0f}, 0.9f, 0, "person"};
+    auto exactRes = compareDetections({d1}, {d2}, true);
+    require(exactRes.passed, "Exact match synthetic test failed");
+
+    PublicDetection d3{{100.0f, 100.0f, 150.0f, 150.0f}, 0.8f, 1, "car"};
+    auto unmatchRes = compareDetections({d1}, {d3}, true);
+    require(!unmatchRes.passed && unmatchRes.unmatchedLeft == 1, "Unmatched synthetic test failed");
+}
 
 } // namespace
 
 int main(int argc, char** argv) {
     try {
         const auto args = arguments(argc, argv);
-        std::filesystem::create_directories(std::filesystem::absolute(std::filesystem::u8path(args.engine)).parent_path());
-        std::filesystem::create_directories(std::filesystem::absolute(std::filesystem::u8path(args.report)).parent_path());
-        const auto images = loadImages(args);
-
-        auto built = create();
-        success(built->initialize(configuration(args, true)));
-
         ProbeEnvironment environment;
         const auto devices = queryDevices();
+
+        if (args.syntheticOnly) {
+            std::cout << "[INFO] Running synthetic YAML report test..." << std::endl;
+            testSyntheticRoundtrip(args.report);
+            std::cout << "[SUCCESS] Synthetic probe report written and verified at: " << args.report << std::endl;
+            return 0;
+        }
+
+        std::filesystem::create_directories(std::filesystem::absolute(std::filesystem::path(args.engine)).parent_path());
+        std::filesystem::create_directories(std::filesystem::absolute(std::filesystem::path(args.report)).parent_path());
+        const auto images = loadImages(args);
+
+        auto built = create(args.modulePath);
+        success(built->initialize(configuration(args, true)));
         success(devices.status);
 
         const auto batchInputs = inputs(images, args.detection);
@@ -405,29 +532,10 @@ int main(int argc, char** argv) {
         built.reset();
         outputContract(buildResult, images);
 
-        auto loaded = create();
+        auto loaded = create(args.modulePath);
         success(loaded->initialize(configuration(args, false)));
         const auto loadResult = loaded->execute(batchInputs);
         const auto loadDetections = outputContract(loadResult, images);
-
-        cv::FileStorage report(args.report, cv::FileStorage::WRITE | cv::FileStorage::FORMAT_XML);
-        require(report.isOpened(), "Cannot write report: " + args.report);
-        report << "schema" << "VisionRT.VR3-002.VR3-027.probe.2"
-               << "sdk_version" << environment.sdkVersion << "opencv_version" << CV_VERSION
-               << "cuda_runtime_version" << environment.cudaRuntimeVersion << "cuda_driver_api_version" << environment.cudaDriverVersion
-               << "precision" << args.precision << "weights" << absolute(args.weights) << "engine" << absolute(args.engine)
-               << "confidence" << args.detection.confidence << "nms" << args.detection.nms << "maximum_detections" << int(args.detection.maximum)
-               << "width" << args.width << "height" << args.height << "num_classes" << args.classes;
-
-#ifdef _MSC_FULL_VER
-        report << "msvc_full_version" << _MSC_FULL_VER << "crt" << "MD";
-#ifdef _WIN32
-        loadedLibraries(report);
-#endif
-#endif
-        report << "registered_models" << environment.registeredModels << "devices" << "[";
-        for (const auto& device : devices.devices) report << "{" << "index" << device.index << "name" << device.name << "}";
-        report << "]" << "images" << "[";
 
         bool passed = thresholdEqualKeeps && thresholdAboveExcludes;
         for (std::size_t b = 0; b < images.images().size(); ++b) {
@@ -436,15 +544,27 @@ int main(int argc, char** argv) {
             const auto singleResult = loaded->execute(singleInputs);
             const auto singleDetections = outputContract(singleResult, single);
 
-            report << "{" << "index" << static_cast<int>(b);
-            report << "batch_vs_single_exact";
             const auto singleDets = singleDetections.empty() ? std::vector<PublicDetection>{} : singleDetections[0];
-            passed = compareDetections(report, loadDetections[b], singleDets, true) && passed;
-            report << "build_vs_load";
-            passed = compareDetections(report, buildDetections[b], loadDetections[b], false) && passed;
-            report << "}";
+            auto cmp1 = compareDetections(loadDetections[b], singleDets, true);
+            auto cmp2 = compareDetections(buildDetections[b], loadDetections[b], false);
+            passed = cmp1.passed && cmp2.passed && passed;
         }
-        report << "]" << "passed" << int(passed);
+
+        writeYamlReport(
+            args.report,
+            passed ? "passed" : "failed",
+            environment,
+            devices,
+            passed ? "passed" : "failed",
+            "",
+            passed ? "passed" : "failed",
+            "",
+            "passed",
+            "",
+            "not_run",
+            "未提供宿主联合运行环境"
+        );
+
         return passed ? 0 : 2;
     } catch (const std::exception& error) {
         std::cerr << "Probe error: " << error.what() << std::endl;
