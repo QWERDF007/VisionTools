@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
 """
-Unit tests for packaging and verification logic (VT-05 / VS-06).
+Unit tests for packaging and verification logic (YS-01 / YS-03).
 Tests cover:
+  - Direct destructive rebuild: clears pre-existing marker file upon rebuild
+  - Packaging failure exits non-zero and leaves no backup or staging directory
+  - Re-run after fixing input produces complete, verified package
   - Missing infer DLL in GPU mode (strict raises, verify fails)
-  - Missing dependency directories (OpenCV, TensorRT in GPU mode)
   - GPU -> CPU repackaging in identical directory leaves no residual GPU artifacts
   - CPU package excludes GPU tools and DLLs
   - Paths with spaces
+  - YAML index / resolved_dependencies validation
   - Verification failures on tampered/incomplete packages
 """
 
-import json
 import os
 import pathlib
 import shutil
 import sys
 import tempfile
 import unittest
+import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
@@ -53,7 +56,7 @@ class TestPackageTools(unittest.TestCase):
         self.mock_trt.mkdir(parents=True)
         (self.mock_trt / "nvinfer_10.dll").write_bytes(b"MOCK_TRT")
 
-        # Write resolved_dependencies.json and module_index.json
+        # Write resolved_dependencies.yaml and module_index.yaml
         self._write_resolved_deps(is_gpu=False)
         self._write_module_index(is_gpu=False)
 
@@ -61,60 +64,93 @@ class TestPackageTools(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def _write_resolved_deps(self, is_gpu=True):
-        deps = {
-            "version": "0.1.0",
-            "build_infer": is_gpu,
-            "generator_variant": "gpu" if is_gpu else "cpu",
-            "config": "Release",
-            "opencv_dir": str(self.mock_opencv.parent).replace("\\", "/"),
-            "visionrt_sdk_dir": "C:/dev/visionrt-sdk",
+        prep_dll = self.build_dir / "src" / "preprocess" / "visiontools_preprocess.dll"
+        modules = {
+            "visiontools_preprocess": {
+                "source": str(prep_dll).replace("\\", "/")
+            }
         }
+        runtime_files = [
+            {
+                "source": str(self.mock_opencv / "opencv_world480.dll").replace("\\", "/"),
+                "destination": "bin/opencv_world480.dll"
+            }
+        ]
         if is_gpu:
-            deps["inferrt_root"] = str(self.mock_inferrt.parent).replace("\\", "/")
-            deps["cuda_root"] = str(self.mock_cuda.parent).replace("\\", "/")
-            deps["tensorrt_root"] = str(self.mock_trt.parent).replace("\\", "/")
+            infer_dll = self.build_dir / "src" / "infer" / "visiontools_infer.dll"
+            modules["visiontools_infer"] = {
+                "source": str(infer_dll).replace("\\", "/")
+            }
+            runtime_files.extend([
+                {
+                    "source": str(self.mock_inferrt / "inferrt_core.dll").replace("\\", "/"),
+                    "destination": "bin/inferrt_core.dll"
+                },
+                {
+                    "source": str(self.mock_cuda / "cudart64_110.dll").replace("\\", "/"),
+                    "destination": "bin/cudart64_110.dll"
+                },
+                {
+                    "source": str(self.mock_trt / "nvinfer_10.dll").replace("\\", "/"),
+                    "destination": "bin/nvinfer_10.dll"
+                }
+            ])
 
-        with open(self.build_dir / "resolved_dependencies.json", "w", encoding="utf-8") as f:
-            json.dump(deps, f, indent=2)
+        deps = {
+            "variant": "gpu" if is_gpu else "cpu",
+            "config": "Release",
+            "modules": modules,
+            "runtime_files": runtime_files
+        }
+        with open(self.build_dir / "resolved_dependencies.yaml", "w", encoding="utf-8") as f:
+            yaml.dump(deps, f, sort_keys=False)
 
     def _write_module_index(self, is_gpu=True):
         tools = {
             "visiontools.preprocess.adaptive_binary": {
-                "kind": "cpp_function",
-                "module_dll": "bin/visiontools_preprocess.dll"
+                "module": "visiontools_preprocess",
+                "definition": "assets/tools/builtin/预处理/图像处理/visiontools.preprocess.adaptive_binary.yaml"
             },
             "visionrt.image.crop": {
-                "kind": "cpp_function",
-                "module_dll": "bin/visiontools_preprocess.dll"
+                "module": "visiontools_preprocess",
+                "definition": "assets/tools/builtin/预处理/图像处理/visionrt.image.crop.yaml"
             },
             "visionrt.detection.filter": {
-                "kind": "cpp_function",
-                "module_dll": "bin/visiontools_preprocess.dll"
+                "module": "visiontools_preprocess",
+                "definition": "assets/tools/builtin/预处理/图像处理/visionrt.detection.filter.yaml"
             },
             "visionrt.roi.projection": {
-                "kind": "cpp_function",
-                "module_dll": "bin/visiontools_preprocess.dll"
+                "module": "visiontools_preprocess",
+                "definition": "assets/tools/builtin/预处理/图像处理/visionrt.roi.projection.yaml"
             },
             "visionrt.image.preprocess": {
-                "kind": "cpp_function",
-                "module_dll": "bin/visiontools_preprocess.dll"
+                "module": "visiontools_preprocess",
+                "definition": "assets/tools/builtin/预处理/图像处理/visionrt.image.preprocess.yaml"
             },
             "visionrt.image.read": {
-                "kind": "cpp_function",
-                "module_dll": "bin/visiontools_preprocess.dll"
+                "module": "visiontools_preprocess",
+                "definition": "assets/tools/builtin/预处理/图像处理/visionrt.image.read.yaml"
             }
+        }
+        modules = {
+            "visiontools_preprocess": {}
         }
         if is_gpu:
             tools["visionrt.dl.yolo"] = {
-                "kind": "cpp_function",
-                "module_dll": "bin/visiontools_infer.dll"
+                "module": "visiontools_infer",
+                "definition": "assets/tools/builtin/检测/目标检测/visionrt.dl.yolo.yaml"
             }
+            modules["visiontools_infer"] = {}
+
         idx = {
             "variant": "gpu" if is_gpu else "cpu",
+            "modules": modules,
             "tools": tools
         }
-        with open(self.build_dir / "module_index.json", "w", encoding="utf-8") as f:
-            json.dump(idx, f, indent=2)
+        gen_dir = self.build_dir / "generated"
+        gen_dir.mkdir(parents=True, exist_ok=True)
+        with open(gen_dir / "module_index.yaml", "w", encoding="utf-8") as f:
+            yaml.dump(idx, f, sort_keys=False)
 
     def test_missing_preprocess_dll_raises(self):
         empty_build = self.t / "empty_build"
@@ -123,7 +159,6 @@ class TestPackageTools(unittest.TestCase):
             pkg.package_tools(empty_build, self.install_dir, infer_enabled=False, strict=True)
 
     def test_missing_infer_dll_gpu_strict_raises(self):
-        # build_dir does not have visiontools_infer.dll
         self._write_resolved_deps(is_gpu=True)
         self._write_module_index(is_gpu=True)
         with self.assertRaises(RuntimeError) as ctx:
@@ -131,7 +166,6 @@ class TestPackageTools(unittest.TestCase):
         self.assertIn("visiontools_infer.dll", str(ctx.exception))
 
     def test_missing_infer_dll_gpu_verify_fails(self):
-        # Packaging without strict should not copy infer DLL, but stage verification MUST fail
         self._write_resolved_deps(is_gpu=True)
         self._write_module_index(is_gpu=True)
         with self.assertRaises(RuntimeError):
@@ -193,7 +227,7 @@ class TestPackageTools(unittest.TestCase):
         (self.install_dir / "bin" / "visiontools_infer.dll").write_bytes(b"LEAKED_DLL")
         self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=False))
 
-    def test_verify_fails_if_manifest_file_missing(self):
+    def test_verify_fails_if_yaml_declaration_missing(self):
         self._write_resolved_deps(is_gpu=False)
         self._write_module_index(is_gpu=False)
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
@@ -211,14 +245,14 @@ class TestPackageTools(unittest.TestCase):
         self.assertTrue(pkg.verify_package(spaced_dir, is_gpu=False))
 
     def test_missing_build_index_raises(self):
-        (self.build_dir / "module_index.json").unlink()
+        (self.build_dir / "generated" / "module_index.yaml").unlink()
         self._write_resolved_deps(is_gpu=False)
         with self.assertRaises(RuntimeError) as ctx:
             pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
         self.assertIn("Missing required build index", str(ctx.exception))
 
     def test_corrupt_build_index_raises(self):
-        (self.build_dir / "module_index.json").write_text("{corrupt json")
+        (self.build_dir / "generated" / "module_index.yaml").write_text("{corrupt yaml: [")
         self._write_resolved_deps(is_gpu=False)
         with self.assertRaises(RuntimeError) as ctx:
             pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
@@ -232,33 +266,37 @@ class TestPackageTools(unittest.TestCase):
         self.assertIn("Build index variant mismatch", str(ctx.exception))
 
     def test_missing_resolved_deps_strict_raises(self):
-        (self.build_dir / "resolved_dependencies.json").unlink()
+        (self.build_dir / "resolved_dependencies.yaml").unlink()
         with self.assertRaises(RuntimeError) as ctx:
-            pkg.load_dependencies(self.build_dir, ROOT, strict=True)
-        self.assertIn("missing required build metadata", str(ctx.exception))
+            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+        self.assertIn("Strict packaging requires build metadata", str(ctx.exception))
 
     def test_verify_fails_empty_tools(self):
         self._write_resolved_deps(is_gpu=False)
         self._write_module_index(is_gpu=False)
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
-        (self.install_dir / "module_index.json").write_text(json.dumps({"variant": "cpu", "tools": {}}))
+        with open(self.install_dir / "module_index.yaml", "w", encoding="utf-8") as f:
+            yaml.dump({"variant": "cpu", "modules": {"visiontools_preprocess": {"library": "bin/visiontools_preprocess.dll"}}, "tools": {}}, f)
         self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=False))
 
     def test_verify_fails_bad_tool_entry(self):
         self._write_resolved_deps(is_gpu=False)
         self._write_module_index(is_gpu=False)
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
-        (self.install_dir / "module_index.json").write_text(json.dumps({"variant": "cpu", "tools": {"bad": 123}}))
+        with open(self.install_dir / "module_index.yaml", "w", encoding="utf-8") as f:
+            yaml.dump({"variant": "cpu", "modules": {"visiontools_preprocess": {"library": "bin/visiontools_preprocess.dll"}}, "tools": {"bad": 123}}, f)
         self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=False))
 
     def test_verify_fails_escaping_module_dll(self):
         self._write_resolved_deps(is_gpu=False)
         self._write_module_index(is_gpu=False)
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
-        (self.install_dir / "module_index.json").write_text(json.dumps({
-            "variant": "cpu",
-            "tools": {"tool": {"kind": "cpp_function", "module_dll": "../escape.dll"}}
-        }))
+        with open(self.install_dir / "module_index.yaml", "w", encoding="utf-8") as f:
+            yaml.dump({
+                "variant": "cpu",
+                "modules": {"visiontools_preprocess": {"library": "../escape.dll"}},
+                "tools": {"tool": {"module": "visiontools_preprocess", "definition": "assets/tools/foo.yaml"}}
+            }, f)
         self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=False))
 
     def test_verify_fails_missing_tensorrt_gpu(self):
@@ -272,49 +310,77 @@ class TestPackageTools(unittest.TestCase):
         (self.install_dir / "bin" / "nvinfer_10.dll").unlink()
         self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=True))
 
-    def test_package_preserves_previous_on_failure(self):
-        # Create an existing install dir with a marker file
+    def test_direct_destructive_rebuild_clears_old_marker(self):
+        """YS-03: Pre-existing marker in install_dir is removed during rebuild."""
         self.install_dir.mkdir(parents=True)
         marker = self.install_dir / "previous_release.txt"
         marker.write_text("old release")
 
-        # Set module_index to point to a non-existent DLL
-        (self.build_dir / "module_index.json").write_text(json.dumps({
-            "variant": "cpu",
-            "tools": {"fake": {"kind": "cpp_function", "module_dll": "bin/missing.dll"}}
-        }))
         self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
+        pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
 
+        self.assertFalse(marker.exists())
+        self.assertTrue((self.install_dir / "bin" / "visiontools_preprocess.dll").exists())
+        self.assertTrue(pkg.verify_package(self.install_dir, is_gpu=False))
+
+    def test_failure_exits_nonzero_no_backup_or_staging(self):
+        """YS-03: Failure clears target, exits nonzero, leaves no backup or .tmp_pkg staging."""
+        self.install_dir.mkdir(parents=True)
+        marker = self.install_dir / "previous_release.txt"
+        marker.write_text("old release")
+
+        # Inject failure: non-existent module source
+        deps = {
+            "variant": "cpu",
+            "config": "Release",
+            "modules": {
+                "visiontools_preprocess": {
+                    "source": str(self.build_dir / "nonexistent.dll").replace("\\", "/")
+                }
+            },
+            "runtime_files": []
+        }
+        with open(self.build_dir / "resolved_dependencies.yaml", "w", encoding="utf-8") as f:
+            yaml.dump(deps, f)
+
+        # Packaging must fail
         with self.assertRaises(RuntimeError):
             pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
 
-        # Previous release MUST be preserved!
-        self.assertTrue(marker.exists())
-        self.assertEqual(marker.read_text(), "old release")
+        # Destructive clean happened upfront, marker is gone
+        self.assertFalse(marker.exists())
 
-    def test_package_rollback_on_rename_failure(self):
-        self.install_dir.mkdir(parents=True)
-        marker = self.install_dir / "previous_release.txt"
-        marker.write_text("old release")
+        # No backup or .tmp_pkg directory was created
+        parent = self.install_dir.parent
+        staging_dirs = [d for d in parent.iterdir() if ".tmp_pkg" in d.name or "backup" in d.name]
+        self.assertEqual(staging_dirs, [])
+
+    def test_fix_and_rerun_succeeds(self):
+        """YS-03: After a failed packaging attempt, fixing inputs and rerunning succeeds."""
+        # 1. Trigger failure
+        deps = {
+            "variant": "cpu",
+            "config": "Release",
+            "modules": {
+                "visiontools_preprocess": {
+                    "source": str(self.build_dir / "nonexistent.dll").replace("\\", "/")
+                }
+            },
+            "runtime_files": []
+        }
+        with open(self.build_dir / "resolved_dependencies.yaml", "w", encoding="utf-8") as f:
+            yaml.dump(deps, f)
+        with self.assertRaises(RuntimeError):
+            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+
+        # 2. Fix inputs
         self._write_resolved_deps(is_gpu=False)
         self._write_module_index(is_gpu=False)
 
-        # Inject error when moving staging_dir to install_dir
-        orig_rename = pathlib.Path.rename
-        def failing_rename(inst, target, *args, **kwargs):
-            if ".tmp_pkg" in str(inst) or "staging" in str(inst):
-                raise OSError("Simulated rename error")
-            return orig_rename(inst, target, *args, **kwargs)
-
-        import unittest.mock as mock
-        with mock.patch.object(pathlib.Path, "rename", failing_rename):
-            with mock.patch("shutil.move", side_effect=OSError("Simulated move error")):
-                with self.assertRaises(RuntimeError):
-                    pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
-
-        # Marker MUST still exist after rollback
-        self.assertTrue(marker.exists())
-        self.assertEqual(marker.read_text(), "old release")
+        # 3. Rerun succeeds
+        pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+        self.assertTrue(pkg.verify_package(self.install_dir, is_gpu=False))
 
 if __name__ == "__main__":
     unittest.main()
