@@ -22,7 +22,7 @@ visiontools_add_test(test_module_contract
 
 visiontools_add_test(test_installation_consumer
     SOURCES test_installation_consumer.cpp
-    LIBRARIES VisionRT::ToolSDK ${OpenCV_LIBS} yaml-cpp
+    LIBRARIES VisionRT::ToolSDK ${OpenCV_LIBS} yaml-cpp::yaml-cpp
     COMMAND_ARGS "$<TARGET_FILE:visiontools_preprocess>"
 )
 

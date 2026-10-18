@@ -2,7 +2,7 @@ schema_version: 1
 tool_id: test.fixture.valid
 display_name: 有效测试算子
 version: 1.0.0
-kind: cpp_function
+kind: cpp_class
 entry:
   registry_name: test.fixture.valid
 init_params:

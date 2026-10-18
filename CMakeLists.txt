@@ -125,10 +125,6 @@ file(GENERATE
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/resolved_dependencies.yaml"
     CONTENT "${_resolved_deps_content}"
 )
-file(GENERATE
-    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/resolved_dependencies.yaml"
-    CONTENT "${_resolved_deps_content}"
-)
 
 # 包含预处理领域模块
 add_subdirectory(src/preprocess)

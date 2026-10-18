@@ -2,9 +2,12 @@
 #include <visionrt/sdk/Tool.h>
 #include <visionrt/sdk/Contract.h>
 #include <visionrt/sdk/Value.h>
-#include <visionrt/common/VersionDef.h>
 #include <cuda_runtime.h>
 #include <yaml-cpp/yaml.h>
+
+#ifndef VISIONRT_SDK_VERSION
+#define VISIONRT_SDK_VERSION "0.1.0"
+#endif
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/core.hpp>
@@ -53,32 +56,35 @@ inline const visionrt::ModuleApi* getModuleApi(const std::filesystem::path& modu
     static const visionrt::ModuleApi* s_api = nullptr;
     if (s_api) return s_api;
 
-    std::vector<std::filesystem::path> candidates;
-    if (!modulePath.empty()) candidates.push_back(modulePath);
-    candidates.push_back("visiontools_infer.dll");
-    candidates.push_back("bin/visiontools_infer.dll");
-    candidates.push_back("../src/infer/visiontools_infer.dll");
-    candidates.push_back("src/infer/visiontools_infer.dll");
+    if (modulePath.empty()) {
+        throw std::runtime_error("Module path must be explicitly provided via --module or --package-dir");
+    }
 
-    for (const auto& c : candidates) {
-        if (std::filesystem::exists(c)) {
-            s_lib = loadSharedLib(std::filesystem::absolute(c));
-            if (s_lib) break;
-        }
+    if (!std::filesystem::exists(modulePath)) {
+        throw std::runtime_error("Module file does not exist: " + modulePath.string());
     }
+
+    s_lib = loadSharedLib(std::filesystem::absolute(modulePath));
     if (!s_lib) {
-        s_lib = loadSharedLib("visiontools_infer.dll");
+        throw std::runtime_error("Failed to load module library: " + modulePath.string());
     }
-    if (!s_lib) {
-        throw std::runtime_error("Failed to load visiontools_infer dynamically (YS-04)");
-    }
+
     auto* fn = reinterpret_cast<ModuleApiFn>(getProcAddr(s_lib, "visiontoolsModuleApi"));
     if (!fn) {
-        throw std::runtime_error("visiontoolsModuleApi symbol not found in visiontools_infer");
+        throw std::runtime_error("visiontoolsModuleApi symbol not found in " + modulePath.string());
     }
     s_api = fn();
     if (!s_api) {
         throw std::runtime_error("visiontoolsModuleApi() returned null");
+    }
+    if (s_api->abi_major != visionrt::MODULE_ABI_MAJOR) {
+        throw std::runtime_error("Module ABI major mismatch");
+    }
+    if (s_api->struct_bytes != sizeof(visionrt::ModuleApi)) {
+        throw std::runtime_error("Module struct bytes mismatch");
+    }
+    if (!s_api->create) {
+        throw std::runtime_error("Module create function pointer is null");
     }
     return s_api;
 }
@@ -96,7 +102,7 @@ void validateParameters(const DetectionParameters& p) {
 }
 
 struct Arguments {
-    std::string weights, engine, report, precision = "fp32", modulePath;
+    std::string weights, engine, report, precision = "fp32", modulePath, packageDir;
     std::vector<std::string> images;
     int device = 0, width = 640, height = 640, classes = 80;
     DetectionParameters detection;
@@ -117,7 +123,7 @@ Arguments arguments(int argc, char** argv) {
         else if (key == "--engine") result.engine = value;
         else if (key == "--report") result.report = value;
         else if (key == "--module") result.modulePath = value;
-        else if (key == "--package-dir") result.modulePath = (std::filesystem::path(value) / "bin" / "visiontools_infer.dll").string();
+        else if (key == "--package-dir") result.packageDir = value;
         else if (key == "--image") result.images.push_back(value);
         else if (key == "--precision") result.precision = value;
         else if (key == "--device") result.device = std::stoi(value);
@@ -134,10 +140,7 @@ Arguments arguments(int argc, char** argv) {
         return result;
     }
     if (result.weights.empty() || result.engine.empty() || result.report.empty() || result.images.size() < 2) {
-        // If weights are omitted, trigger synthetic report output
-        result.syntheticOnly = true;
-        if (result.report.empty()) result.report = "probe_report.yaml";
-        return result;
+        throw std::runtime_error("Missing required arguments for non-synthetic run (requires --wts, --engine, --report, and at least 2 --image arguments)");
     }
     validateParameters(result.detection);
     return result;
@@ -164,7 +167,7 @@ std::string absolute(const std::string& path) {
 }
 
 struct ProbeEnvironment {
-    std::string sdkVersion = VISIONRT_VERSION_STRING;
+    std::string sdkVersion = VISIONRT_SDK_VERSION;
     std::string cudaRuntimeVersion = "unavailable";
     std::string cudaDriverVersion = "unavailable";
     std::string registeredModels = "visionrt.dl.yolo";
@@ -376,7 +379,10 @@ void writeYamlReport(
     const std::string& memoryStatus,
     const std::string& memoryReason,
     const std::string& hostStatus,
-    const std::string& hostReason
+    const std::string& hostReason,
+    const Arguments* args = nullptr,
+    const std::vector<std::string>* imagePaths = nullptr,
+    const std::vector<std::vector<PublicDetection>>* buildDets = nullptr
 ) {
     YAML::Emitter out;
     out << YAML::BeginMap;
@@ -398,6 +404,40 @@ void writeYamlReport(
     out << YAML::EndMap; // environment
 
     out << YAML::Key << "target_registry" << YAML::Value << "visionrt.dl.yolo";
+
+    if (args) {
+        out << YAML::Key << "parameters" << YAML::Value << YAML::BeginMap;
+        out << YAML::Key << "width" << YAML::Value << args->width;
+        out << YAML::Key << "height" << YAML::Value << args->height;
+        out << YAML::Key << "classes" << YAML::Value << args->classes;
+        out << YAML::Key << "precision" << YAML::Value << args->precision;
+        out << YAML::Key << "confidence" << YAML::Value << args->detection.confidence;
+        out << YAML::Key << "nms" << YAML::Value << args->detection.nms;
+        out << YAML::Key << "max_detections" << YAML::Value << args->detection.maximum;
+        out << YAML::EndMap;
+    }
+
+    out << YAML::Key << "images" << YAML::Value << YAML::BeginSeq;
+    if (imagePaths && buildDets) {
+        for (std::size_t i = 0; i < imagePaths->size(); ++i) {
+            out << YAML::BeginMap;
+            out << YAML::Key << "path" << YAML::Value << (*imagePaths)[i];
+            out << YAML::Key << "detections" << YAML::Value << YAML::BeginSeq;
+            if (i < buildDets->size()) {
+                for (const auto& det : (*buildDets)[i]) {
+                    out << YAML::BeginMap;
+                    out << YAML::Key << "class_id" << YAML::Value << det.classId;
+                    out << YAML::Key << "score" << YAML::Value << det.score;
+                    out << YAML::Key << "box" << YAML::Value << YAML::Flow << YAML::BeginSeq
+                        << det.box[0] << det.box[1] << det.box[2] << det.box[3] << YAML::EndSeq;
+                    out << YAML::EndMap;
+                }
+            }
+            out << YAML::EndSeq;
+            out << YAML::EndMap;
+        }
+    }
+    out << YAML::EndSeq;
 
     out << YAML::Key << "checks" << YAML::Value << YAML::BeginMap;
 
@@ -464,7 +504,7 @@ void testSyntheticRoundtrip(const std::filesystem::path& tempReportPath) {
 
 int main(int argc, char** argv) {
     try {
-        const auto args = arguments(argc, argv);
+        auto args = arguments(argc, argv);
         ProbeEnvironment environment;
         const auto devices = queryDevices();
 
@@ -473,6 +513,19 @@ int main(int argc, char** argv) {
             testSyntheticRoundtrip(args.report);
             std::cout << "[SUCCESS] Synthetic probe report written and verified at: " << args.report << std::endl;
             return 0;
+        }
+
+        if (args.modulePath.empty() && !args.packageDir.empty()) {
+            const auto idxPath = std::filesystem::path(args.packageDir) / "module_index.yaml";
+            if (!std::filesystem::exists(idxPath)) {
+                throw std::runtime_error("module_index.yaml not found in package directory: " + args.packageDir);
+            }
+            YAML::Node idx = YAML::LoadFile(idxPath.string());
+            if (!idx["modules"] || !idx["modules"]["visiontools_infer"] || !idx["modules"]["visiontools_infer"]["library"]) {
+                throw std::runtime_error("visiontools_infer library not declared in " + idxPath.string());
+            }
+            const auto libRel = idx["modules"]["visiontools_infer"]["library"].as<std::string>();
+            args.modulePath = (std::filesystem::path(args.packageDir) / libRel).string();
         }
 
         std::filesystem::create_directories(std::filesystem::absolute(std::filesystem::path(args.engine)).parent_path());
@@ -550,22 +603,29 @@ int main(int argc, char** argv) {
             passed = cmp1.passed && cmp2.passed && passed;
         }
 
+        const std::string buildStatus = passed ? "passed" : "failed";
+        const std::string overallStatus = passed ? "not_run" : "failed";
+
         writeYamlReport(
             args.report,
-            passed ? "passed" : "failed",
+            overallStatus,
             environment,
             devices,
-            passed ? "passed" : "failed",
-            "",
-            passed ? "passed" : "failed",
-            "",
-            "passed",
+            buildStatus,
             "",
             "not_run",
-            "未提供宿主联合运行环境"
+            "未提供批准基准对比结果",
+            "not_run",
+            "需独立内存采样",
+            "not_run",
+            "未提供宿主联合运行环境",
+            &args,
+            &args.images,
+            &buildDetections
         );
 
-        return passed ? 0 : 2;
+        if (!passed) return 2;
+        return 3; // not_run exit code for incomplete scope
     } catch (const std::exception& error) {
         std::cerr << "Probe error: " << error.what() << std::endl;
         return 1;

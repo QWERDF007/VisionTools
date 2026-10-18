@@ -17,7 +17,7 @@ inputs:
     id: images
 entry:
   registry_name: test.fixture.valid
-kind: cpp_function
+kind: cpp_class
 display_name: 有效测试算子
 version: 1.0.0
 tool_id: test.fixture.valid

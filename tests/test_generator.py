@@ -74,8 +74,8 @@ class TestToolContractGenerator(unittest.TestCase):
             "kind": "cpp_function",
             "entry": {"registry_name": "test.duplicate.port"},
             "inputs": [
-                {"id": "images", "type": "ImageBatch"},
-                {"id": "images", "type": "ImageBatch"}
+                {"id": "images", "name": "图像1", "type": "ImageBatch"},
+                {"id": "images", "name": "图像2", "type": "ImageBatch"}
             ],
             "outputs": []
         }
@@ -91,7 +91,7 @@ class TestToolContractGenerator(unittest.TestCase):
             "kind": "cpp_function",
             "entry": {"registry_name": "test.range.invalid"},
             "inputs": [
-                {"id": "val", "type": "Int", "min": 10, "max": 5}
+                {"id": "val", "name": "值", "type": "Int", "min": 10, "max": 5}
             ],
             "outputs": []
         }
@@ -107,7 +107,7 @@ class TestToolContractGenerator(unittest.TestCase):
             "kind": "cpp_function",
             "entry": {"registry_name": "test.range.out"},
             "inputs": [
-                {"id": "val", "type": "Int", "default": 20, "min": 1, "max": 10}
+                {"id": "val", "name": "值", "type": "Int", "default": 20, "min": 1, "max": 10}
             ],
             "outputs": []
         }
@@ -123,8 +123,8 @@ class TestToolContractGenerator(unittest.TestCase):
             "kind": "cpp_function",
             "entry": {"registry_name": "test.ident.collision"},
             "inputs": [
-                {"id": "foo_bar", "type": "Int"},
-                {"id": "foo-bar", "type": "Int"}
+                {"id": "foo_bar", "name": "Foo Bar 1", "type": "Int"},
+                {"id": "foo-bar", "name": "Foo Bar 2", "type": "Int"}
             ],
             "outputs": []
         }
@@ -140,7 +140,7 @@ class TestToolContractGenerator(unittest.TestCase):
             "kind": "cpp_function",
             "entry": {"registry_name": "test.ragged.rank"},
             "inputs": [
-                {"id": "arr", "type": "NumericArray", "dtype": "Float32", "rank": 1, "layout": "batch_ragged"}
+                {"id": "arr", "name": "数组", "type": "NumericArray", "dtype": "Float32", "rank": 1, "layout": "batch_ragged"}
             ],
             "outputs": []
         }
@@ -232,7 +232,7 @@ class TestToolContractGenerator(unittest.TestCase):
             "display_name": "Bool Rank Tool",
             "kind": "cpp_function",
             "entry": {"registry_name": "test.bool.rank"},
-            "inputs": [{"id": "x", "type": "NumericArray", "dtype": "float32", "rank": True}],
+            "inputs": [{"id": "x", "name": "X", "type": "NumericArray", "dtype": "float32", "rank": True}],
             "outputs": []
         }
         with self.assertRaises(ContractValidationError) as ctx:
@@ -247,7 +247,7 @@ class TestToolContractGenerator(unittest.TestCase):
             "display_name": "Onesided Range Tool",
             "kind": "cpp_function",
             "entry": {"registry_name": "test.onesided.range"},
-            "inputs": [{"id": "x", "type": "Float", "default": -1.0, "min": 0.0}],
+            "inputs": [{"id": "x", "name": "X", "type": "Float", "default": -1.0, "min": 0.0}],
             "outputs": []
         }
         with self.assertRaises(ContractValidationError) as ctx:
@@ -284,7 +284,7 @@ class TestToolContractGenerator(unittest.TestCase):
             "display_name": "Collision Test",
             "kind": "cpp_function",
             "entry": {"registry_name": "test.collision.spec"},
-            "inputs": [{"id": "x", "type": "Int"}, {"id": "x_spec", "type": "Int"}],
+            "inputs": [{"id": "x", "name": "X", "type": "Int"}, {"id": "x_spec", "name": "X Spec", "type": "Int"}],
             "outputs": []
         }
         header = generate_port_constants_header([doc])
@@ -300,7 +300,7 @@ class TestToolContractGenerator(unittest.TestCase):
             "display_name": "Norm Collision Test",
             "kind": "cpp_function",
             "entry": {"registry_name": "test.norm.collision"},
-            "inputs": [{"id": "foo-bar", "type": "Int"}, {"id": "foo_bar", "type": "Int"}],
+            "inputs": [{"id": "foo-bar", "name": "Foo Bar 1", "type": "Int"}, {"id": "foo_bar", "name": "Foo Bar 2", "type": "Int"}],
             "outputs": []
         }
         with self.assertRaises(ContractValidationError) as ctx:
@@ -355,7 +355,7 @@ class TestToolContractGenerator(unittest.TestCase):
             "display_name": "Reserved Port",
             "kind": "cpp_function",
             "entry": {"registry_name": "test.reserved.port"},
-            "inputs": [{"id": "__private", "type": "Int"}],
+            "inputs": [{"id": "__private", "name": "私有", "type": "Int"}],
             "outputs": []
         }
         with self.assertRaises(ContractValidationError) as ctx:
@@ -369,12 +369,72 @@ class TestToolContractGenerator(unittest.TestCase):
             "display_name": "Invalid Step",
             "kind": "cpp_function",
             "entry": {"registry_name": "test.step.invalid"},
-            "inputs": [{"id": "x", "type": "Float", "step": -1.0}],
+            "inputs": [{"id": "x", "name": "X", "type": "Float", "step": -1.0}],
             "outputs": []
         }
         with self.assertRaises(ContractValidationError) as ctx:
             validate_tool_declaration(doc, Path("test.yaml"))
         self.assertIn("step must be positive", str(ctx.exception))
+
+    def test_r79a_missing_name_rejected(self):
+        valid_path = self.fixtures_dir / "valid_tool.yaml"
+        doc = load_yaml(valid_path)
+        doc["inputs"][0].pop("name")
+        with self.assertRaises(ContractValidationError) as ctx:
+            validate_tool_declaration(doc, valid_path)
+        self.assertIn("missing or empty 'name'", str(ctx.exception))
+
+    def test_r79b_wrong_options_type_rejected(self):
+        valid_path = self.fixtures_dir / "valid_tool.yaml"
+        doc = load_yaml(valid_path)
+        doc["inputs"][1]["options"] = ["not_an_int"]
+        with self.assertRaises(ContractValidationError) as ctx:
+            validate_tool_declaration(doc, valid_path)
+        self.assertIn("must be an integer", str(ctx.exception))
+
+    def test_r79c_unknown_provider_rejected(self):
+        valid_path = self.fixtures_dir / "valid_tool.yaml"
+        doc = load_yaml(valid_path)
+        doc["inputs"][0]["options_provider"] = "invalid.provider"
+        with self.assertRaises(ContractValidationError) as ctx:
+            validate_tool_declaration(doc, valid_path)
+        self.assertIn("Unknown options_provider", str(ctx.exception))
+
+    def test_r79d_init_input_overlap_rejected(self):
+        valid_path = self.fixtures_dir / "valid_tool.yaml"
+        doc = load_yaml(valid_path)
+        doc["init_params"] = [{"id": "count", "name": "重叠参数", "type": "Int"}]
+        with self.assertRaises(ContractValidationError) as ctx:
+            validate_tool_declaration(doc, valid_path)
+        self.assertIn("init_params and inputs share ID", str(ctx.exception))
+
+    def test_r79e_function_init_params_rejected(self):
+        valid_path = self.fixtures_dir / "valid_tool.yaml"
+        doc = load_yaml(valid_path)
+        doc["kind"] = "cpp_function"
+        doc["init_params"] = [{"id": "init_p", "name": "初始化参数", "type": "Int"}]
+        with self.assertRaises(ContractValidationError) as ctx:
+            validate_tool_declaration(doc, valid_path)
+        self.assertIn("Function tool cannot have init_params", str(ctx.exception))
+
+    def test_r80_yml_only_declarations(self):
+        from generate_tool_contracts import load_and_validate_declarations
+        valid_path = self.fixtures_dir / "valid_tool.yaml"
+        with tempfile.TemporaryDirectory() as td:
+            t = Path(td)
+            yml_file = t / "tool.yml"
+            yml_file.write_text(valid_path.read_text(encoding="utf-8"), encoding="utf-8")
+            res = load_and_validate_declarations(t)
+            self.assertEqual(len(res), 1)
+            self.assertEqual(res[0]["tool_id"], "test.fixture.valid")
+
+    def test_duplicate_yaml_key_rejected(self):
+        import yaml
+        from generate_tool_contracts import UniqueKeyLoader
+        yaml_content = "tool_id: a\ntool_id: b\n"
+        with self.assertRaises(ValueError) as ctx:
+            yaml.load(yaml_content, Loader=UniqueKeyLoader)
+        self.assertIn("Duplicate key detected", str(ctx.exception))
 
 if __name__ == "__main__":
     unittest.main()

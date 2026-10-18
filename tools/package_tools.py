@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Packaging and distribution tool for VisionTools (YS-01 / YS-03).
+Packaging and distribution tool for VisionTools (YS-01 / YS-03 / YVT2-03).
 Single Source of Truth:
 - Consumes build/generated/module_index.yaml and build/<config>/resolved_dependencies.yaml.
 - Direct destructive rebuild: clears output_dir before packaging; no staging, backup, or rollback.
 - Generates final output_dir/module_index.yaml containing variant, modules, tools, and runtime_files.
 - Completely deletes tools_manifest.txt and legacy JSON metadata.
 - Package verification inspects module_index.yaml, variant closure, indexed library existence,
-  set equality of declared YAML tools vs indexed tools, and runtime dependency DLLs.
+  exact matching of declared YAML tools vs indexed tools, and runtime dependency DLLs.
 """
 
 import argparse
@@ -18,9 +18,24 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 import yaml
 
+class UniqueKeyLoader(yaml.SafeLoader):
+    pass
+
+def _construct_mapping(loader, node, deep=False):
+    loader.flatten_mapping(node)
+    mapping = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in mapping:
+            raise ValueError(f"Duplicate key detected in YAML: {key}")
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping)
+
 def load_yaml(path: Path) -> Any:
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return yaml.load(f, Loader=UniqueKeyLoader)
 
 def save_yaml(data: Any, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -53,11 +68,11 @@ def package_tools(
     install_dir: Path,
     config: str = "Release",
     infer_enabled: bool = True,
-    strict: bool = False,
+    strict: bool = True,
     project_root: Optional[Path] = None
 ) -> None:
     """
-    Direct destructive rebuild of the installation directory (YS-03).
+    Direct destructive rebuild of the installation directory (YS-03 / YVT2-03).
     Clears install_dir immediately upon starting; generates artifacts directly.
     Fails non-zero without rolling back or restoring old package.
     """
@@ -69,62 +84,53 @@ def package_tools(
     if install_dir == project_root or install_dir == Path.cwd().resolve() or install_dir in project_root.parents:
         raise RuntimeError(f"Refusing to package into project root or invalid install_dir: {install_dir}")
 
-    target_variant = "gpu" if infer_enabled else "cpu"
-
-    # 1. Read build artifacts metadata: resolved_dependencies.yaml
-    resolved_file = find_resolved_dependencies(build_dir, config)
-    if not resolved_file:
-        if strict:
-            raise RuntimeError(f"Strict packaging requires build metadata: resolved_dependencies.yaml in {build_dir}")
-        deps_meta = {}
-    else:
-        try:
-            deps_meta = load_yaml(resolved_file) or {}
-            if not isinstance(deps_meta, dict):
-                raise RuntimeError(f"Invalid YAML structure in {resolved_file}")
-            if strict:
-                required_fields = ["variant", "config", "modules"]
-                for rf in required_fields:
-                    if rf not in deps_meta:
-                        raise RuntimeError(f"Missing required build metadata field '{rf}' in {resolved_file}")
-            if "variant" in deps_meta and deps_meta["variant"] != target_variant:
-                raise RuntimeError(f"Build metadata variant mismatch: resolved_dependencies.yaml has '{deps_meta['variant']}', packaging target is '{target_variant}'")
-            if config is not None and "config" in deps_meta and deps_meta["config"] != config:
-                raise RuntimeError(f"Build metadata config mismatch: resolved_dependencies.yaml has config='{deps_meta['config']}', packaging target is '{config}'")
-        except RuntimeError:
-            raise
-        except Exception as e:
-            if strict:
-                raise RuntimeError(f"Corrupt build metadata {resolved_file}: {e}")
-            deps_meta = {}
-
-    # 2. Read build module index: module_index.yaml
-    index_src = find_build_module_index(build_dir)
-    if not index_src:
-        if strict:
-            raise RuntimeError(f"Missing required build index: module_index.yaml in {build_dir}")
-        build_index = {}
-    else:
-        try:
-            build_index = load_yaml(index_src) or {}
-            if not isinstance(build_index, dict):
-                raise RuntimeError(f"Invalid YAML structure in {index_src}")
-            if "variant" in build_index and build_index["variant"] != target_variant:
-                raise RuntimeError(f"Build index variant mismatch: module_index.yaml has '{build_index['variant']}', packaging target is '{target_variant}'")
-            if "tools" in build_index and not isinstance(build_index["tools"], dict):
-                raise RuntimeError(f"Invalid 'tools' section in {index_src}")
-        except RuntimeError:
-            raise
-        except Exception as e:
-            if strict:
-                raise RuntimeError(f"Corrupt build index {index_src}: {e}")
-            build_index = {}
-
-    # 3. Direct destructive clean of install_dir (YS-03)
+    # 1. Direct destructive clean of install_dir FIRST before reading metadata (YS-03, R72)
     # Delete output_dir recursively if it exists; no staging or backup
     if install_dir.exists():
         shutil.rmtree(install_dir)
     install_dir.mkdir(parents=True, exist_ok=True)
+
+    target_variant = "gpu" if infer_enabled else "cpu"
+
+    # 2. Read build artifacts metadata: resolved_dependencies.yaml
+    resolved_file = find_resolved_dependencies(build_dir, config)
+    if not resolved_file:
+        raise RuntimeError(f"Strict packaging requires build metadata: resolved_dependencies.yaml in {build_dir}")
+
+    try:
+        deps_meta = load_yaml(resolved_file) or {}
+        if not isinstance(deps_meta, dict):
+            raise RuntimeError(f"Invalid YAML structure in {resolved_file}")
+        required_fields = ["variant", "config", "modules"]
+        for rf in required_fields:
+            if rf not in deps_meta:
+                raise RuntimeError(f"Missing required build metadata field '{rf}' in {resolved_file}")
+        if "variant" in deps_meta and deps_meta["variant"] != target_variant:
+            raise RuntimeError(f"Build metadata variant mismatch: resolved_dependencies.yaml has '{deps_meta['variant']}', packaging target is '{target_variant}'")
+        if config is not None and "config" in deps_meta and deps_meta["config"] != config:
+            raise RuntimeError(f"Build metadata config mismatch: resolved_dependencies.yaml has config='{deps_meta['config']}', packaging target is '{config}'")
+    except RuntimeError:
+        raise
+    except Exception as e:
+        raise RuntimeError(f"Corrupt build metadata {resolved_file}: {e}")
+
+    # 3. Read build module index: module_index.yaml
+    index_src = find_build_module_index(build_dir)
+    if not index_src:
+        raise RuntimeError(f"Missing required build index: module_index.yaml in {build_dir}")
+
+    try:
+        build_index = load_yaml(index_src) or {}
+        if not isinstance(build_index, dict):
+            raise RuntimeError(f"Invalid YAML structure in {index_src}")
+        if "variant" in build_index and build_index["variant"] != target_variant:
+            raise RuntimeError(f"Build index variant mismatch: module_index.yaml has '{build_index['variant']}', packaging target is '{target_variant}'")
+        if "tools" not in build_index or not isinstance(build_index["tools"], dict) or not build_index["tools"]:
+            raise RuntimeError(f"Missing or empty 'tools' in build index: {index_src}")
+    except RuntimeError:
+        raise
+    except Exception as e:
+        raise RuntimeError(f"Corrupt build index {index_src}: {e}")
 
     bin_dir = install_dir / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
@@ -140,12 +146,6 @@ def package_tools(
     if not modules_dict and build_index.get("modules"):
         modules_dict = build_index["modules"]
 
-    # Fallback default module if not listed
-    if not modules_dict:
-        modules_dict = {"visiontools_preprocess": {}}
-        if infer_enabled:
-            modules_dict["visiontools_infer"] = {}
-
     for mod_name, mod_info in modules_dict.items():
         if not infer_enabled and "infer" in mod_name:
             continue
@@ -158,7 +158,6 @@ def package_tools(
             if not src_path.exists():
                 raise RuntimeError(f"Missing required module source for '{mod_name}': {src_path}")
         if not src_path:
-            # Search build_dir candidates
             candidates = [
                 build_dir / "src" / mod_name.replace("visiontools_", "") / dll_name,
                 build_dir / "src" / mod_name / dll_name,
@@ -177,39 +176,46 @@ def package_tools(
         shutil.copy2(src_path, dest_lib)
         installed_modules[mod_name] = {"library": f"bin/{dll_name}"}
 
-    # 5. Copy tool declarations
-    tools_dict = build_index.get("tools", {})
-    src_tools_dir = project_root / "assets" / "tools"
-    if src_tools_dir.exists():
-        for yf in list(src_tools_dir.glob("**/*.yaml")) + list(src_tools_dir.glob("**/*.yml")):
-            rel = yf.relative_to(src_tools_dir)
-            if any(part in rel.parts for part in ("custom", "示例", "examples")):
-                continue
-            if not infer_enabled and "dl.yolo" in yf.name:
-                continue
+    # 5. Copy tool declarations strictly from build_index["tools"] (R71, R73)
+    build_tools = build_index.get("tools", {})
+    for tool_id, tool_info in build_tools.items():
+        if not isinstance(tool_info, dict):
+            raise RuntimeError(f"Tool entry '{tool_id}' in build index must be a dictionary")
+        mod_ref = tool_info.get("module")
+        def_path_str = tool_info.get("definition")
+        if not mod_ref or not def_path_str:
+            raise RuntimeError(f"Tool entry '{tool_id}' missing 'module' or 'definition'")
 
-            # Read registry
-            ydoc = load_yaml(yf) or {}
-            reg = ydoc.get("entry", {}).get("registry_name") or ydoc.get("tool_id")
-            if not reg:
-                continue
+        src_decl = project_root / def_path_str
+        if not src_decl.exists():
+            if (project_root / "assets" / "tools" / def_path_str).exists():
+                src_decl = project_root / "assets" / "tools" / def_path_str
+            else:
+                raise RuntimeError(f"Tool declaration file not found for '{tool_id}': {src_decl}")
 
-            dest_file = assets_dir / rel
-            dest_file.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(yf, dest_file)
+        decl_data = load_yaml(src_decl)
+        if not isinstance(decl_data, dict):
+            raise RuntimeError(f"Tool declaration at {src_decl} is not a valid YAML dictionary")
+        decl_reg = decl_data.get("entry", {}).get("registry_name") or decl_data.get("tool_id")
+        if decl_reg != tool_id:
+            raise RuntimeError(f"Tool declaration at {src_decl} declares registry '{decl_reg}' which does not match indexed tool '{tool_id}'")
 
-            # Map to module
-            mod = "visiontools_preprocess"
-            if "dl.yolo" in reg or "infer" in ydoc.get("category", "").lower():
-                mod = "visiontools_infer"
-            if reg in tools_dict and isinstance(tools_dict[reg], dict) and tools_dict[reg].get("module"):
-                mod = tools_dict[reg]["module"]
+        dest_decl = install_dir / def_path_str
+        dest_decl.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_decl, dest_decl)
 
-            rel_pkg_path = f"assets/tools/{rel.as_posix()}"
-            installed_tools[reg] = {
-                "module": mod,
-                "definition": rel_pkg_path
-            }
+        py_entry = decl_data.get("entry", {}).get("file")
+        if py_entry:
+            src_py = src_decl.parent / py_entry
+            if src_py.exists():
+                dest_py = dest_decl.parent / py_entry
+                dest_py.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_py, dest_py)
+
+        installed_tools[tool_id] = {
+            "module": mod_ref,
+            "definition": def_path_str.replace("\\", "/")
+        }
 
     # 6. Copy runtime dependency files
     runtime_entries = deps_meta.get("runtime_files", [])
@@ -221,12 +227,11 @@ def package_tools(
                 dp.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(sp, dp)
                 installed_runtime_files.append(Path(rf["destination"]).as_posix())
-            elif strict:
+            else:
                 raise RuntimeError(f"Missing required runtime dependency file: {sp}")
 
     # Fallback dependency discovery if runtime_entries is empty or incomplete
     if not any("opencv" in r.lower() for r in installed_runtime_files):
-        # Look for OpenCV DLL
         opencv_bins = [
             Path(os.environ.get("OpenCV_DIR", "D:/Software/dev/opencv-4.8.0/build/x64/vc16")) / "bin",
             Path("D:/Software/dev/opencv-4.8.0/build/x64/vc16/bin")
@@ -240,7 +245,6 @@ def package_tools(
                 break
 
     if infer_enabled:
-        # InferRT
         if not any("inferrt" in r.lower() for r in installed_runtime_files):
             inf_bin = Path(os.environ.get("INFERRT_ROOT", "F:/Projects/InferRT/InferRT-0.0.3")) / "bin"
             if inf_bin.exists():
@@ -248,7 +252,6 @@ def package_tools(
                     dest = bin_dir / dll.name
                     shutil.copy2(dll, dest)
                     installed_runtime_files.append(f"bin/{dll.name}")
-        # CUDA
         if not any("cudart" in r.lower() for r in installed_runtime_files):
             cuda_bin = Path(os.environ.get("CUDA_PATH", "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8")) / "bin"
             if cuda_bin.exists():
@@ -257,7 +260,6 @@ def package_tools(
                         dest = bin_dir / dll.name
                         shutil.copy2(dll, dest)
                         installed_runtime_files.append(f"bin/{dll.name}")
-        # TensorRT
         if not any("nvinfer" in r.lower() for r in installed_runtime_files):
             trt_candidates = [
                 Path(os.environ.get("TRT_ROOT", "D:/Software/dev/TensorRT-10.16.1.11")) / "bin",
@@ -272,15 +274,6 @@ def package_tools(
                             installed_runtime_files.append(f"bin/{dll.name}")
                     break
 
-    # Also copy yaml-cpp DLL if present
-    if not any("yaml-cpp" in r.lower() for r in installed_runtime_files):
-        yaml_dll = Path("D:/Software/anaconda3/Library/bin/yaml-cpp.dll")
-        if yaml_dll.exists():
-            dest = bin_dir / yaml_dll.name
-            shutil.copy2(yaml_dll, dest)
-            installed_runtime_files.append(f"bin/{yaml_dll.name}")
-
-    # Deduplicate runtime files
     installed_runtime_files = sorted(set(installed_runtime_files))
 
     # 7. Copy examples if present
@@ -343,7 +336,12 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
         if not isinstance(mod_info, dict) or "library" not in mod_info:
             print(f"[ERROR] Module '{mod_name}' missing 'library' path")
             return False
-        lib_path = install_dir / mod_info["library"]
+        lib_str = mod_info["library"]
+        lib_stem = Path(lib_str).stem
+        if lib_stem != mod_name:
+            print(f"[ERROR] Module '{mod_name}' library stem '{lib_stem}' does not match module name")
+            return False
+        lib_path = install_dir / lib_str
         if not lib_path.exists():
             print(f"[ERROR] Indexed module library not found: {lib_path}")
             return False
@@ -390,18 +388,23 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
             print(f"[ERROR] Tool '{reg}' definition file not found: {install_dir / str(def_ref)}")
             return False
 
-        # If declaration defines python entry.file, verify it exists relative to the definition
+        # Validate that definition declares matching tool (R73)
         decl_path = install_dir / def_ref
         try:
             decl_data = load_yaml(decl_path) or {}
+            decl_reg = decl_data.get("entry", {}).get("registry_name") or decl_data.get("tool_id")
+            if decl_reg != reg:
+                print(f"[ERROR] Definition '{def_ref}' declares registry '{decl_reg}' which does not match indexed tool '{reg}'")
+                return False
             py_entry = decl_data.get("entry", {}).get("file")
             if py_entry:
                 py_file = decl_path.parent / py_entry
                 if not py_file.exists():
                     print(f"[ERROR] Python tool '{reg}' script file not found: {py_file}")
                     return False
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[ERROR] Failed to parse declaration for '{reg}': {e}")
+            return False
 
     # Verify runtime_files
     runtime_files = idx.get("runtime_files", [])
@@ -414,8 +417,11 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
             print(f"[ERROR] Runtime file not found: {rf_path}")
             return False
 
-    # CPU/GPU isolation checks
-    infer_dll = install_dir / "bin" / "visiontools_infer.dll"
+    bin_dir = install_dir / "bin"
+    gpu_dll_names = ["cudart", "cublas", "nvinfer", "inferrt", "cudnn", "cufft", "nvonnxparser"]
+
+    # CPU/GPU isolation and dependency completeness checks (R75, R76, R77)
+    infer_dll = bin_dir / "visiontools_infer.dll"
     if not is_gpu:
         if infer_dll.exists():
             print("[ERROR] CPU package verification failed: visiontools_infer.dll found in CPU package")
@@ -423,29 +429,38 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
         if any("infer" in m.lower() for m in modules_dict):
             print("[ERROR] CPU package verification failed: infer module referenced in CPU package")
             return False
+
+        # CPU package requires opencv_world (R75)
+        if not any("opencv_world" in r.lower() for r in runtime_files):
+            print("[ERROR] CPU package verification failed: opencv_world missing in runtime_files")
+            return False
+        if not any("opencv_world" in f.name.lower() for f in bin_dir.glob("*.dll")):
+            print("[ERROR] CPU package verification failed: opencv_world missing in bin/")
+            return False
+
+        # CPU package forbids any GPU DLLs (R77)
+        for f in bin_dir.glob("*.dll"):
+            if any(k in f.name.lower() for k in gpu_dll_names):
+                print(f"[ERROR] CPU package verification failed: found GPU DLL in bin/: {f.name}")
+                return False
+        for rf in runtime_files:
+            if any(k in rf.lower() for k in gpu_dll_names):
+                print(f"[ERROR] CPU package verification failed: found GPU DLL in runtime_files: {rf}")
+                return False
     else:
         if not infer_dll.exists():
             print("[ERROR] GPU package verification failed: visiontools_infer.dll missing")
             return False
-        # TensorRT core runtime check
-        bin_dir = install_dir / "bin"
-        found_trt = False
-        if bin_dir.exists():
-            for f in bin_dir.glob("nvinfer*.dll"):
-                lower = f.name.lower()
-                if "plugin" in lower or "dispatch" in lower or "lean" in lower:
-                    continue
-                found_trt = True
-                break
-        if not found_trt:
-            for rf in runtime_files:
-                name = Path(rf).name.lower()
-                if name.startswith("nvinfer") and not any(k in name for k in ["plugin", "dispatch", "lean"]):
-                    found_trt = True
-                    break
-        if not found_trt:
-            print("[ERROR] GPU package verification failed: no TensorRT core runtime DLL found in package")
-            return False
+
+        # GPU package requires opencv_world, inferrt_core, cudart64, and nvinfer (R76)
+        required_gpu_libs = ["opencv_world", "inferrt_core", "cudart64", "nvinfer"]
+        for dep in required_gpu_libs:
+            if not any(dep in rf.lower() for rf in runtime_files):
+                print(f"[ERROR] GPU package verification failed: {dep} missing in runtime_files")
+                return False
+            if not any(dep in f.name.lower() for f in bin_dir.glob("*.dll")):
+                print(f"[ERROR] GPU package verification failed: {dep} missing in bin/")
+                return False
 
     print(f"[SUCCESS] Package verification passed ({len(tools_dict)} tools verified, variant={expected_variant}).")
     return True

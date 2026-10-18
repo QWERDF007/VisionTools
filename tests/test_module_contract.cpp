@@ -247,12 +247,25 @@ int main() {
                       << ", loop100=" << rss100
                       << ", post_release=" << rssPostRelease
                       << ", post_destroy=" << rssPostDestroy << std::endl;
-            // Plateau check: verify memory stabilization across sample windows
-            std::size_t maxWindowDiff = 0;
-            if (rss50 >= rss25 && (rss50 - rss25) > maxWindowDiff) maxWindowDiff = rss50 - rss25;
-            if (rss75 >= rss50 && (rss75 - rss50) > maxWindowDiff) maxWindowDiff = rss75 - rss50;
-            if (rss100 >= rss75 && (rss100 - rss75) > maxWindowDiff) maxWindowDiff = rss100 - rss75;
-            REQUIRE(maxWindowDiff < 1024 * 1024, "Working set window growth must remain bounded");
+            // Plateau check: verify memory stabilization across sample windows (F79 / YR-05)
+            const auto evaluateRssPlateau = [](std::size_t r25, std::size_t r50, std::size_t r75, std::size_t r100) -> bool {
+                const bool monotonicGrowthLeak = (r50 >= r25 + 512 * 1024) &&
+                                                 (r75 >= r50 + 512 * 1024) &&
+                                                 (r100 >= r75 + 512 * 1024);
+                if (monotonicGrowthLeak) return false;
+                std::size_t maxDiff = 0;
+                if (r50 >= r25 && (r50 - r25) > maxDiff) maxDiff = r50 - r25;
+                if (r75 >= r50 && (r75 - r50) > maxDiff) maxDiff = r75 - r50;
+                if (r100 >= r75 && (r100 - r75) > maxDiff) maxDiff = r100 - r75;
+                return maxDiff < 1024 * 1024;
+            };
+
+            // 1. Counterexample verification: continuous +512KiB/window growth must be rejected
+            REQUIRE(!evaluateRssPlateau(10000000, 10000000 + 512 * 1024, 10000000 + 1024 * 1024, 10000000 + 1536 * 1024),
+                    "Plateau check must reject continuous +512KiB/window growth counterexample");
+
+            // 2. Real working set verification
+            REQUIRE(evaluateRssPlateau(rss25, rss50, rss75, rss100), "Working set must reach plateau after warmup");
             std::cout << "[INFO] RSS sequence analysis: working set reached plateau after warmup." << std::endl;
         }
     }

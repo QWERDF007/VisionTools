@@ -16,6 +16,8 @@ import json
 import math
 import os
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -28,9 +30,24 @@ except ImportError:
 class ContractValidationError(Exception):
     pass
 
+class UniqueKeyLoader(yaml.SafeLoader):
+    pass
+
+def _construct_mapping(loader, node, deep=False):
+    loader.flatten_mapping(node)
+    mapping = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in mapping:
+            raise ValueError(f"Duplicate key detected in YAML: {key}")
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping)
+
 def load_yaml(file_path: Path) -> Dict[str, Any]:
     with open(file_path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+        return yaml.load(f, Loader=UniqueKeyLoader) or {}
 
 def to_cpp_identifier(name: str) -> str:
     cleaned = re.sub(r'[^a-zA-Z0-9_]', '_', name)
@@ -120,6 +137,14 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
     kind = doc.get("kind")
     if kind not in VALID_KINDS:
         raise ContractValidationError(f"{prefix}Invalid tool kind: '{kind}'")
+    if kind in ("cpp_function", "python_function") and doc.get("init_params"):
+        raise ContractValidationError(f"{prefix}Function tool cannot have init_params")
+
+    init_ports = {p.get("id") for p in doc.get("init_params", []) if isinstance(p, dict)}
+    input_ports_set = {p.get("id") for p in doc.get("inputs", []) if isinstance(p, dict)}
+    overlap = init_ports & input_ports_set
+    if overlap:
+        raise ContractValidationError(f"{prefix}init_params and inputs share ID: {overlap}")
 
     # 3. Entry point
     entry = doc.get("entry")
@@ -182,9 +207,8 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
             p_id = p.get("id")
             if not p_id or not isinstance(p_id, str):
                 raise ContractValidationError(f"{prefix}Port missing 'id' in '{port_group}'")
-            p_name = p.get("name")
-            if p_name is not None and (not isinstance(p_name, str) or not p_name.strip()):
-                raise ContractValidationError(f"{prefix}Port name must not be empty on port: '{p_id}'")
+            if "name" not in p or not isinstance(p["name"], str) or not p["name"].strip():
+                raise ContractValidationError(f"{prefix}Port missing or empty 'name' on port: '{p_id}'")
             if p_id in port_ids:
                 raise ContractValidationError(f"{prefix}Duplicate port id '{p_id}' in '{port_group}'")
             port_ids.add(p_id)
@@ -315,9 +339,33 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
                 opts = p["options"]
                 if not isinstance(opts, list):
                     raise ContractValidationError(f"{prefix}Port '{p_id}' options must be a list")
+                if p_type not in ("Int", "Float", "String", "Bool"):
+                    raise ContractValidationError(f"{prefix}Port '{p_id}' of type '{p_type}' cannot have options")
+                for opt in opts:
+                    if p_type == "Int":
+                        if not isinstance(opt, int) or isinstance(opt, bool):
+                            raise ContractValidationError(f"{prefix}Option for Int port '{p_id}' must be an integer (got {opt})")
+                    elif p_type == "Float":
+                        if not isinstance(opt, (int, float)) or isinstance(opt, bool) or not math.isfinite(opt):
+                            raise ContractValidationError(f"{prefix}Option for Float port '{p_id}' must be finite number (got {opt})")
+                    elif p_type == "String":
+                        if not isinstance(opt, str):
+                            raise ContractValidationError(f"{prefix}Option for String port '{p_id}' must be string (got {opt})")
+                    elif p_type == "Bool":
+                        if not isinstance(opt, bool):
+                            raise ContractValidationError(f"{prefix}Option for Bool port '{p_id}' must be boolean (got {opt})")
+                    if min_val is not None and isinstance(opt, (int, float)) and opt < min_val:
+                        raise ContractValidationError(f"{prefix}Option {opt} is less than min ({min_val}) on port '{p_id}'")
+                    if max_val is not None and isinstance(opt, (int, float)) and opt > max_val:
+                        raise ContractValidationError(f"{prefix}Option {opt} exceeds max ({max_val}) on port '{p_id}'")
                 if "default" in p and p["default"] is not None:
                     if p["default"] not in opts:
                         raise ContractValidationError(f"{prefix}Port '{p_id}' default value is not one of declared options")
+
+            if "options_provider" in p and p["options_provider"] is not None:
+                provider = p["options_provider"]
+                if provider != "platform.gpu_devices":
+                    raise ContractValidationError(f"{prefix}Unknown options_provider '{provider}' on port '{p_id}'")
 
     # 5. Image reference validation (SSOT with SDK Schema.cpp)
     input_ports = {p.get("id"): p for p in doc.get("inputs", []) if isinstance(p, dict)}
@@ -357,7 +405,7 @@ def load_and_validate_declarations(tools_dir: Path, bindings_data: Optional[Dict
     Exported for use by package_tools and tests.
     """
     tools_dir = Path(tools_dir)
-    yaml_files = sorted(tools_dir.glob("**/*.yaml"))
+    yaml_files = sorted(set(tools_dir.glob("**/*.yaml")) | set(tools_dir.glob("**/*.yml")))
     if not yaml_files:
         raise ContractValidationError(f"No tool YAML declarations found in {tools_dir}")
 
@@ -740,6 +788,7 @@ def main():
     parser.add_argument("--index-output", default="module_index.yaml", help="Output path for module index YAML")
     parser.add_argument("--variant", default="gpu", choices=["gpu", "cpu"], help="Distribution variant")
     parser.add_argument("--sdk-include-dir", default=None, help="VisionRT SDK include directory")
+    parser.add_argument("--validator", default=None, help="Path to visionrt_validate_tool executable")
     args = parser.parse_args()
 
     if not args.sdk_include_dir:
@@ -757,7 +806,7 @@ def main():
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    yaml_files = sorted(tools_dir.glob("**/*.yaml"))
+    yaml_files = sorted(set(tools_dir.glob("**/*.yaml")) | set(tools_dir.glob("**/*.yml")))
     if not yaml_files:
         print(f"[ERROR] No YAML tool declarations found in {tools_dir}", file=sys.stderr)
         return 1
@@ -766,11 +815,27 @@ def main():
     bindings_path = Path(args.bindings)
     if not bindings_path.exists():
         print(f"[ERROR] Module bindings file not found: {bindings_path}", file=sys.stderr)
-        index_path = Path(args.index_output)
-        index_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(index_path, "w", encoding="utf-8") as f:
-            json.dump({"version": "1.0.0", "variant": args.variant, "tools": {}}, f, indent=2)
         return 1
+
+    # Run SDK validator if present (R76)
+    validator_bin = None
+    if args.validator and Path(args.validator).is_file():
+        validator_bin = Path(args.validator)
+    else:
+        sdk_candidate = Path("C:/dev/visionrt-sdk/bin/visionrt_validate_tool.exe")
+        if sdk_candidate.is_file():
+            validator_bin = sdk_candidate
+        else:
+            which_val = shutil.which("visionrt_validate_tool")
+            if which_val:
+                validator_bin = Path(which_val)
+
+    if validator_bin:
+        for yf in yaml_files:
+            res = subprocess.run([str(validator_bin), str(yf)], capture_output=True, text=True)
+            if res.returncode != 0:
+                print(f"[ERROR] visionrt_validate_tool failed for {yf}:\n{res.stderr or res.stdout}", file=sys.stderr)
+                return 1
 
     try:
         bindings_data = load_yaml(bindings_path)

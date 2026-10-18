@@ -117,11 +117,11 @@ class TestPackageTools(unittest.TestCase):
             },
             "visionrt.detection.filter": {
                 "module": "visiontools_preprocess",
-                "definition": "assets/tools/builtin/预处理/图像处理/visionrt.detection.filter.yaml"
+                "definition": "assets/tools/builtin/处理/检测/visionrt.detection.filter.yaml"
             },
             "visionrt.roi.projection": {
                 "module": "visiontools_preprocess",
-                "definition": "assets/tools/builtin/预处理/图像处理/visionrt.roi.projection.yaml"
+                "definition": "assets/tools/builtin/预处理/ROI/visionrt.roi.projection.yaml"
             },
             "visionrt.image.preprocess": {
                 "module": "visiontools_preprocess",
@@ -129,7 +129,7 @@ class TestPackageTools(unittest.TestCase):
             },
             "visionrt.image.read": {
                 "module": "visiontools_preprocess",
-                "definition": "assets/tools/builtin/预处理/图像处理/visionrt.image.read.yaml"
+                "definition": "assets/tools/builtin/采集/图像采集/visionrt.image.read.yaml"
             }
         }
         modules = {
@@ -138,7 +138,7 @@ class TestPackageTools(unittest.TestCase):
         if is_gpu:
             tools["visionrt.dl.yolo"] = {
                 "module": "visiontools_infer",
-                "definition": "assets/tools/builtin/检测/目标检测/visionrt.dl.yolo.yaml"
+                "definition": "assets/tools/builtin/深度学习/目标检测/visionrt.dl.yolo.yaml"
             }
             modules["visiontools_infer"] = {}
 
