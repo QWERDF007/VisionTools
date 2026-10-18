@@ -226,15 +226,26 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
             if p_type not in VALID_TYPES:
                 raise ContractValidationError(f"{prefix}Port '{p_id}' has invalid type '{p_type}'")
 
-            # Direction-specific constraint validation (SSOT with SDK Schema.cpp)
+            # Direction-specific constraint validation (SSOT with SDK SchemaYaml.cpp)
+            ALLOWED_PORT_FIELDS_OUTPUT = {"id", "name", "type", "dtype", "rank", "layout", "image_port", "display"}
+            ALLOWED_PORT_FIELDS_INPUT = {"id", "name", "type", "dtype", "rank", "layout", "default", "editor", "min", "max",
+                                         "step", "decimals", "options", "options_provider", "tab", "group", "image_input"}
+            ALLOWED_DISPLAY_FIELDS = {"color_order", "same_geometry_as_input"}
+
             if port_group == "outputs":
-                for disallowed in ("editor", "min", "max", "step", "decimals", "options", "options_provider", "image_input"):
-                    if disallowed in p and p[disallowed] is not None:
-                        raise ContractValidationError(f"{prefix}'{disallowed}' is not an output field on port: '{p_id}'")
+                for k in p:
+                    if k not in ALLOWED_PORT_FIELDS_OUTPUT:
+                        raise ContractValidationError(f"{prefix}Unknown or disallowed output field '{k}' on port: '{p_id}'")
+                if "display" in p and p["display"] is not None:
+                    if not isinstance(p["display"], dict):
+                        raise ContractValidationError(f"{prefix}'display' must be a dictionary on port: '{p_id}'")
+                    for dk in p["display"]:
+                        if dk not in ALLOWED_DISPLAY_FIELDS:
+                            raise ContractValidationError(f"{prefix}Unknown nested field '{dk}' in display on port: '{p_id}'")
             else:
-                for disallowed in ("color_order", "same_geometry_as_input", "image_port"):
-                    if disallowed in p and p[disallowed] is not None:
-                        raise ContractValidationError(f"{prefix}'{disallowed}' applies only to outputs on port: '{p_id}'")
+                for k in p:
+                    if k not in ALLOWED_PORT_FIELDS_INPUT:
+                        raise ContractValidationError(f"{prefix}Unknown or disallowed input/init field '{k}' on port: '{p_id}'")
 
             if "editor" in p and p["editor"] is not None:
                 valid_editors = {"number", "text", "bool", "file", "directory", "array", "roi"}
@@ -817,25 +828,20 @@ def main():
         print(f"[ERROR] Module bindings file not found: {bindings_path}", file=sys.stderr)
         return 1
 
-    # Run SDK validator if present (R76)
-    validator_bin = None
-    if args.validator and Path(args.validator).is_file():
-        validator_bin = Path(args.validator)
-    else:
-        sdk_candidate = Path("C:/dev/visionrt-sdk/bin/visionrt_validate_tool.exe")
-        if sdk_candidate.is_file():
-            validator_bin = sdk_candidate
-        else:
-            which_val = shutil.which("visionrt_validate_tool")
-            if which_val:
-                validator_bin = Path(which_val)
+    # Run SDK validator: required input (BS-02, F82, N06)
+    if not args.validator:
+        print("[ERROR] Missing required --validator executable", file=sys.stderr)
+        return 1
+    validator_bin = Path(args.validator)
+    if not validator_bin.is_file():
+        print(f"[ERROR] Validator executable not found: {validator_bin}", file=sys.stderr)
+        return 1
 
-    if validator_bin:
-        for yf in yaml_files:
-            res = subprocess.run([str(validator_bin), str(yf)], capture_output=True, text=True)
-            if res.returncode != 0:
-                print(f"[ERROR] visionrt_validate_tool failed for {yf}:\n{res.stderr or res.stdout}", file=sys.stderr)
-                return 1
+    for yf in yaml_files:
+        res = subprocess.run([str(validator_bin), str(yf)], capture_output=True, text=True)
+        if res.returncode != 0:
+            print(f"[ERROR] visionrt_validate_tool failed for {yf}:\n{res.stderr or res.stdout}", file=sys.stderr)
+            return 1
 
     try:
         bindings_data = load_yaml(bindings_path)

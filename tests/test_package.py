@@ -36,7 +36,7 @@ class TestPackageTools(unittest.TestCase):
         # Mock preprocess DLL
         prep_dir = self.build_dir / "src" / "preprocess"
         prep_dir.mkdir(parents=True)
-        (prep_dir / "visiontools_preprocess.dll").write_bytes(b"MOCK_PREPROCESS_DLL")
+        (prep_dir / "visiontools_preprocess.dll").write_bytes(b"MOCK_PREPROCESS_DLL\x00visiontoolsModuleApi\x00")
 
         # Mock dependencies
         self.mock_deps_dir = self.t / "deps"
@@ -63,7 +63,7 @@ class TestPackageTools(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def _write_resolved_deps(self, is_gpu=True):
+    def _write_resolved_deps(self, is_gpu=True, config="Release"):
         prep_dll = self.build_dir / "src" / "preprocess" / "visiontools_preprocess.dll"
         modules = {
             "visiontools_preprocess": {
@@ -98,11 +98,13 @@ class TestPackageTools(unittest.TestCase):
 
         deps = {
             "variant": "gpu" if is_gpu else "cpu",
-            "config": "Release",
+            "config": config,
             "modules": modules,
             "runtime_files": runtime_files
         }
-        with open(self.build_dir / "resolved_dependencies.yaml", "w", encoding="utf-8") as f:
+        cfg_dir = self.build_dir / config
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        with open(cfg_dir / "resolved_dependencies.yaml", "w", encoding="utf-8") as f:
             yaml.dump(deps, f, sort_keys=False)
 
     def _write_module_index(self, is_gpu=True):
@@ -176,7 +178,7 @@ class TestPackageTools(unittest.TestCase):
     def test_valid_gpu_package(self):
         infer_dir = self.build_dir / "src" / "infer"
         infer_dir.mkdir(parents=True)
-        (infer_dir / "visiontools_infer.dll").write_bytes(b"MOCK_INFER_DLL")
+        (infer_dir / "visiontools_infer.dll").write_bytes(b"MOCK_INFER_DLL\x00visiontoolsModuleApi\x00")
         self._write_resolved_deps(is_gpu=True)
         self._write_module_index(is_gpu=True)
 
@@ -199,7 +201,7 @@ class TestPackageTools(unittest.TestCase):
         # 1. Package GPU
         infer_dir = self.build_dir / "src" / "infer"
         infer_dir.mkdir(parents=True)
-        (infer_dir / "visiontools_infer.dll").write_bytes(b"MOCK_INFER_DLL")
+        (infer_dir / "visiontools_infer.dll").write_bytes(b"MOCK_INFER_DLL\x00visiontoolsModuleApi\x00")
         self._write_resolved_deps(is_gpu=True)
         self._write_module_index(is_gpu=True)
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=True, strict=True)
@@ -266,7 +268,7 @@ class TestPackageTools(unittest.TestCase):
         self.assertIn("Build index variant mismatch", str(ctx.exception))
 
     def test_missing_resolved_deps_strict_raises(self):
-        (self.build_dir / "resolved_dependencies.yaml").unlink()
+        (self.build_dir / "Release" / "resolved_dependencies.yaml").unlink()
         with self.assertRaises(RuntimeError) as ctx:
             pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
         self.assertIn("Strict packaging requires build metadata", str(ctx.exception))
@@ -302,7 +304,7 @@ class TestPackageTools(unittest.TestCase):
     def test_verify_fails_missing_tensorrt_gpu(self):
         infer_dir = self.build_dir / "src" / "infer"
         infer_dir.mkdir(parents=True)
-        (infer_dir / "visiontools_infer.dll").write_bytes(b"MOCK_INFER_DLL")
+        (infer_dir / "visiontools_infer.dll").write_bytes(b"MOCK_INFER_DLL\x00visiontoolsModuleApi\x00")
         self._write_resolved_deps(is_gpu=True)
         self._write_module_index(is_gpu=True)
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=True, strict=True)
@@ -341,7 +343,9 @@ class TestPackageTools(unittest.TestCase):
             },
             "runtime_files": []
         }
-        with open(self.build_dir / "resolved_dependencies.yaml", "w", encoding="utf-8") as f:
+        cfg_dir = self.build_dir / "Release"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        with open(cfg_dir / "resolved_dependencies.yaml", "w", encoding="utf-8") as f:
             yaml.dump(deps, f)
 
         # Packaging must fail
@@ -369,7 +373,9 @@ class TestPackageTools(unittest.TestCase):
             },
             "runtime_files": []
         }
-        with open(self.build_dir / "resolved_dependencies.yaml", "w", encoding="utf-8") as f:
+        cfg_dir = self.build_dir / "Release"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        with open(cfg_dir / "resolved_dependencies.yaml", "w", encoding="utf-8") as f:
             yaml.dump(deps, f)
         with self.assertRaises(RuntimeError):
             pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
@@ -381,6 +387,65 @@ class TestPackageTools(unittest.TestCase):
         # 3. Rerun succeeds
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
         self.assertTrue(pkg.verify_package(self.install_dir, is_gpu=False))
+
+    def test_root_resolved_dependencies_rejected(self):
+        """N05: Packaging fails if resolved_dependencies.yaml is only at root and not in config dir."""
+        rel_file = self.build_dir / "Release" / "resolved_dependencies.yaml"
+        root_file = self.build_dir / "resolved_dependencies.yaml"
+        rel_file.rename(root_file)
+        with self.assertRaises(RuntimeError) as ctx:
+            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+        self.assertIn("Strict packaging requires build metadata", str(ctx.exception))
+
+    def test_fake_source_missing_module_api_rejected(self):
+        """N03: Module DLL missing visiontoolsModuleApi is rejected."""
+        fake_prep = self.build_dir / "src" / "preprocess" / "visiontools_preprocess.dll"
+        fake_prep.write_bytes(b"FAKE_DLL_NO_API")
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
+        with self.assertRaises(RuntimeError) as ctx:
+            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+        self.assertIn("missing 'visiontoolsModuleApi'", str(ctx.exception))
+
+    def test_omitted_tool_in_build_index_rejected(self):
+        """N01: Build index missing an active declared tool is rejected."""
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
+        idx_file = self.build_dir / "generated" / "module_index.yaml"
+        idx = pkg.load_yaml(idx_file)
+        idx["tools"].pop("visionrt.image.crop")
+        pkg.save_yaml(idx, idx_file)
+        with self.assertRaises(RuntimeError) as ctx:
+            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+        self.assertIn("Exact tool set mismatch", str(ctx.exception))
+
+    def test_missing_variant_in_build_index_rejected(self):
+        """N02: Build index missing variant is rejected."""
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
+        idx_file = self.build_dir / "generated" / "module_index.yaml"
+        idx = pkg.load_yaml(idx_file)
+        idx.pop("variant")
+        pkg.save_yaml(idx, idx_file)
+        with self.assertRaises(RuntimeError) as ctx:
+            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+        self.assertIn("Missing required 'variant'", str(ctx.exception))
+
+    def test_tensorrt_plugin_rejected(self):
+        """N04: TensorRT plugin DLL cannot replace core nvinfer DLL in GPU verify."""
+        infer_dir = self.build_dir / "src" / "infer"
+        infer_dir.mkdir(parents=True, exist_ok=True)
+        (infer_dir / "visiontools_infer.dll").write_bytes(b"MOCK_INFER_DLL\x00visiontoolsModuleApi\x00")
+        self._write_resolved_deps(is_gpu=True)
+        self._write_module_index(is_gpu=True)
+        pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=True, strict=True)
+        # Rename core to plugin
+        (self.install_dir / "bin" / "nvinfer_10.dll").rename(self.install_dir / "bin" / "nvinfer_plugin_10.dll")
+        idx_file = self.install_dir / "module_index.yaml"
+        idx = pkg.load_yaml(idx_file)
+        idx["runtime_files"] = [f.replace("nvinfer_10.dll", "nvinfer_plugin_10.dll") for f in idx["runtime_files"]]
+        pkg.save_yaml(idx, idx_file)
+        self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=True))
 
 if __name__ == "__main__":
     unittest.main()

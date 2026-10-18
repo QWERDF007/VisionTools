@@ -42,15 +42,12 @@ def save_yaml(data: Any, path: Path) -> None:
     with open(path, "w", encoding="utf-8") as f:
         yaml.dump(data, f, sort_keys=False, allow_unicode=True)
 
-def find_resolved_dependencies(build_dir: Path, config: Optional[str] = None) -> Optional[Path]:
-    """Find resolved_dependencies.yaml in build/<config> or build root."""
+def find_resolved_dependencies(build_dir: Path, config: Optional[str] = "Release") -> Optional[Path]:
+    """Find resolved_dependencies.yaml in build/<config> strictly (no root fallback)."""
     if config:
         candidate = build_dir / config / "resolved_dependencies.yaml"
         if candidate.exists():
             return candidate
-    candidate = build_dir / "resolved_dependencies.yaml"
-    if candidate.exists():
-        return candidate
     return None
 
 def find_build_module_index(build_dir: Path) -> Optional[Path]:
@@ -123,7 +120,9 @@ def package_tools(
         build_index = load_yaml(index_src) or {}
         if not isinstance(build_index, dict):
             raise RuntimeError(f"Invalid YAML structure in {index_src}")
-        if "variant" in build_index and build_index["variant"] != target_variant:
+        if "variant" not in build_index or not build_index["variant"]:
+            raise RuntimeError(f"Missing required 'variant' in build index: {index_src}")
+        if build_index["variant"] != target_variant:
             raise RuntimeError(f"Build index variant mismatch: module_index.yaml has '{build_index['variant']}', packaging target is '{target_variant}'")
         if "tools" not in build_index or not isinstance(build_index["tools"], dict) or not build_index["tools"]:
             raise RuntimeError(f"Missing or empty 'tools' in build index: {index_src}")
@@ -131,6 +130,29 @@ def package_tools(
         raise
     except Exception as e:
         raise RuntimeError(f"Corrupt build index {index_src}: {e}")
+
+    # Exact set comparison between active declarations and build index tools (BS-03, N01)
+    src_tools_dir = project_root / "assets" / "tools"
+    declared_tool_ids = set()
+    if src_tools_dir.exists():
+        decl_files = sorted(set(src_tools_dir.glob("**/*.yaml")) | set(src_tools_dir.glob("**/*.yml")))
+        for df in decl_files:
+            rel = df.relative_to(src_tools_dir)
+            if any(part in rel.parts for part in ("custom", "示例", "examples")):
+                continue
+            if not infer_enabled and ("dl.yolo" in df.name or "infer" in rel.as_posix().lower()):
+                continue
+            doc = load_yaml(df) or {}
+            reg = doc.get("entry", {}).get("registry_name") or doc.get("tool_id")
+            if reg:
+                declared_tool_ids.add(reg)
+
+    indexed_tools = build_index.get("tools", {})
+    if set(declared_tool_ids) != set(indexed_tools.keys()):
+        raise RuntimeError(
+            f"Exact tool set mismatch between declarations and build index: "
+            f"declared={sorted(declared_tool_ids)}, indexed={sorted(indexed_tools.keys())}"
+        )
 
     bin_dir = install_dir / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
@@ -172,6 +194,11 @@ def package_tools(
 
         if not src_path or not src_path.exists():
             raise RuntimeError(f"Missing required module DLL for '{mod_name}': {src_path or dll_name}")
+
+        with open(src_path, "rb") as f:
+            dll_bytes = f.read()
+        if b"visiontoolsModuleApi" not in dll_bytes:
+            raise RuntimeError(f"Module DLL at {src_path} is invalid: missing 'visiontoolsModuleApi'")
 
         shutil.copy2(src_path, dest_lib)
         installed_modules[mod_name] = {"library": f"bin/{dll_name}"}
@@ -345,6 +372,11 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
         if not lib_path.exists():
             print(f"[ERROR] Indexed module library not found: {lib_path}")
             return False
+        with open(lib_path, "rb") as f:
+            lib_bytes = f.read()
+        if b"visiontoolsModuleApi" not in lib_bytes:
+            print(f"[ERROR] Module DLL '{lib_path}' does not export 'visiontoolsModuleApi'")
+            return False
 
     tools_dict = idx.get("tools")
     if not isinstance(tools_dict, dict) or not tools_dict:
@@ -452,8 +484,8 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
             print("[ERROR] GPU package verification failed: visiontools_infer.dll missing")
             return False
 
-        # GPU package requires opencv_world, inferrt_core, cudart64, and nvinfer (R76)
-        required_gpu_libs = ["opencv_world", "inferrt_core", "cudart64", "nvinfer"]
+        # GPU package requires opencv_world, inferrt_core, and cudart64
+        required_gpu_libs = ["opencv_world", "inferrt_core", "cudart64"]
         for dep in required_gpu_libs:
             if not any(dep in rf.lower() for rf in runtime_files):
                 print(f"[ERROR] GPU package verification failed: {dep} missing in runtime_files")
@@ -461,6 +493,25 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
             if not any(dep in f.name.lower() for f in bin_dir.glob("*.dll")):
                 print(f"[ERROR] GPU package verification failed: {dep} missing in bin/")
                 return False
+
+        # TensorRT core runtime check: must have nvinfer, excluding plugin, dispatch, lean (F84, N04)
+        found_trt = False
+        if bin_dir.exists():
+            for f in bin_dir.glob("nvinfer*.dll"):
+                lower = f.name.lower()
+                if any(k in lower for k in ["plugin", "dispatch", "lean"]):
+                    continue
+                found_trt = True
+                break
+        if not found_trt:
+            for rf in runtime_files:
+                name = Path(rf).name.lower()
+                if name.startswith("nvinfer") and not any(k in name for k in ["plugin", "dispatch", "lean"]):
+                    found_trt = True
+                    break
+        if not found_trt:
+            print("[ERROR] GPU package verification failed: no TensorRT core runtime DLL found in package")
+            return False
 
     print(f"[SUCCESS] Package verification passed ({len(tools_dict)} tools verified, variant={expected_variant}).")
     return True

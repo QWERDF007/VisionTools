@@ -436,5 +436,42 @@ class TestToolContractGenerator(unittest.TestCase):
             yaml.load(yaml_content, Loader=UniqueKeyLoader)
         self.assertIn("Duplicate key detected", str(ctx.exception))
 
+    def test_n07_unknown_nested_display_field_rejected(self):
+        """N07: Unknown nested fields under display dictionary must be rejected."""
+        valid_path = self.fixtures_dir / "valid_tool.yaml"
+        doc = load_yaml(valid_path)
+        doc["outputs"][0]["display"] = {"unsupported_field": True}
+        with self.assertRaises(ContractValidationError) as ctx:
+            validate_tool_declaration(doc, valid_path)
+        self.assertIn("Unknown nested field", str(ctx.exception))
+
+    def test_n06_nonexistent_validator_rejected(self):
+        """N06: Explicit non-existent validator must exit non-zero without fallbacks."""
+        import subprocess
+        script = str(tools_dir / "generate_tool_contracts.py")
+        with tempfile.TemporaryDirectory() as td:
+            t = Path(td)
+            mock_sdk = t / "mock_sdk"
+            val_dir = mock_sdk / "visionrt" / "sdk"
+            val_dir.mkdir(parents=True)
+            (val_dir / "Value.h").write_text("enum class Type { Int, Float, Bool, String, ImageBatch, NumericArray, StringArray, RoiBatch };\n"
+                                             "enum class DType { Int32, Int64, Float32, Float64, UInt8, Bool };\n"
+                                             "enum class Layout { Dense, BatchRagged };\n")
+            (val_dir / "Schema.h").write_text("enum class ToolKind { CppFunction, CppClass, PythonFunction, PythonClass };\n")
+
+            cmd = [
+                sys.executable, script,
+                "--tools-dir", str(self.fixtures_dir),
+                "--bindings", str(tools_dir / "module_bindings.yaml"),
+                "--output-dir", str(t / "gen"),
+                "--index-output", str(t / "index.yaml"),
+                "--sdk-include-dir", str(mock_sdk),
+                "--validator", str(t / "nonexistent_validator.exe")
+            ]
+            res = subprocess.run(cmd, env={**os.environ, "PATH": ""}, capture_output=True, text=True)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertFalse((t / "index.yaml").exists())
+            self.assertIn("Validator executable not found", res.stderr)
+
 if __name__ == "__main__":
     unittest.main()

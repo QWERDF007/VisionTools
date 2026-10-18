@@ -9,9 +9,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(ConfigCompiler)
 include(ConfigDependencyDefaults)
+include(ConfigVisionRTToolSDK)
 include(ConfigYamlCpp)
 include(ConfigOpenCV)
-include(ConfigVisionRTToolSDK)
 include(AddTest)
 include(PrintConfig)
 
@@ -28,7 +28,10 @@ endif()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 # 工具契约、常量与模块工厂代码自动生成 (YS-01 / YS-02)
-file(GLOB_RECURSE VISIONTOOLS_TOOL_YAMLS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/tools/*.yaml")
+file(GLOB_RECURSE VISIONTOOLS_TOOL_YAMLS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/tools/*.yaml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/tools/*.yml"
+)
 set(VISIONTOOLS_MODULE_BINDINGS "${CMAKE_CURRENT_SOURCE_DIR}/tools/module_bindings.yaml")
 set(VISIONTOOLS_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${VISIONTOOLS_GENERATED_DIR}")
@@ -57,9 +60,11 @@ add_custom_command(
             --index-output "${VISIONTOOLS_GENERATED_DIR}/module_index.yaml"
             --variant "${VISIONTOOLS_GENERATOR_VARIANT}"
             --sdk-include-dir "${_primary_sdk_inc}"
+            --validator "$<TARGET_FILE:VisionRT::visionrt_validate_tool>"
     DEPENDS ${VISIONTOOLS_TOOL_YAMLS} ${VISIONTOOLS_MODULE_BINDINGS} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_tool_contracts.py"
             "${_primary_sdk_inc}/visionrt/sdk/Value.h"
             "${_primary_sdk_inc}/visionrt/sdk/Schema.h"
+            VisionRT::visionrt_validate_tool
     COMMENT "Generating tool contracts, constants, and module factories from YAML declarations..."
     VERBATIM
 )

@@ -67,8 +67,8 @@ void testWhiteboxYoloInitializedTrace() {
     const char* wtsEnv = std::getenv("VISIONTOOLS_TEST_YOLO_WTS");
 
     if (!engineEnv && !wtsEnv) {
-        std::cout << "  [INFO] No external YOLO engine or weights specified (set VISIONTOOLS_TEST_YOLO_ENGINE/WTS); skipping initialized model trace (marked as not_run pending external GPU resources)." << std::endl;
-        return;
+        std::cout << "  [SKIP] No external YOLO engine or weights specified (set VISIONTOOLS_TEST_YOLO_ENGINE/WTS); skipping initialized model trace (exit 77)." << std::endl;
+        std::exit(77);
     }
 
     const visionrt::ToolServices services{visionrt::PathResolver(std::filesystem::current_path())};
@@ -76,16 +76,21 @@ void testWhiteboxYoloInitializedTrace() {
 
     visionrt::Values initParams;
     initParams.emplace("model_name", visionrt::Utf8("yolov8n"));
-    if (engineEnv && std::filesystem::exists(engineEnv)) {
+    if (engineEnv) {
+        if (!std::filesystem::exists(engineEnv)) {
+            std::cerr << "  [ERROR] Specified VISIONTOOLS_TEST_YOLO_ENGINE does not exist: " << engineEnv << std::endl;
+            std::exit(1);
+        }
         initParams.emplace("load_mode", visionrt::Utf8("engine"));
         initParams.emplace("model_path", visionrt::Utf8(engineEnv));
-    } else if (wtsEnv && std::filesystem::exists(wtsEnv)) {
-        initParams.emplace("load_mode", visionrt::Utf8("build"));
+    } else if (wtsEnv) {
+        if (!std::filesystem::exists(wtsEnv)) {
+            std::cerr << "  [ERROR] Specified VISIONTOOLS_TEST_YOLO_WTS does not exist: " << wtsEnv << std::endl;
+            std::exit(1);
+        }
+        initParams.emplace("load_mode", visionrt::Utf8("build_wts"));
         initParams.emplace("model_path", visionrt::Utf8(wtsEnv));
         initParams.emplace("engine_output_path", visionrt::Utf8("temp_whitebox.engine"));
-    } else {
-        std::cout << "  [WARNING] Specified model file does not exist; skipping initialized trace." << std::endl;
-        return;
     }
     initParams.emplace("precision", visionrt::Utf8("fp32"));
     initParams.emplace("gpu_index", static_cast<std::int64_t>(0));

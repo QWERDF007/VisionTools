@@ -247,11 +247,11 @@ int main() {
                       << ", loop100=" << rss100
                       << ", post_release=" << rssPostRelease
                       << ", post_destroy=" << rssPostDestroy << std::endl;
-            // Plateau check: verify memory stabilization across sample windows (F79 / YR-05)
+            // Plateau check: verify memory stabilization across sample windows (F79 / YR-05 / BS-03)
             const auto evaluateRssPlateau = [](std::size_t r25, std::size_t r50, std::size_t r75, std::size_t r100) -> bool {
-                const bool monotonicGrowthLeak = (r50 >= r25 + 512 * 1024) &&
-                                                 (r75 >= r50 + 512 * 1024) &&
-                                                 (r100 >= r75 + 512 * 1024);
+                const bool monotonicGrowthLeak = (r50 >= r25 + 256 * 1024) &&
+                                                 (r75 >= r50 + 256 * 1024) &&
+                                                 (r100 >= r75 + 256 * 1024);
                 if (monotonicGrowthLeak) return false;
                 std::size_t maxDiff = 0;
                 if (r50 >= r25 && (r50 - r25) > maxDiff) maxDiff = r50 - r25;
@@ -260,9 +260,11 @@ int main() {
                 return maxDiff < 1024 * 1024;
             };
 
-            // 1. Counterexample verification: continuous +512KiB/window growth must be rejected
+            // 1. Counterexample verification: continuous +512KiB and +256KiB/window growth must be rejected
             REQUIRE(!evaluateRssPlateau(10000000, 10000000 + 512 * 1024, 10000000 + 1024 * 1024, 10000000 + 1536 * 1024),
                     "Plateau check must reject continuous +512KiB/window growth counterexample");
+            REQUIRE(!evaluateRssPlateau(10000000, 10000000 + 256 * 1024, 10000000 + 512 * 1024, 10000000 + 768 * 1024),
+                    "Plateau check must reject continuous +256KiB/window growth counterexample");
 
             // 2. Real working set verification
             REQUIRE(evaluateRssPlateau(rss25, rss50, rss75, rss100), "Working set must reach plateau after warmup");

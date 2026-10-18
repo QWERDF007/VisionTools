@@ -29,6 +29,7 @@ inline void* getProcAddr(LibHandle h, const char* name) { return dlsym(h, name);
 inline void freeSharedLib(LibHandle h) { dlclose(h); }
 #endif
 
+#include <visionrt/sdk/SchemaYaml.h>
 #include <yaml-cpp/yaml.h>
 
 #define REQUIRE(cond, msg) \
@@ -43,18 +44,10 @@ inline std::set<std::string> loadExpectedToolsFromIndex(const std::filesystem::p
     std::set<std::string> registries;
     if (!std::filesystem::exists(indexPath)) return registries;
     try {
-        std::ifstream file(indexPath);
-        if (!file.is_open()) return registries;
-        YAML::Node root = YAML::Load(file);
-        if (!root || !root["tools"] || !root["tools"].IsMap()) return registries;
-        for (const auto& kv : root["tools"]) {
-            std::string reg = kv.first.as<std::string>();
-            YAML::Node val = kv.second;
-            if (val && val["module"]) {
-                std::string mod = val["module"].as<std::string>();
-                if (moduleName.empty() || mod == moduleName) {
-                    registries.insert(reg);
-                }
+        const auto indexData = visionrt::parseModuleIndexFile(indexPath);
+        for (const auto& [reg, toolData] : indexData.tools) {
+            if (moduleName.empty() || toolData.module == moduleName) {
+                registries.insert(reg);
             }
         }
     } catch (const std::exception& e) {
@@ -111,11 +104,10 @@ int main(int argc, char** argv) {
         std::filesystem::path indexYaml = packageDir / "module_index.yaml";
         REQUIRE(std::filesystem::exists(indexYaml), "Package directory must contain module_index.yaml (YS-01 / YS-04)");
         try {
-            std::ifstream fin(indexYaml);
-            YAML::Node root = YAML::Load(fin);
-            REQUIRE(root && root["modules"] && root["modules"]["visiontools_preprocess"], "module_index.yaml must declare visiontools_preprocess module");
-            std::string libRel = root["modules"]["visiontools_preprocess"]["library"].as<std::string>();
-            dllPath = target / libRel;
+            const auto indexData = visionrt::parseModuleIndexFile(indexYaml);
+            auto it = indexData.modules.find("visiontools_preprocess");
+            REQUIRE(it != indexData.modules.end() && !it->second.library.empty(), "module_index.yaml must declare visiontools_preprocess module");
+            dllPath = target / it->second.library;
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] Failed reading module_index.yaml: " << e.what() << std::endl;
             return 1;

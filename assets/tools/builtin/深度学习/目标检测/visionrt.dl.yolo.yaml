@@ -9,11 +9,16 @@ init_params:
 - id: model_name
   name: 模型名称
   type: String
-  default: yolov8
+  default: yolov8n
+  options:
+  - yolov8n
 - id: load_mode
   name: 加载模式
   type: String
-  default: onnx
+  default: engine
+  options:
+  - engine
+  - build_wts
 - id: model_path
   name: 模型路径
   type: String

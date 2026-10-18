@@ -2,6 +2,7 @@
 #include <visionrt/sdk/Tool.h>
 #include <visionrt/sdk/Contract.h>
 #include <visionrt/sdk/Value.h>
+#include <visionrt/sdk/SchemaYaml.h>
 #include <cuda_runtime.h>
 #include <yaml-cpp/yaml.h>
 
@@ -378,8 +379,6 @@ void writeYamlReport(
     const std::string& baselineReason,
     const std::string& memoryStatus,
     const std::string& memoryReason,
-    const std::string& hostStatus,
-    const std::string& hostReason,
     const Arguments* args = nullptr,
     const std::vector<std::string>* imagePaths = nullptr,
     const std::vector<std::vector<PublicDetection>>* buildDets = nullptr
@@ -456,11 +455,6 @@ void writeYamlReport(
     if (!memoryReason.empty()) out << YAML::Key << "reason" << YAML::Value << memoryReason;
     out << YAML::EndMap;
 
-    out << YAML::Key << "host_integration" << YAML::Value << YAML::BeginMap;
-    out << YAML::Key << "status" << YAML::Value << hostStatus;
-    if (!hostReason.empty()) out << YAML::Key << "reason" << YAML::Value << hostReason;
-    out << YAML::EndMap;
-
     out << YAML::EndMap; // checks
     out << YAML::EndMap; // root
 
@@ -478,8 +472,7 @@ void testSyntheticRoundtrip(const std::filesystem::path& tempReportPath) {
     writeYamlReport(tempReportPath, "not_run", env, devices,
                     "not_run", "未提供真实权重及运行环境",
                     "not_run", "未提供批准基准与实测输出",
-                    "not_run", "未运行",
-                    "not_run", "未提供宿主联合运行环境");
+                    "not_run", "未运行");
 
     // Read back and verify structure (YS-04)
     YAML::Node doc = YAML::LoadFile(tempReportPath.string());
@@ -520,11 +513,12 @@ int main(int argc, char** argv) {
             if (!std::filesystem::exists(idxPath)) {
                 throw std::runtime_error("module_index.yaml not found in package directory: " + args.packageDir);
             }
-            YAML::Node idx = YAML::LoadFile(idxPath.string());
-            if (!idx["modules"] || !idx["modules"]["visiontools_infer"] || !idx["modules"]["visiontools_infer"]["library"]) {
+            const auto idx = visionrt::parseModuleIndexFile(idxPath);
+            auto it = idx.modules.find("visiontools_infer");
+            if (it == idx.modules.end() || it->second.library.empty()) {
                 throw std::runtime_error("visiontools_infer library not declared in " + idxPath.string());
             }
-            const auto libRel = idx["modules"]["visiontools_infer"]["library"].as<std::string>();
+            const auto libRel = it->second.library;
             args.modulePath = (std::filesystem::path(args.packageDir) / libRel).string();
         }
 
@@ -606,6 +600,9 @@ int main(int argc, char** argv) {
         const std::string buildStatus = passed ? "passed" : "failed";
         const std::string overallStatus = passed ? "not_run" : "failed";
 
+        std::vector<std::string> allImagePaths = args.images;
+        allImagePaths.push_back("generated:black:321x197");
+
         writeYamlReport(
             args.report,
             overallStatus,
@@ -617,10 +614,8 @@ int main(int argc, char** argv) {
             "未提供批准基准对比结果",
             "not_run",
             "需独立内存采样",
-            "not_run",
-            "未提供宿主联合运行环境",
             &args,
-            &args.images,
+            &allImagePaths,
             &buildDetections
         );
 

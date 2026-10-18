@@ -112,34 +112,49 @@ def main():
     if scope != "gpu_release":
         parser.error(f"Expected scope 'gpu_release' in probe YAML, got '{scope}'")
 
-    model = YOLO(str(args.weights.resolve()), task="detect")
-    params = probe_doc.get("parameters", {})
-    count = params.get("classes", 80)
-    if len(model.names) != count:
-        parser.error(f".pt has {len(model.names)} classes but probe expects {count}")
+    try:
+        params = probe_doc.get("parameters")
+        if not isinstance(params, dict):
+            raise ValueError("Probe YAML missing required 'parameters' section")
+        required_params = ["classes", "height", "width", "confidence", "nms", "max_detections"]
+        for rp in required_params:
+            if rp not in params:
+                raise ValueError(f"Probe YAML parameters missing required field: '{rp}'")
 
-    records = []
-    images = probe_doc.get("images", [])
-    for node in images:
-        image_path = node.get("path")
-        if not image_path:
-            continue
-        if image_path == "generated:black:321x197":
-            image = np.zeros((197, 321, 3), dtype=np.uint8)
-        else:
-            image = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
-            if image is None:
-                raise ValueError(f"Cannot read image: {image_path}")
-            if image.ndim == 2:
-                image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-            elif image.shape[2] == 4:
-                image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+        count = params["classes"]
+        if len(model.names) != count:
+            raise ValueError(f".pt has {len(model.names)} classes but probe expects {count}")
 
-        h = params.get("height", 640)
-        w = params.get("width", 640)
-        conf = params.get("confidence", 0.25)
-        nms = params.get("nms", 0.45)
-        max_det = params.get("max_detections", 300)
+        records = []
+        images = probe_doc.get("images")
+        if not isinstance(images, list) or not images:
+            raise ValueError("Probe YAML missing or empty 'images' list")
+
+        for node in images:
+            if not isinstance(node, dict):
+                raise ValueError(f"Malformed image entry in probe YAML: {node}")
+            image_path = node.get("path")
+            if not image_path:
+                raise ValueError("Image entry missing required 'path'")
+            if "detections" not in node or not isinstance(node["detections"], list):
+                raise ValueError(f"Image entry '{image_path}' missing required 'detections' list")
+
+            if image_path == "generated:black:321x197":
+                image = np.zeros((197, 321, 3), dtype=np.uint8)
+            else:
+                image = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+                if image is None:
+                    raise ValueError(f"Cannot read image: {image_path}")
+                if image.ndim == 2:
+                    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+                elif image.shape[2] == 4:
+                    image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+
+            h = params["height"]
+            w = params["width"]
+            conf = params["confidence"]
+            nms = params["nms"]
+            max_det = params["max_detections"]
 
         predictions = model.predict(
             source=image,
@@ -174,30 +189,42 @@ def main():
             "comparison": compare(native, independent)
         })
 
-    if not records:
-        raise ValueError("Probe report has no valid image entries")
+        if not records:
+            raise ValueError("Probe report has no valid image entries")
 
-    result = {
-        "schema": "VisionRT.independent-python.yaml.1",
-        "weights": str(args.weights.resolve()),
-        "probe": str(args.probe.resolve()),
-        "device": "cpu",
-        "precision": "fp32",
-        "native_precision": params.get("precision", "fp32"),
-        "torch_version": torch.__version__,
-        "ultralytics_version": ultralytics.__version__,
-        "opencv_version": cv2.__version__,
-        "geometry_note": "Ultralytics uses its independent original-image remapping; native uses actual per-axis integer resize geometry",
-        "images": records,
-        "passed": all(val["comparison"]["passed"] for val in records)
-    }
+        result = {
+            "schema": "VisionRT.independent-python.yaml.1",
+            "weights": str(args.weights.resolve()),
+            "probe": str(args.probe.resolve()),
+            "device": "cpu",
+            "precision": "fp32",
+            "native_precision": params.get("precision", "fp32"),
+            "torch_version": torch.__version__,
+            "ultralytics_version": ultralytics.__version__,
+            "opencv_version": cv2.__version__,
+            "geometry_note": "Ultralytics uses its independent original-image remapping; native uses actual per-axis integer resize geometry",
+            "images": records,
+            "passed": all(val["comparison"]["passed"] for val in records)
+        }
 
-    args.report.parent.mkdir(parents=True, exist_ok=True)
-    with open(args.report, "w", encoding="utf-8") as f:
-        yaml.dump(result, f, sort_keys=False, allow_unicode=True)
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        with open(args.report, "w", encoding="utf-8") as f:
+            yaml.dump(result, f, sort_keys=False, allow_unicode=True)
 
-    print(f"Independent reference report written: {args.report}; passed={result['passed']}")
-    return 0 if result["passed"] else 1
+        print(f"Independent reference report written: {args.report}; passed={result['passed']}")
+        return 0 if result["passed"] else 1
+    except Exception as e:
+        result = {
+            "schema": "VisionRT.independent-python.yaml.1",
+            "error": str(e),
+            "images": records if "records" in locals() else [],
+            "passed": False
+        }
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        with open(args.report, "w", encoding="utf-8") as f:
+            yaml.dump(result, f, sort_keys=False, allow_unicode=True)
+        print(f"Independent reference execution failed: {e}", file=sys.stderr)
+        return 1
 
 if __name__ == "__main__":
     sys.exit(main())
