@@ -199,7 +199,7 @@ class TestToolContractGenerator(unittest.TestCase):
         self.assertEqual(gpu_idx["variant"], "gpu")
         self.assertIn("tool.cpu", gpu_idx["tools"])
         self.assertIn("tool.gpu", gpu_idx["tools"])
-        self.assertEqual(gpu_idx["tools"]["tool.gpu"]["module_dll"], "bin/visiontools_infer.dll")
+        self.assertEqual(gpu_idx["tools"]["tool.gpu"]["module"], "visiontools_infer")
 
         # CPU variant excludes GPU tool
         cpu_idx = build_module_index(tools, bindings, variant="cpu")
@@ -323,14 +323,14 @@ class TestToolContractGenerator(unittest.TestCase):
             # Missing --sdk-include-dir -> returncode != 0 (E02)
             p = subprocess.run([sys.executable, script, "--tools-dir", str(self.fixtures_dir),
                                 "--bindings", str(tools_dir / "module_bindings.yaml"), "--output-dir", str(t / "gen"),
-                                "--index-output", str(t / "index.json")], capture_output=True, text=True)
+                                "--index-output", str(t / "index.yaml")], capture_output=True, text=True)
             self.assertNotEqual(p.returncode, 0)
             self.assertIn("Missing required --sdk-include-dir", p.stderr)
 
             # Missing bindings file -> returncode != 0
             p = subprocess.run([sys.executable, script, "--tools-dir", str(self.fixtures_dir),
                                 "--bindings", str(t / "missing_bindings.yaml"), "--output-dir", str(t / "gen"),
-                                "--index-output", str(t / "index.json"), "--sdk-include-dir", str(mock_sdk)], capture_output=True, text=True)
+                                "--index-output", str(t / "index.yaml"), "--sdk-include-dir", str(mock_sdk)], capture_output=True, text=True)
             self.assertNotEqual(p.returncode, 0)
 
             # Empty tools dir -> returncode != 0
@@ -338,13 +338,13 @@ class TestToolContractGenerator(unittest.TestCase):
             empty_dir.mkdir()
             p = subprocess.run([sys.executable, script, "--tools-dir", str(empty_dir),
                                 "--bindings", str(tools_dir / "module_bindings.yaml"), "--output-dir", str(t / "gen"),
-                                "--index-output", str(t / "index.json"), "--sdk-include-dir", str(mock_sdk)], capture_output=True, text=True)
+                                "--index-output", str(t / "index.yaml"), "--sdk-include-dir", str(mock_sdk)], capture_output=True, text=True)
             self.assertNotEqual(p.returncode, 0)
 
             # Invalid explicit sdk-include-dir -> returncode != 0 (P01)
             p = subprocess.run([sys.executable, script, "--tools-dir", str(self.fixtures_dir),
                                 "--bindings", str(tools_dir / "module_bindings.yaml"), "--output-dir", str(t / "gen"),
-                                "--index-output", str(t / "index.json"), "--sdk-include-dir", str(t / "absent-sdk")],
+                                "--index-output", str(t / "index.yaml"), "--sdk-include-dir", str(t / "absent-sdk")],
                                capture_output=True, text=True)
             self.assertNotEqual(p.returncode, 0)
 

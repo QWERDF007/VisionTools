@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(ConfigCompiler)
 include(ConfigDependencyDefaults)
+include(ConfigYamlCpp)
 include(ConfigOpenCV)
 include(ConfigVisionRTToolSDK)
 include(AddTest)
@@ -26,7 +27,7 @@ endif()
 # 查找 Python 解释器用于代码与合同生成
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-# 工具契约、常量与模块工厂代码自动生成 (VS-02)
+# 工具契约、常量与模块工厂代码自动生成 (YS-01 / YS-02)
 file(GLOB_RECURSE VISIONTOOLS_TOOL_YAMLS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/tools/*.yaml")
 set(VISIONTOOLS_MODULE_BINDINGS "${CMAKE_CURRENT_SOURCE_DIR}/tools/module_bindings.yaml")
 set(VISIONTOOLS_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -35,7 +36,7 @@ file(MAKE_DIRECTORY "${VISIONTOOLS_GENERATED_DIR}")
 set(VISIONTOOLS_GENERATOR_OUTPUTS
     "${VISIONTOOLS_GENERATED_DIR}/PortConstants.h"
     "${VISIONTOOLS_GENERATED_DIR}/visiontools_preprocess_factory.inc"
-    "${CMAKE_CURRENT_BINARY_DIR}/module_index.json"
+    "${VISIONTOOLS_GENERATED_DIR}/module_index.yaml"
 )
 if(VISIONTOOLS_BUILD_INFER)
     list(APPEND VISIONTOOLS_GENERATOR_OUTPUTS "${VISIONTOOLS_GENERATED_DIR}/visiontools_infer_factory.inc")
@@ -53,7 +54,7 @@ add_custom_command(
             --tools-dir "${CMAKE_CURRENT_SOURCE_DIR}/assets/tools"
             --bindings "${VISIONTOOLS_MODULE_BINDINGS}"
             --output-dir "${VISIONTOOLS_GENERATED_DIR}"
-            --index-output "${CMAKE_CURRENT_BINARY_DIR}/module_index.json"
+            --index-output "${VISIONTOOLS_GENERATED_DIR}/module_index.yaml"
             --variant "${VISIONTOOLS_GENERATOR_VARIANT}"
             --sdk-include-dir "${_primary_sdk_inc}"
     DEPENDS ${VISIONTOOLS_TOOL_YAMLS} ${VISIONTOOLS_MODULE_BINDINGS} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_tool_contracts.py"
@@ -65,15 +66,9 @@ add_custom_command(
 
 add_custom_target(generate_contracts DEPENDS ${VISIONTOOLS_GENERATOR_OUTPUTS})
 
-# 导出 CMake 解析的运行依赖路径供打包脚本单源消费 (VS-06 / F05)
-set(_build_infer_json "false")
-if(VISIONTOOLS_BUILD_INFER)
-    set(_build_infer_json "true")
-endif()
-set(_clean_opencv_dir "${OpenCV_DIR}")
-string(REPLACE "\\" "/" _clean_opencv_dir "${_clean_opencv_dir}")
-set(_clean_sdk_dir "${VisionRTToolSDK_DIR}")
-string(REPLACE "\\" "/" _clean_sdk_dir "${_clean_sdk_dir}")
+# 导出 CMake 解析的运行依赖路径供打包脚本单源消费 (YS-01 / YS-03)
+set(_clean_opencv_bin "${VISIONTOOLS_OPENCV_BIN}")
+string(REPLACE "\\" "/" _clean_opencv_bin "${_clean_opencv_bin}")
 set(_clean_inferrt_root "${INFERRT_ROOT}")
 string(REPLACE "\\" "/" _clean_inferrt_root "${_clean_inferrt_root}")
 set(_clean_cuda_root "${CUDAToolkit_ROOT}")
@@ -81,24 +76,57 @@ string(REPLACE "\\" "/" _clean_cuda_root "${_clean_cuda_root}")
 set(_clean_trt_root "${TRT_ROOT}")
 string(REPLACE "\\" "/" _clean_trt_root "${_clean_trt_root}")
 
-set(_resolved_deps_content "{\n")
-string(APPEND _resolved_deps_content "  \"version\": \"0.1.0\",\n")
-string(APPEND _resolved_deps_content "  \"build_infer\": ${_build_infer_json},\n")
-string(APPEND _resolved_deps_content "  \"generator_variant\": \"${VISIONTOOLS_GENERATOR_VARIANT}\",\n")
-string(APPEND _resolved_deps_content "  \"config\": \"$<CONFIG>\",\n")
-string(APPEND _resolved_deps_content "  \"opencv_dir\": \"${_clean_opencv_dir}\",\n")
-string(APPEND _resolved_deps_content "  \"visionrt_sdk_dir\": \"${_clean_sdk_dir}\"")
+set(_clean_yaml_cpp_bin "${YAML_CPP_DIR}/bin")
+string(REPLACE "\\" "/" _clean_yaml_cpp_bin "${_clean_yaml_cpp_bin}")
+
+set(_resolved_deps_content "# Auto-generated build dependencies manifest\n")
+string(APPEND _resolved_deps_content "variant: \"${VISIONTOOLS_GENERATOR_VARIANT}\"\n")
+string(APPEND _resolved_deps_content "config: \"$<CONFIG>\"\n")
+string(APPEND _resolved_deps_content "modules:\n")
+string(APPEND _resolved_deps_content "  visiontools_preprocess:\n")
+string(APPEND _resolved_deps_content "    source: \"$<TARGET_FILE:visiontools_preprocess>\"\n")
 if(VISIONTOOLS_BUILD_INFER)
-    string(APPEND _resolved_deps_content ",\n  \"inferrt_root\": \"${_clean_inferrt_root}\",\n")
-    string(APPEND _resolved_deps_content "  \"cuda_root\": \"${_clean_cuda_root}\",\n")
-    string(APPEND _resolved_deps_content "  \"tensorrt_root\": \"${_clean_trt_root}\"\n")
-else()
-    string(APPEND _resolved_deps_content "\n")
+    string(APPEND _resolved_deps_content "  visiontools_infer:\n")
+    string(APPEND _resolved_deps_content "    source: \"$<TARGET_FILE:visiontools_infer>\"\n")
 endif()
-string(APPEND _resolved_deps_content "}\n")
+
+string(APPEND _resolved_deps_content "runtime_files:\n")
+if(EXISTS "${_clean_opencv_bin}/opencv_world480.dll")
+    string(APPEND _resolved_deps_content "  - source: \"${_clean_opencv_bin}/opencv_world480.dll\"\n")
+    string(APPEND _resolved_deps_content "    destination: \"bin/opencv_world480.dll\"\n")
+endif()
+if(EXISTS "${_clean_yaml_cpp_bin}/yaml-cpp.dll")
+    string(APPEND _resolved_deps_content "  - source: \"${_clean_yaml_cpp_bin}/yaml-cpp.dll\"\n")
+    string(APPEND _resolved_deps_content "    destination: \"bin/yaml-cpp.dll\"\n")
+elseif(EXISTS "D:/Software/anaconda3/Library/bin/yaml-cpp.dll")
+    string(APPEND _resolved_deps_content "  - source: \"D:/Software/anaconda3/Library/bin/yaml-cpp.dll\"\n")
+    string(APPEND _resolved_deps_content "    destination: \"bin/yaml-cpp.dll\"\n")
+endif()
+if(VISIONTOOLS_BUILD_INFER)
+    if(EXISTS "${_clean_inferrt_root}/bin/inferrt_core.dll")
+        string(APPEND _resolved_deps_content "  - source: \"${_clean_inferrt_root}/bin/inferrt_core.dll\"\n")
+        string(APPEND _resolved_deps_content "    destination: \"bin/inferrt_core.dll\"\n")
+    endif()
+    if(EXISTS "${_clean_inferrt_root}/bin/inferrt_model.dll")
+        string(APPEND _resolved_deps_content "  - source: \"${_clean_inferrt_root}/bin/inferrt_model.dll\"\n")
+        string(APPEND _resolved_deps_content "    destination: \"bin/inferrt_model.dll\"\n")
+    endif()
+    if(EXISTS "${_clean_cuda_root}/bin/cudart64_110.dll")
+        string(APPEND _resolved_deps_content "  - source: \"${_clean_cuda_root}/bin/cudart64_110.dll\"\n")
+        string(APPEND _resolved_deps_content "    destination: \"bin/cudart64_110.dll\"\n")
+    endif()
+    if(EXISTS "${_clean_trt_root}/bin/nvinfer_10.dll")
+        string(APPEND _resolved_deps_content "  - source: \"${_clean_trt_root}/bin/nvinfer_10.dll\"\n")
+        string(APPEND _resolved_deps_content "    destination: \"bin/nvinfer_10.dll\"\n")
+    endif()
+endif()
 
 file(GENERATE
-    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/resolved_dependencies.json"
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/resolved_dependencies.yaml"
+    CONTENT "${_resolved_deps_content}"
+)
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/resolved_dependencies.yaml"
     CONTENT "${_resolved_deps_content}"
 )
 

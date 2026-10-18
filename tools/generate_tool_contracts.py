@@ -368,6 +368,7 @@ def load_and_validate_declarations(tools_dir: Path, bindings_data: Optional[Dict
     for yf in yaml_files:
         doc = load_yaml(yf)
         validated = validate_tool_declaration(doc, yf, tools_dir=tools_dir)
+        validated["_source_path"] = str(yf)
         try:
             rel_parts = yf.relative_to(tools_dir).parts
         except ValueError:
@@ -685,52 +686,50 @@ def generate_module_factory_inc(module_name: str, tools_dict: Dict[str, Dict[str
 
     return "\n".join(lines) + "\n"
 
-def build_module_index(tools: List[Dict[str, Any]], bindings_data: Optional[Dict[str, Any]], variant: str = "gpu") -> Dict[str, Any]:
+def build_module_index(tools: List[Dict[str, Any]], bindings_data: Optional[Dict[str, Any]], variant: str = "gpu", project_root: Optional[Path] = None) -> Dict[str, Any]:
     """
-    Generate module_index.json metadata for host loader.
-    Only includes tools matching the specified variant (e.g. CPU excludes GPU tools).
+    Generate build/generated/module_index.yaml metadata.
+    Lightweight structure: variant, modules, tools (YS-01 / YS-02).
     """
-    entries = {}
-    reg_to_module = {}
+    modules = {}
+    tools_map = {}
 
     if bindings_data and "modules" in bindings_data:
         for mod_name, mod_info in bindings_data["modules"].items():
             if variant == "cpu" and "infer" in mod_name:
                 continue
-            dll_path = mod_info.get("dll_name", f"bin/{mod_name}.dll")
+            modules[mod_name] = {}
             for reg in mod_info.get("tools", {}):
-                reg_to_module[reg] = dll_path
+                matching_tool = next((t for t in tools if t.get("entry", {}).get("registry_name") == reg or t.get("tool_id") == reg), None)
+                if matching_tool and not matching_tool.get("is_example"):
+                    src_path = matching_tool.get("_source_path") or matching_tool.get("definition")
+                    if src_path:
+                        p = Path(src_path)
+                        if project_root:
+                            try:
+                                rel_def = p.relative_to(project_root)
+                            except ValueError:
+                                rel_def = p
+                        else:
+                            parts = p.parts
+                            if "assets" in parts:
+                                idx = parts.index("assets")
+                                rel_def = Path(*parts[idx:])
+                            else:
+                                rel_def = p
+                        def_str = str(rel_def).replace("\\", "/")
+                    else:
+                        def_str = f"assets/tools/{reg}.yaml"
 
-    for tool in sorted(tools, key=lambda t: t["tool_id"]):
-        if tool.get("is_example"):
-            continue
-        tid = tool["tool_id"]
-        reg = tool.get("entry", {}).get("registry_name", tid)
-        kind = tool.get("kind", "cpp_function")
-
-        if kind.startswith("cpp"):
-            if reg not in reg_to_module:
-                # Excluded by variant or not a C++ bound tool
-                continue
-            dll = reg_to_module[reg]
-        else:
-            dll = None
-
-        entries[reg] = {
-            "tool_id": tid,
-            "display_name": tool.get("display_name", ""),
-            "version": tool.get("version", "1.0.0"),
-            "kind": kind,
-            "module_dll": dll,
-            "entry": tool.get("entry", {}),
-            "inputs": [p["id"] for p in tool.get("inputs", [])],
-            "outputs": [p["id"] for p in tool.get("outputs", [])]
-        }
+                    tools_map[reg] = {
+                        "module": mod_name,
+                        "definition": def_str
+                    }
 
     return {
-        "version": "1.0.0",
         "variant": variant,
-        "tools": entries
+        "modules": modules,
+        "tools": tools_map
     }
 
 def main():
@@ -738,7 +737,7 @@ def main():
     parser.add_argument("--tools-dir", default="assets/tools", help="Directory with tool YAMLs")
     parser.add_argument("--bindings", default="tools/module_bindings.yaml", help="Path to module_bindings.yaml")
     parser.add_argument("--output-dir", default="src/generated", help="Directory for generated C++ files")
-    parser.add_argument("--index-output", default="module_index.json", help="Output path for module index JSON")
+    parser.add_argument("--index-output", default="module_index.yaml", help="Output path for module index YAML")
     parser.add_argument("--variant", default="gpu", choices=["gpu", "cpu"], help="Distribution variant")
     parser.add_argument("--sdk-include-dir", default=None, help="VisionRT SDK include directory")
     args = parser.parse_args()
@@ -788,6 +787,7 @@ def main():
         try:
             doc = load_yaml(yf)
             validated = validate_tool_declaration(doc, yf, tools_dir=tools_dir)
+            validated["_source_path"] = str(yf)
             try:
                 rel_parts = yf.relative_to(tools_dir).parts
             except ValueError:
@@ -849,12 +849,12 @@ def main():
     with open(constants_path, "w", encoding="utf-8") as f:
         f.write(constants_content)
 
-    # Generate module_index.json
+    # Generate module_index.yaml (YS-01)
     index_path = Path(args.index_output)
     index_path.parent.mkdir(parents=True, exist_ok=True)
-    index_data = build_module_index(validated_tools, bindings_data, variant=args.variant)
+    index_data = build_module_index(validated_tools, bindings_data, variant=args.variant, project_root=tools_dir.parent.parent)
     with open(index_path, "w", encoding="utf-8") as f:
-        json.dump(index_data, f, indent=2, ensure_ascii=False)
+        yaml.dump(index_data, f, sort_keys=False, allow_unicode=True)
 
     print(f"[SUCCESS] Validated {len(validated_tools)} tool declarations, generated {constants_path} and {index_path}")
     return 0
