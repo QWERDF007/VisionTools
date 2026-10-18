@@ -29,6 +29,8 @@ inline void* getProcAddr(LibHandle h, const char* name) { return dlsym(h, name);
 inline void freeSharedLib(LibHandle h) { dlclose(h); }
 #endif
 
+#include <yaml-cpp/yaml.h>
+
 #define REQUIRE(cond, msg) \
     do { \
         if (!(cond)) { \
@@ -37,46 +39,26 @@ inline void freeSharedLib(LibHandle h) { dlclose(h); }
         } \
     } while(0)
 
-inline std::set<std::string> loadExpectedToolsFromIndex(const std::filesystem::path& indexPath, const std::string& moduleDllName) {
+inline std::set<std::string> loadExpectedToolsFromIndex(const std::filesystem::path& indexPath, const std::string& moduleName) {
     std::set<std::string> registries;
-    std::ifstream file(indexPath);
-    if (!file.is_open()) return registries;
-    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    auto toolsPos = content.find("\"tools\"");
-    if (toolsPos == std::string::npos) return registries;
-    auto bracePos = content.find('{', toolsPos);
-    if (bracePos == std::string::npos) return registries;
-
-    size_t pos = bracePos + 1;
-    while (pos < content.size()) {
-        auto keyStart = content.find('\"', pos);
-        if (keyStart == std::string::npos) break;
-        auto keyEnd = content.find('\"', keyStart + 1);
-        if (keyEnd == std::string::npos) break;
-        std::string key = content.substr(keyStart + 1, keyEnd - keyStart - 1);
-
-        auto colon = content.find(':', keyEnd);
-        if (colon == std::string::npos) break;
-        auto objStart = content.find('{', colon);
-        if (objStart == std::string::npos) break;
-
-        int depth = 1;
-        size_t objEnd = objStart + 1;
-        while (objEnd < content.size() && depth > 0) {
-            if (content[objEnd] == '{') depth++;
-            else if (content[objEnd] == '}') depth--;
-            objEnd++;
+    if (!std::filesystem::exists(indexPath)) return registries;
+    try {
+        std::ifstream file(indexPath);
+        if (!file.is_open()) return registries;
+        YAML::Node root = YAML::Load(file);
+        if (!root || !root["tools"] || !root["tools"].IsMap()) return registries;
+        for (const auto& kv : root["tools"]) {
+            std::string reg = kv.first.as<std::string>();
+            YAML::Node val = kv.second;
+            if (val && val["module"]) {
+                std::string mod = val["module"].as<std::string>();
+                if (moduleName.empty() || mod == moduleName) {
+                    registries.insert(reg);
+                }
+            }
         }
-        std::string toolObj = content.substr(objStart, objEnd - objStart);
-        if (moduleDllName.empty() || toolObj.find(moduleDllName) != std::string::npos) {
-            registries.insert(key);
-        }
-        pos = objEnd;
-        size_t nextComma = content.find(',', pos);
-        size_t nextClose = content.find('}', pos);
-        if (nextClose < nextComma || (nextComma == std::string::npos && nextClose != std::string::npos)) {
-            break;
-        }
+    } catch (const std::exception& e) {
+        std::cerr << "[ERROR] Failed to parse module_index.yaml: " << e.what() << std::endl;
     }
     return registries;
 }
@@ -126,9 +108,20 @@ int main(int argc, char** argv) {
     std::filesystem::path packageDir;
     if (std::filesystem::is_directory(target)) {
         packageDir = target;
-        dllPath = target / "bin" / "visiontools_preprocess.dll";
+        std::filesystem::path indexYaml = packageDir / "module_index.yaml";
+        REQUIRE(std::filesystem::exists(indexYaml), "Package directory must contain module_index.yaml (YS-01 / YS-04)");
+        try {
+            std::ifstream fin(indexYaml);
+            YAML::Node root = YAML::Load(fin);
+            REQUIRE(root && root["modules"] && root["modules"]["visiontools_preprocess"], "module_index.yaml must declare visiontools_preprocess module");
+            std::string libRel = root["modules"]["visiontools_preprocess"]["library"].as<std::string>();
+            dllPath = target / libRel;
+        } catch (const std::exception& e) {
+            std::cerr << "[ERROR] Failed reading module_index.yaml: " << e.what() << std::endl;
+            return 1;
+        }
         if (!std::filesystem::exists(dllPath)) {
-            std::cerr << "[ERROR] visiontools_preprocess.dll not found in package directory: " << target.string() << std::endl;
+            std::cerr << "[ERROR] Module library not found in package directory: " << dllPath.string() << std::endl;
             return 1;
         }
     } else {
@@ -175,11 +168,12 @@ int main(int argc, char** argv) {
         "visionrt.image.read"
     };
 
-    if (!packageDir.empty() && std::filesystem::exists(packageDir / "module_index.json")) {
-        auto indexTools = loadExpectedToolsFromIndex(packageDir / "module_index.json", "visiontools_preprocess.dll");
-        if (!indexTools.empty()) {
-            expectedTools = std::move(indexTools);
-        }
+    if (!packageDir.empty()) {
+        std::filesystem::path indexYaml = packageDir / "module_index.yaml";
+        REQUIRE(std::filesystem::exists(indexYaml), "Package directory must contain module_index.yaml");
+        auto indexTools = loadExpectedToolsFromIndex(indexYaml, "visiontools_preprocess");
+        REQUIRE(!indexTools.empty(), "module_index.yaml must contain non-empty visiontools_preprocess tools");
+        expectedTools = std::move(indexTools);
     }
 
     std::set<std::string> actualExecutedTools;
