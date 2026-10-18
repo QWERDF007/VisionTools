@@ -19,14 +19,15 @@ VisionTools 是 VisionRT 视觉平台的算法与工具库，按领域划分为�
 - **推理模块 (GPU)**: [src/infer](src/infer) (`visiontools_infer.dll`)
   - YOLO 目标检测：`visionrt.dl.yolo`
 - **推理探针与基线验证**: [probes/infer](probes/infer) (`visiontools_infer_probe.exe`)
-- **外部依赖配置**: [tools/dependencies.yaml](tools/dependencies.yaml)
+- **外部依赖配置**: [tools/dependencies.yaml](tools/dependencies.yaml)（机器相关默认路径的唯一真相源，换机器只需改此文件）
 
 ## 外部依赖
 
-- **VisionRTToolSDK**: 外部安装的 SDK 单一真相源，提供 `VisionRT::ToolSDK` 目标与共享 ABI 合同（禁止仓库内自建副本）。
+- **yaml-cpp**: [3rdparty/yaml-cpp](3rdparty/yaml-cpp) 子模块（静态构建），克隆后需执行 `git submodule update --init --recursive`。
+- **VisionRTToolSDK** (`VisionRT::ToolSDK`): 由 VisionRT 仓库构建树导出（默认路径见 [tools/dependencies.yaml](tools/dependencies.yaml) 的 `visionrt_sdk` 条目，可用 `VisionRTToolSDK_DIR` 变量或 `VISIONRT_SDK_ROOT` 环境变量覆盖），禁止仓库内自建副本。
 - **OpenCV**: OpenCV 4.8.0+。
 - **InferRT / CUDA / TensorRT**: 仅 GPU 推理模块消费，CPU 模式无需安装。
-- **Python**: 3.9+，构建时依赖 `PyYAML`。
+- **Python**: 3.9+，构建时依赖 `PyYAML`（默认解释器路径见 [tools/dependencies.yaml](tools/dependencies.yaml) 的 `python` 条目）。
 
 ## 构建与测试指南
 

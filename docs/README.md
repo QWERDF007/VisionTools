@@ -22,7 +22,7 @@
 | 图像预处理与阈值计算 | [OpenCV](https://github.com/opencv/opencv) (`imgproc`, `core`, `imgcodecs`) | 直接调用 `cv::adaptiveThreshold`、`cv::imread` 等成熟接口；矩形区域裁剪采用 `image.region()` 实现零拷贝视图并共享 OpenCV 内存块 `u`，保留 `rowStride`。 |
 | 声明解析与校验 | [PyYAML](https://github.com/yaml/pyyaml) | 严格依赖标准 PyYAML safe_load，消除私有简化解析带来的嵌套结构解析错误与类型歧义。 |
 | 深度学习推理与显存管理 | [InferRT](https://github.com/QWERDF007/InferRT) / TensorRT | PRIVATE 方式链接 `InferRT::model`，公开合同与 ModuleApi 不泄露后端类型；在 GPU 传输完成后同步并将结果封装为独立的 CPU 结构。 |
-| 外部宿主 SDK 抽象 | VisionRTToolSDK (`VisionRT::ToolSDK`) | 严格以 REQUIRED 方式消费外部已安装 SDK，使用统一的 `visionrt::Value`、`visionrt::ModuleApi`，不保留任何在树 SDK 分叉副本。 |
+| 外部宿主 SDK 抽象 | VisionRTToolSDK (`VisionRT::ToolSDK`) | 严格以 REQUIRED 方式消费外部 SDK（VisionRT 构建树导出包或安装包），使用统一的 `visionrt::Value`、`visionrt::ModuleApi`，不保留任何在树 SDK 分叉副本。 |
 
 ## 契约与接口设计
 

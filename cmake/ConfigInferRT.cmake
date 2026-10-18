@@ -10,7 +10,7 @@ visiontools_resolve_path(_vt_inferrt_path
     VARIABLES INFERRT_ROOT InferRT_ROOT INFERRT_DIR InferRT_DIR
     ENVIRONMENT_VARIABLES INFERRT_ROOT InferRT_ROOT INFERRT_DIR InferRT_DIR
     REQUIRED_FILES "InferRTConfig.cmake" "lib/cmake/InferRT/InferRTConfig.cmake"
-    DEFAULT "F:/Projects/InferRT/InferRT-0.0.3"
+    DEPENDENCY inferrt
 )
 
 if(_vt_inferrt_path)
@@ -80,7 +80,7 @@ visiontools_resolve_path(_vt_trt_root
     VARIABLES TRT_ROOT TensorRT_ROOT TENSORRT_DIR TRT_DIR
     ENVIRONMENT_VARIABLES TRT_ROOT TensorRT_ROOT TENSORRT_DIR TRT_DIR
     REQUIRED_FILE "lib/nvinfer_10.lib"
-    DEFAULT "D:/Software/dev/TensorRT-10.16.1.11"
+    DEPENDENCY tensorrt
 )
 if(_vt_trt_root)
     set(TRT_ROOT "${_vt_trt_root}" CACHE PATH "TensorRT installation root" FORCE)

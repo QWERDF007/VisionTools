@@ -1,12 +1,15 @@
 # Runtime dependency manifest for VisionTools
+# 机器相关依赖默认路径的唯一真相源（SSOT）：换机器只需改本文件，无需改 cmake/*.cmake。
 # root may be a path or a variable read from CMakeCache.txt / the listed CMake file.
-# default defines the local default path (Single Source of Truth).
+# default defines the local default path; <platform>_default (windows/linux/macos) 优先于 default。
+# CMake 侧消费入口：cmake/ConfigDependencyDefaults.cmake（visiontools_dependency_default / DEPENDENCY 参数）。
+# yaml-cpp 与 VisionRTToolSDK 均为源码子模块静态集成（3rdparty/yaml-cpp 与 3rdparty/VisionRTToolSDK），无运行时文件。
 dependencies:
   - name: opencv
     cmake: cmake/ConfigOpenCV.cmake
     root: OpenCV_HOME
     windows_root: OpenCV_BIN_DIR
-    default: D:/Software/dev/opencv-4.8.0/build/x64/vc16
+    default: D:/Software/opencv/build/x64/vc16
     destinations:
       - bin
     windows:
@@ -17,7 +20,7 @@ dependencies:
     cmake: cmake/ConfigInferRT.cmake
     root: INFERRT_ROOT
     windows_root: INFERRT_BIN_DIR
-    default: F:/Projects/InferRT/InferRT-0.0.3
+    default: D:/Project/InferRT/InferRT-0.0.3
     destinations:
       - bin
     windows:
@@ -28,7 +31,7 @@ dependencies:
     cmake: cmake/ConfigCUDA.cmake
     env: CUDA_PATH
     root: CUDAToolkit_ROOT
-    default: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8
+    default: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8
     destinations:
       - bin
     windows:
@@ -41,7 +44,7 @@ dependencies:
   - name: tensorrt
     cmake: cmake/ConfigInferRT.cmake
     root: TRT_ROOT
-    default: D:/Software/dev/TensorRT-10.16.1.11
+    default: D:/Software/TensorRT-10.16.0.72
     destinations:
       - bin
     windows:
@@ -50,24 +53,8 @@ dependencies:
   - name: python
     cmake: cmake/ConfigPython.cmake
     root: PYTHON_HOME
-    default: D:/Software/anaconda3/envs/py312
+    default: E:/Softwares/Anaconda3/envs/py312
     destinations:
       - bin
     windows:
       - python3*.dll
-
-  - name: visionrt_sdk
-    cmake: cmake/ConfigVisionRTToolSDK.cmake
-    root: VisionRTToolSDK_DIR
-    default: C:/dev/visionrt-sdk
-    destinations:
-      - bin
-
-  - name: yaml_cpp
-    cmake: cmake/ConfigYamlCpp.cmake
-    root: YAML_CPP_DIR
-    default: D:/Software/anaconda3/Library
-    destinations:
-      - bin
-    windows:
-      - bin/yaml-cpp.dll

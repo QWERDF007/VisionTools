@@ -66,7 +66,8 @@ def package_tools(
     config: str = "Release",
     infer_enabled: bool = True,
     strict: bool = True,
-    project_root: Optional[Path] = None
+    project_root: Optional[Path] = None,
+    validator: Optional[Path] = None
 ) -> None:
     """
     Direct destructive rebuild of the installation directory (YS-03 / YVT2-03).
@@ -299,14 +300,29 @@ def package_tools(
     final_index_path = install_dir / "module_index.yaml"
     save_yaml(final_index, final_index_path)
 
+    # Resolve validator from deps_meta or build_dir
+    if validator is None and "validator" in deps_meta:
+        v_cand = Path(deps_meta["validator"])
+        if v_cand.is_file():
+            validator = v_cand
+    if validator is None:
+        for c in [
+            build_dir / "bin" / ("visionrt_validate_tool.exe" if os.name == "nt" else "visionrt_validate_tool"),
+            build_dir / ("visionrt_validate_tool.exe" if os.name == "nt" else "visionrt_validate_tool"),
+            build_dir / config / ("visionrt_validate_tool.exe" if os.name == "nt" else "visionrt_validate_tool"),
+        ]:
+            if c.is_file():
+                validator = c
+                break
+
     # 9. Verify package directly (fails without rollback, leaving current output)
-    if not verify_package(install_dir, is_gpu=infer_enabled):
+    if not verify_package(install_dir, is_gpu=infer_enabled, validator=validator):
         raise RuntimeError(f"Package verification failed on install directory {install_dir}")
 
     print(f"[package_tools] Successfully packaged {len(installed_tools)} tools to {install_dir}")
     print(f"[package_tools] Final index generated at {final_index_path}")
 
-def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
+def verify_package(install_dir: Path, is_gpu: bool = False, validator: Optional[Path] = None) -> bool:
     """
     Verify packaging completeness, variant closure, indexed library existence, and runtime dependencies (YS-01 / YS-03).
     """
@@ -504,22 +520,16 @@ def verify_package(install_dir: Path, is_gpu: bool = False) -> bool:
             print("[ERROR] GPU package verification failed: no TensorRT core runtime DLL found in package")
             return False
 
-    # Universal index validator from SDK (VT-S02 / RT-T01)
-    validator_bin = None
-    for cand in [
-        Path("C:/dev/visionrt-sdk/bin/visionrt_validate_tool.exe"),
-        Path("C:/dev/visionrt-sdk/bin/visionrt_validate_tool"),
-        Path(__file__).resolve().parent.parent.parent / "VisionRT" / "build" / "bin" / "visionrt_validate_tool.exe",
-    ]:
-        if cand.is_file():
-            validator_bin = cand
-            break
-
-    if validator_bin:
+    # Universal package validator from SDK (VT-S02 / RT-T01)
+    if validator is not None:
+        validator_path = Path(validator)
+        if not validator_path.is_file():
+            print(f"[ERROR] Validator executable not found: {validator_path}")
+            return False
         import subprocess
-        res = subprocess.run([str(validator_bin), "--index", str(index_path)], capture_output=True, text=True)
+        res = subprocess.run([str(validator_path), "--package", str(install_dir)], capture_output=True, text=True)
         if res.returncode != 0:
-            print(f"[ERROR] visionrt_validate_tool --index failed for {index_path}:\n{res.stderr or res.stdout}")
+            print(f"[ERROR] visionrt_validate_tool --package failed for {install_dir}:\n{res.stderr or res.stdout}")
             return False
 
     print(f"[SUCCESS] Package verification passed ({len(tools_dict)} tools verified, variant={expected_variant}).")
@@ -569,15 +579,17 @@ def main():
     parser.add_argument("--install-dir", default="dist/VisionTools", help="Destination directory")
     parser.add_argument("--config", default="Release", help="Build configuration (Release, Debug)")
     parser.add_argument("--no-infer", action="store_true", help="Package CPU-only tools (exclude GPU)")
+    parser.add_argument("--validator", default=None, help="Explicit path to visionrt_validate_tool binary")
     parser.add_argument("--verify-only", action="store_true", help="Run verification without rebuilding")
     parser.add_argument("--verify-runtime", action="store_true", help="Run dynamic consumer in clean PATH")
     args = parser.parse_args()
 
     install_dir = Path(args.install_dir)
     is_gpu = not args.no_infer
+    val_arg = Path(args.validator).resolve() if args.validator else None
 
     if args.verify_only:
-        ok = verify_package(install_dir, is_gpu=is_gpu)
+        ok = verify_package(install_dir, is_gpu=is_gpu, validator=val_arg)
         if ok and args.verify_runtime:
             ok = verify_runtime(install_dir)
         sys.exit(0 if ok else 1)
@@ -588,7 +600,8 @@ def main():
             install_dir=install_dir,
             config=args.config,
             infer_enabled=is_gpu,
-            strict=True
+            strict=True,
+            validator=val_arg
         )
         if args.verify_runtime:
             if not verify_runtime(install_dir):

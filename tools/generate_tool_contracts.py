@@ -14,7 +14,6 @@ import argparse
 import ast
 import json
 import math
-import os
 import re
 import shutil
 import subprocess
@@ -67,18 +66,14 @@ def load_sdk_enums(sdk_include_dir: Optional[Path] = None) -> Tuple[Set[str], Se
             raise ContractValidationError(f"Explicit SDK include directory does not exist or missing Value.h: {sdir}")
         search_dirs = [sdir]
     else:
-        search_dirs = []
-        if os.environ.get("VISIONRT_SDK_ROOT"):
-            search_dirs.append(Path(os.environ["VISIONRT_SDK_ROOT"]) / "include")
-        search_dirs.extend([
-            Path("C:/dev/visionrt-sdk/include"),
-            Path(__file__).resolve().parent.parent.parent / "VisionRT" / "include",
-        ])
+        search_dirs = [
+            Path(__file__).resolve().parent.parent / "3rdparty" / "VisionRTToolSDK" / "include",
+        ]
 
     for sdir in search_dirs:
         val_h = sdir / "visionrt" / "sdk" / "Value.h"
         schema_h = sdir / "visionrt" / "sdk" / "Schema.h"
-        if val_h.exists():
+        if val_h.exists() and schema_h.exists():
             try:
                 content = val_h.read_text(encoding="utf-8")
                 m_type = re.search(r'enum\s+class\s+Type\s*\{([^}]+)\}', content)
@@ -91,28 +86,20 @@ def load_sdk_enums(sdk_include_dir: Optional[Path] = None) -> Tuple[Set[str], Se
                 layouts |= {re.sub(r'(?<!^)(?=[A-Z])', '_', x).lower() for x in layouts}
 
                 kinds = {"cpp_function", "cpp_class", "python_function", "python_class"}
-                if schema_h.exists():
-                    scontent = schema_h.read_text(encoding="utf-8")
-                    m_kind = re.search(r'enum\s+class\s+ToolKind\s*\{([^}]+)\}', scontent)
-                    if m_kind:
-                        raw_kinds = [x.strip() for x in m_kind.group(1).split(',') if x.strip()]
-                        kinds = {re.sub(r'(?<!^)(?=[A-Z])', '_', x).lower() for x in raw_kinds}
+                scontent = schema_h.read_text(encoding="utf-8")
+                m_kind = re.search(r'enum\s+class\s+ToolKind\s*\{([^}]+)\}', scontent)
+                if m_kind:
+                    raw_kinds = [x.strip() for x in m_kind.group(1).split(',') if x.strip()]
+                    kinds = {re.sub(r'(?<!^)(?=[A-Z])', '_', x).lower() for x in raw_kinds}
 
                 if types and dtypes and layouts:
                     return types, dtypes, layouts, kinds
             except Exception as e:
-                if sdk_include_dir:
-                    raise ContractValidationError(f"Failed to read SDK enums from {sdir}: {e}")
+                raise ContractValidationError(f"Failed to read SDK enums from {sdir}: {e}")
 
-    if sdk_include_dir is not None:
-        raise ContractValidationError(f"Failed to extract SDK enums from: {sdk_include_dir}")
-
-    # Fallback only when no sdk_include_dir is specified (e.g. standalone test environment)
-    return (
-        {"Int", "Float", "Bool", "String", "ImageBatch", "NumericArray", "StringArray", "RoiBatch"},
-        {"uint8", "int32", "int64", "float32", "float64", "bool", "UInt8", "Int32", "Int64", "Float32", "Float64", "Bool"},
-        {"dense", "batch_ragged", "Dense", "BatchRagged"},
-        {"cpp_function", "cpp_class", "python_function", "python_class"}
+    raise ContractValidationError(
+        f"Failed to extract SDK enums from: {[str(p) for p in search_dirs]}. "
+        "Please ensure 3rdparty/VisionRTToolSDK is checked out."
     )
 
 VALID_TYPES, VALID_DTYPES, VALID_LAYOUTS, VALID_KINDS = load_sdk_enums()

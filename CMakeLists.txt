@@ -10,8 +10,9 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(ConfigCompiler)
 include(ConfigDependencyDefaults)
 include(ConfigOpenCV)
-include(ConfigVisionRTToolSDK)
 include(ConfigYamlCpp)
+add_subdirectory(3rdparty/VisionRTToolSDK)
+include(ConfigPython)
 include(AddTest)
 include(PrintConfig)
 
@@ -48,22 +49,22 @@ else()
     set(VISIONTOOLS_GENERATOR_VARIANT "cpu")
 endif()
 
-get_target_property(_sdk_include_dirs VisionRT::ToolSDK INTERFACE_INCLUDE_DIRECTORIES)
-list(GET _sdk_include_dirs 0 _primary_sdk_inc)
+set(VISIONTOOLS_SDK_INCLUDE_DIR "${VISIONRT_TOOL_SDK_INCLUDE_DIR}")
 
 add_custom_command(
     OUTPUT ${VISIONTOOLS_GENERATOR_OUTPUTS}
-    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_tool_contracts.py"
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${VISIONTOOLS_OPENCV_BIN};$ENV{PATH}"
+            ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_tool_contracts.py"
             --tools-dir "${CMAKE_CURRENT_SOURCE_DIR}/assets/tools"
             --bindings "${VISIONTOOLS_MODULE_BINDINGS}"
             --output-dir "${VISIONTOOLS_GENERATED_DIR}"
             --index-output "${VISIONTOOLS_GENERATED_DIR}/module_index.yaml"
             --variant "${VISIONTOOLS_GENERATOR_VARIANT}"
-            --sdk-include-dir "${_primary_sdk_inc}"
+            --sdk-include-dir "${VISIONTOOLS_SDK_INCLUDE_DIR}"
             --validator "$<TARGET_FILE:VisionRT::visionrt_validate_tool>"
     DEPENDS ${VISIONTOOLS_TOOL_YAMLS} ${VISIONTOOLS_MODULE_BINDINGS} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_tool_contracts.py"
-            "${_primary_sdk_inc}/visionrt/sdk/Value.h"
-            "${_primary_sdk_inc}/visionrt/sdk/Schema.h"
+            "${VISIONTOOLS_SDK_INCLUDE_DIR}/visionrt/sdk/Value.h"
+            "${VISIONTOOLS_SDK_INCLUDE_DIR}/visionrt/sdk/Schema.h"
             VisionRT::visionrt_validate_tool
     COMMENT "Generating tool contracts, constants, and module factories from YAML declarations..."
     VERBATIM
@@ -82,6 +83,7 @@ string(REPLACE "\\" "/" _clean_trt_root "${_clean_trt_root}")
 set(_resolved_deps_content "# Auto-generated build dependencies manifest\n")
 string(APPEND _resolved_deps_content "variant: \"${VISIONTOOLS_GENERATOR_VARIANT}\"\n")
 string(APPEND _resolved_deps_content "config: \"$<CONFIG>\"\n")
+string(APPEND _resolved_deps_content "validator: \"$<TARGET_FILE:VisionRT::visionrt_validate_tool>\"\n")
 string(APPEND _resolved_deps_content "modules:\n")
 string(APPEND _resolved_deps_content "  visiontools_preprocess:\n")
 string(APPEND _resolved_deps_content "    variant: \"cpu\"\n")
@@ -148,6 +150,16 @@ file(GENERATE
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/resolved_dependencies.yaml"
     CONTENT "${_resolved_deps_content}"
 )
+
+# 导出开发环境 PATH 前缀（全部来自依赖解析结果），供 tools\build.cmd 打包等阶段复用，避免机器硬编码
+set(_devenv_dirs "${VISIONTOOLS_OPENCV_BIN}")
+if(VISIONTOOLS_BUILD_INFER)
+    list(APPEND _devenv_dirs "${INFERRT_BIN_DIR}" "${VISIONTOOLS_CUDA_BIN}" "${TRT_ROOT}/bin")
+endif()
+list(REMOVE_DUPLICATES _devenv_dirs)
+list(REMOVE_ITEM _devenv_dirs "")
+string(JOIN ";" _devenv_path_line ${_devenv_dirs})
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/devenv_paths.txt" CONTENT "${_devenv_path_line}\n")
 
 # 包含预处理领域模块
 add_subdirectory(src/preprocess)

@@ -6,7 +6,7 @@ visiontools_resolve_path(_vt_cuda_root
     VARIABLES CUDAToolkit_ROOT CUDA_PATH CUDA_TOOLKIT_ROOT_DIR
     ENVIRONMENT_VARIABLES CUDA_PATH CUDAToolkit_ROOT CUDA_TOOLKIT_ROOT_DIR
     PATHS ${CMAKE_PREFIX_PATH}
-    DEFAULT "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8"
+    DEPENDENCY cuda
 )
 
 if(_vt_cuda_root)

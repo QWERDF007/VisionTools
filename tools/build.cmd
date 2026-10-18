@@ -132,6 +132,19 @@ shift
 goto :PARSE_ARGS
 
 :START_BUILD
+rem 依赖 PATH 一律来自 CMake 解析结果（tools/dependencies.yaml 为换机器的唯一改动点），此处仅补本工程构建产物目录
+set "PATH=%BUILD_DIR%\src\preprocess;%BUILD_DIR%\src\infer;%PATH%"
+
+rem Ninja 定位：优先 PATH，其次 Visual Studio 自带（避免机器相关硬编码）
+where ninja >nul 2>nul
+if errorlevel 1 (
+    if exist "%VSINSTALLDIR%Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe" (
+        set "PATH=%VSINSTALLDIR%Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;%PATH%"
+    ) else (
+        echo [WARN] ninja not found on PATH or in Visual Studio; CMake will fall back to the default generator.
+    )
+)
+
 if "%DO_CLEAN%"=="1" (
     echo [INFO] Cleaning build directory: %BUILD_DIR%
     if exist "%BUILD_DIR%" rd /s /q "%BUILD_DIR%"
@@ -159,7 +172,6 @@ if errorlevel 1 (
 
 if "%DO_TEST%"=="1" (
     echo [INFO] Running CTest...
-    set "PATH=%BUILD_DIR%\src\preprocess;%BUILD_DIR%\src\infer;D:\Software\anaconda3\Library\bin;D:\Software\dev\opencv-4.8.0\build\x64\vc16\bin;F:\Projects\InferRT\InferRT-0.0.3\bin;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin;D:\Software\dev\TensorRT-10.16.1.11\bin;!PATH!"
     ctest --test-dir "%BUILD_DIR%" -C %CONFIG% --output-on-failure
     if errorlevel 1 (
         echo [ERROR] Some tests failed.
@@ -171,6 +183,10 @@ if "%DO_TEST%"=="1" (
 if "%DO_PACKAGE%"=="1" (
     echo [INFO] Packaging tools...
     if "!PACKAGE_DIR!"=="" set "PACKAGE_DIR=dist\VisionTools"
+    rem 打包校验需要运行依赖 DLL：PATH 前缀来自 CMake 生成的 devenv_paths.txt（无机器硬编码）
+    if exist "%BUILD_DIR%\devenv_paths.txt" (
+        for /f "usebackq delims=" %%p in ("%BUILD_DIR%\devenv_paths.txt") do set "PATH=%%p;!PATH!"
+    )
     set "PKG_FLAGS=--config !CONFIG! --build-dir "!BUILD_DIR!" --install-dir "!PACKAGE_DIR!" --verify-runtime"
     if "!BUILD_INFER!"=="OFF" set "PKG_FLAGS=!PKG_FLAGS! --no-infer"
     python tools\package_tools.py !PKG_FLAGS!

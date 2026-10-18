@@ -1,10 +1,78 @@
 include_guard(GLOBAL)
 
+# 机器相关依赖默认路径的唯一真相源：tools/dependencies.yaml
+# 读取规则与 Python 工具（dependency_utils 同族约定）保持一致：<platform>_default 优先于 default。
+# 清单路径默认取本仓库 tools/dependencies.yaml，可用 VISIONTOOLS_DEPENDENCY_MANIFEST 覆盖（外部构建场景）。
+function(visiontools_dependency_default dependency_name output_var)
+    set(_manifest "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../tools/dependencies.yaml")
+    if(DEFINED VISIONTOOLS_DEPENDENCY_MANIFEST AND NOT "${VISIONTOOLS_DEPENDENCY_MANIFEST}" STREQUAL "")
+        set(_manifest "${VISIONTOOLS_DEPENDENCY_MANIFEST}")
+    endif()
+
+    if(NOT EXISTS "${_manifest}")
+        message(FATAL_ERROR "Dependency manifest not found: ${_manifest}. tools/dependencies.yaml is the single source for machine-specific dependency paths.")
+    endif()
+
+    set(_platform_default_key)
+    if(WIN32)
+        set(_platform_default_key "windows_default")
+    elseif(APPLE)
+        set(_platform_default_key "macos_default")
+    elseif(UNIX)
+        set(_platform_default_key "linux_default")
+    endif()
+
+    set(_entry_found OFF)
+    set(_platform_result "")
+    set(_fallback_result "")
+    file(STRINGS "${_manifest}" _manifest_lines)
+    set(_in_dependency OFF)
+    foreach(_line IN LISTS _manifest_lines)
+        string(REGEX MATCH "^[ ]*-[ ]+name:[ ]*([A-Za-z0-9_.-]+)[ ]*$" _name_match "${_line}")
+        if(_name_match)
+            string(REGEX REPLACE "^[ ]*-[ ]+name:[ ]*" "" _entry_name "${_name_match}")
+            if(_entry_name STREQUAL "${dependency_name}")
+                set(_in_dependency ON)
+                set(_entry_found ON)
+            else()
+                set(_in_dependency OFF)
+            endif()
+            continue()
+        endif()
+
+        if(_in_dependency)
+            if(_platform_default_key)
+                string(REGEX MATCH "^[ ]*${_platform_default_key}:[ ]*(.+)[ ]*$" _platform_match "${_line}")
+                if(_platform_match)
+                    string(REGEX REPLACE "^[ ]*${_platform_default_key}:[ ]*" "" _platform_result "${_platform_match}")
+                    string(REGEX REPLACE "^[ ]*[\"'](.*)[\"'][ ]*$" "\\1" _platform_result "${_platform_result}")
+                endif()
+            endif()
+
+            string(REGEX MATCH "^[ ]*default:[ ]*(.+)[ ]*$" _default_match "${_line}")
+            if(_default_match)
+                string(REGEX REPLACE "^[ ]*default:[ ]*" "" _fallback_result "${_default_match}")
+                string(REGEX REPLACE "^[ ]*[\"'](.*)[\"'][ ]*$" "\\1" _fallback_result "${_fallback_result}")
+            endif()
+        endif()
+    endforeach()
+
+    if(NOT _entry_found)
+        message(FATAL_ERROR "Dependency '${dependency_name}' not declared in ${_manifest}.")
+    endif()
+
+    if(_platform_result)
+        set(${output_var} "${_platform_result}" PARENT_SCOPE)
+    else()
+        set(${output_var} "${_fallback_result}" PARENT_SCOPE)
+    endif()
+endfunction()
+
 # 统一依赖路径解析单一真相源 (SSOT)
-# 优先级：CMake 显式变量 (-D) > 环境变量 > 平台默认基准路径
+# 优先级：CMake 显式变量 (-D) > 环境变量 > 平台候选路径 > tools/dependencies.yaml 清单默认值
 # 规范要求 (NS-04)：选中显式无效目录必须失败，禁止静默回退到默认路径
 function(visiontools_resolve_path output_var)
-    cmake_parse_arguments(ARG "" "DEFAULT;REQUIRED_FILE" "VARIABLES;ENVIRONMENT_VARIABLES;PATHS;REQUIRED_FILES" ${ARGN})
+    cmake_parse_arguments(ARG "" "DEPENDENCY;REQUIRED_FILE" "VARIABLES;ENVIRONMENT_VARIABLES;PATHS;REQUIRED_FILES" ${ARGN})
 
     set(_req_files)
     if(ARG_REQUIRED_FILE)
@@ -70,13 +138,16 @@ function(visiontools_resolve_path output_var)
         endif()
     endforeach()
 
-    # 4. 平台默认基准路径
-    if(ARG_DEFAULT)
-        file(TO_CMAKE_PATH "${ARG_DEFAULT}" _def_norm)
-        _check_valid("${_def_norm}" _is_valid)
-        if(_is_valid)
-            set(${output_var} "${_def_norm}" PARENT_SCOPE)
-            return()
+    # 4. tools/dependencies.yaml 清单默认值（机器差异唯一改动点）
+    if(ARG_DEPENDENCY)
+        visiontools_dependency_default("${ARG_DEPENDENCY}" _default_path)
+        if(_default_path)
+            file(TO_CMAKE_PATH "${_default_path}" _def_norm)
+            _check_valid("${_def_norm}" _is_valid)
+            if(_is_valid)
+                set(${output_var} "${_def_norm}" PARENT_SCOPE)
+                return()
+            endif()
         endif()
     endif()
 

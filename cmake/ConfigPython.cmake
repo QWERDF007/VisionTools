@@ -5,8 +5,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/ConfigDependencyDefaults.cmake")
 visiontools_resolve_path(_vt_python_home
     VARIABLES PYTHON_HOME Python_ROOT Python3_ROOT
     ENVIRONMENT_VARIABLES PYTHON_HOME Python_ROOT Python3_ROOT
-    PATHS ${CMAKE_PREFIX_PATH}
-    DEFAULT "D:/Software/anaconda3/envs/py312"
+    REQUIRED_FILE "python.exe"
+    DEPENDENCY python
 )
 
 if(_vt_python_home)

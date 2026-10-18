@@ -7,36 +7,16 @@ if(TARGET yaml-cpp::yaml-cpp OR TARGET yaml-cpp)
     return()
 endif()
 
-include("${CMAKE_CURRENT_LIST_DIR}/ConfigDependencyDefaults.cmake")
-
-# 统一 yaml-cpp 路径解析单一真相源 (SSOT)
-# 优先级：CMake 显式变量 (-D) > 环境变量 > 平台默认基准路径
-visiontools_resolve_path(YAML_CPP_DIR
-    VARIABLES YAML_CPP_DIR yaml-cpp_DIR
-    ENVIRONMENT_VARIABLES YAML_CPP_DIR yaml-cpp_DIR
-    PATHS
-        "${VisionRTToolSDK_DIR}/../yaml-cpp"
-        "C:/dev/visionrt-sdk/lib/cmake/yaml-cpp"
-        "C:/dev/visionrt-sdk"
-        "D:/Software/anaconda3/Library"
-        "D:/Software/anaconda3/Library/share/cmake/yaml-cpp"
-        "C:/dev/yaml-cpp"
-    DEFAULT "C:/dev/visionrt-sdk/lib/cmake/yaml-cpp"
-    REQUIRED_FILES "share/cmake/yaml-cpp/yaml-cpp-config.cmake" "include/yaml-cpp/yaml.h" "yaml-cpp-config.cmake"
-)
-
-if(YAML_CPP_DIR)
-    if(EXISTS "${YAML_CPP_DIR}/yaml-cpp-config.cmake")
-        find_package(yaml-cpp CONFIG REQUIRED PATHS "${YAML_CPP_DIR}" NO_DEFAULT_PATH)
-    elseif(EXISTS "${YAML_CPP_DIR}/share/cmake/yaml-cpp/yaml-cpp-config.cmake")
-        find_package(yaml-cpp CONFIG REQUIRED PATHS "${YAML_CPP_DIR}/share/cmake/yaml-cpp" NO_DEFAULT_PATH)
-    else()
-        find_package(yaml-cpp CONFIG REQUIRED PATHS "${YAML_CPP_DIR}" NO_DEFAULT_PATH)
-    endif()
-else()
-    find_package(yaml-cpp CONFIG REQUIRED)
+# yaml-cpp 唯一来源：3rdparty/yaml-cpp 子模块（静态 /MD 构建，与 VisionRTToolSDK 内嵌版本同源）
+set(_vt_yaml_cpp_dir "${CMAKE_SOURCE_DIR}/3rdparty/yaml-cpp")
+if(NOT EXISTS "${_vt_yaml_cpp_dir}/CMakeLists.txt")
+    message(FATAL_ERROR "yaml-cpp submodule missing at '${_vt_yaml_cpp_dir}'. Initialize it with: git submodule update --init --recursive")
 endif()
 
-if(NOT TARGET yaml-cpp AND TARGET yaml-cpp::yaml-cpp)
-    add_library(yaml-cpp ALIAS yaml-cpp::yaml-cpp)
-endif()
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "Disable yaml-cpp tests" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "Disable yaml-cpp tools" FORCE)
+set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "Disable yaml-cpp contrib" FORCE)
+set(YAML_BUILD_SHARED_LIBS OFF CACHE BOOL "Build static yaml-cpp" FORCE)
+set(YAML_MSVC_SHARED_RT ON CACHE BOOL "MSVC shared runtime (/MD)" FORCE)
+
+add_subdirectory("${_vt_yaml_cpp_dir}" "${CMAKE_BINARY_DIR}/3rdparty/yaml-cpp")

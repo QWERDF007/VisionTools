@@ -1,0 +1,7 @@
+[submodule "3rdparty/yaml-cpp"]
+	path = 3rdparty/yaml-cpp
+	url = https://github.com/jbeder/yaml-cpp.git
+	branch = master
+[submodule "3rdparty/VisionRTToolSDK"]
+	path = 3rdparty/VisionRTToolSDK
+	url = https://github.com/QWERDF007/VisionRTSDK.git
