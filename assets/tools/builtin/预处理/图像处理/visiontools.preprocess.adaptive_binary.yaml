@@ -1,4 +1,6 @@
 schema_version: 1
+category: 预处理
+subcategory: 图像处理
 tool_id: visiontools.preprocess.adaptive_binary
 display_name: 自适应二值化
 version: 1.0.0

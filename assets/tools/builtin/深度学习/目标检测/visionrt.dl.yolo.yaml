@@ -1,4 +1,6 @@
 schema_version: 1
+category: 深度学习
+subcategory: 目标检测
 tool_id: visionrt.dl.yolo
 display_name: YOLO目标检测
 version: 1.0.0

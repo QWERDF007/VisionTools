@@ -188,7 +188,6 @@ if "%DO_PACKAGE%"=="1" (
         for /f "usebackq delims=" %%p in ("%BUILD_DIR%\devenv_paths.txt") do set "PATH=%%p;!PATH!"
     )
     set "PKG_FLAGS=--config !CONFIG! --build-dir "!BUILD_DIR!" --install-dir "!PACKAGE_DIR!" --verify-runtime"
-    if "!BUILD_INFER!"=="OFF" set "PKG_FLAGS=!PKG_FLAGS! --no-infer"
     python tools\package_tools.py !PKG_FLAGS!
     if errorlevel 1 (
         echo [ERROR] Tool packaging failed.

@@ -235,12 +235,6 @@ def load_and_validate_declarations(tools_dir: Path, bindings_data: Optional[Dict
         doc = load_yaml(yf)
         validated = validate_tool_declaration(doc, yf, tools_dir=tools_dir)
         validated["_source_path"] = str(yf)
-        try:
-            rel_parts = yf.relative_to(tools_dir).parts
-        except ValueError:
-            rel_parts = yf.parts
-        if any(part in rel_parts for part in ("custom", "示例", "examples")):
-            validated["is_example"] = True
         tid = validated["tool_id"]
         if tid in seen_tool_ids:
             raise ContractValidationError(f"Duplicate tool_id '{tid}' in {yf}")
@@ -552,53 +546,54 @@ def generate_module_factory_inc(module_name: str, tools_dict: Dict[str, Dict[str
 
     return "\n".join(lines) + "\n"
 
-def build_module_index(tools: List[Dict[str, Any]], bindings_data: Optional[Dict[str, Any]], variant: str = "gpu", project_root: Optional[Path] = None) -> Dict[str, Any]:
-    """
-    Generate build/generated/module_index.yaml metadata.
-    Lightweight structure: variant, modules, tools (YS-01 / YS-02).
-    """
-    modules = {}
+def build_module_index(tools: List[Dict[str, Any]], bindings_data: Optional[Dict[str, Any]], variant: str = "release", project_root: Optional[Path] = None, selected_modules: Optional[List[str]] = None) -> Dict[str, Any]:
+    bindings_data = bindings_data or {}
+    module_bindings = bindings_data.get("modules", {})
+    selected = set(module_bindings if selected_modules is None else selected_modules)
+    if selected - set(module_bindings):
+        raise ContractValidationError(f"Unknown selected modules: {selected - set(module_bindings)}")
+    by_registry = {}
+    for module_name, module_info in module_bindings.items():
+        for registry_name in module_info.get("tools", {}):
+            if registry_name in by_registry:
+                raise ContractValidationError(f"Duplicate implementation binding: {registry_name}")
+            by_registry[registry_name] = module_name
+    host_bindings = bindings_data.get("host_bindings", {})
     tools_map = {}
-
-    if bindings_data and "modules" in bindings_data:
-        for mod_name, mod_info in bindings_data["modules"].items():
-            mod_variant = mod_info.get("variant", "cpu")
-            if variant == "cpu" and mod_variant == "gpu":
+    referenced = set()
+    for tool in tools:
+        tool_id = tool["tool_id"]
+        registry_name = tool.get("entry", {}).get("registry_name")
+        binding = host_bindings.get(tool_id)
+        if binding:
+            if not tool["kind"].startswith("cpp") or registry_name in by_registry:
+                raise ContractValidationError(f"Invalid host binding combination: {tool_id}")
+            entry = {"host_binding": binding}
+        elif tool["kind"].startswith("python"):
+            entry = {}
+        else:
+            module_name = by_registry.get(registry_name)
+            if module_name is None:
+                raise ContractValidationError(f"Missing implementation binding: {tool_id}")
+            if module_name not in selected:
                 continue
-            modules[mod_name] = {}
-            for reg in mod_info.get("tools", {}):
-                matching_tool = next((t for t in tools if t.get("entry", {}).get("registry_name") == reg or t.get("tool_id") == reg), None)
-                if matching_tool and not matching_tool.get("is_example"):
-                    src_path = matching_tool.get("_source_path") or matching_tool.get("definition")
-                    if src_path:
-                        p = Path(src_path)
-                        if project_root:
-                            try:
-                                rel_def = p.relative_to(project_root)
-                            except ValueError:
-                                rel_def = p
-                        else:
-                            parts = p.parts
-                            if "assets" in parts:
-                                idx = parts.index("assets")
-                                rel_def = Path(*parts[idx:])
-                            else:
-                                rel_def = p
-                        def_str = str(rel_def).replace("\\", "/")
-                    else:
-                        def_str = f"assets/tools/{reg}.yaml"
-
-                    tool_id = matching_tool.get("tool_id") or reg
-                    tools_map[tool_id] = {
-                        "module": mod_name,
-                        "definition": def_str
-                    }
-
+            entry = {"module": module_name}
+            referenced.add(module_name)
+        source = tool.get("_source_path") or tool.get("definition")
+        if not source:
+            raise ContractValidationError(f"Missing declaration source: {tool_id}")
+        definition = Path(source)
+        if project_root is not None:
+            definition = definition.relative_to(project_root)
+        entry["definition"] = definition.as_posix()
+        tools_map[tool_id] = entry
+    if set(host_bindings) - {tool["tool_id"] for tool in tools}:
+        raise ContractValidationError("Host binding refers to an unknown tool_id")
     return {
         "schema_version": 2,
         "variant": variant,
-        "modules": modules,
-        "tools": tools_map
+        "modules": {name: {} for name in sorted(referenced)},
+        "tools": tools_map,
     }
 
 def main():
@@ -607,7 +602,8 @@ def main():
     parser.add_argument("--bindings", default="tools/module_bindings.yaml", help="Path to module_bindings.yaml")
     parser.add_argument("--output-dir", default="build/generated", help="Directory for generated C++ files")
     parser.add_argument("--index-output", default="module_index.yaml", help="Output path for module index YAML")
-    parser.add_argument("--variant", default="gpu", choices=["gpu", "cpu"], help="Distribution variant")
+    parser.add_argument("--variant", default="release", help="Distribution configuration name")
+    parser.add_argument("--modules", nargs="*", help="Module targets included in this build")
     parser.add_argument("--sdk-include-dir", default=None, help="VisionRT SDK include directory")
     parser.add_argument("--validator", default=None, help="Path to visionrt_validate_tool executable")
     args = parser.parse_args()
@@ -669,12 +665,6 @@ def main():
             doc = load_yaml(yf)
             validated = validate_tool_declaration(doc, yf, tools_dir=tools_dir)
             validated["_source_path"] = str(yf)
-            try:
-                rel_parts = yf.relative_to(tools_dir).parts
-            except ValueError:
-                rel_parts = yf.parts
-            if any(part in rel_parts for part in ("custom", "示例", "examples")):
-                validated["is_example"] = True
             tid = validated["tool_id"]
             if tid in seen_tool_ids:
                 raise ContractValidationError(f"Duplicate tool_id '{tid}' in {yf}")
@@ -712,8 +702,10 @@ def main():
             return 1
 
     # Validate that all C++ declared tools have bindings
+    host_registries = {tool["entry"]["registry_name"] for tool in validated_tools
+                       if tool["tool_id"] in bindings_data.get("host_bindings", {})}
     for reg in seen_reg_names:
-        if reg not in bound_regs:
+        if reg not in bound_regs and reg not in host_registries:
             print(f"[ERROR] C++ tool with registry_name '{reg}' has no implementation binding in {bindings_path}", file=sys.stderr)
             return 1
 
@@ -733,7 +725,8 @@ def main():
     # Generate module_index.yaml (YS-01)
     index_path = Path(args.index_output)
     index_path.parent.mkdir(parents=True, exist_ok=True)
-    index_data = build_module_index(validated_tools, bindings_data, variant=args.variant, project_root=tools_dir.parent.parent)
+    index_data = build_module_index(validated_tools, bindings_data, variant=args.variant,
+                                   project_root=tools_dir.parent.parent, selected_modules=args.modules)
     with open(index_path, "w", encoding="utf-8") as f:
         yaml.dump(index_data, f, sort_keys=False, allow_unicode=True)
 

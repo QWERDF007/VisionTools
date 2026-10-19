@@ -1,53 +1,29 @@
 # VisionTools
 
-VisionTools 是 VisionRT 视觉平台的算法与工具库，按领域划分为独立的动态链接库与声明规范。
+VisionRT 的工具库。普通 CMake 构建输出领域 DLL；显式打包输出一个 ZIP 与同源 `module_index.yaml`。发行配置名不约束计算后端或工具组合。
 
-## 领域模块与结构
+## 作者与实现入口
 
-- **声明单一真相源 (SSOT)**: [assets/tools](assets/tools)
-  - 内置工具声明：[assets/tools/builtin](assets/tools/builtin)
-  - 示例自定义脚本：[assets/tools/custom](assets/tools/custom)
-- **实现绑定映射**: [tools/module_bindings.yaml](tools/module_bindings.yaml)
-- **契约生成工具**: [tools/generate_tool_contracts.py](tools/generate_tool_contracts.py)（由 CMake 自动驱动生成端口常量、TypeSpec、工厂派发及模块索引）
-- **预处理模块 (CPU)**: [src/preprocess](src/preprocess) (`visiontools_preprocess.dll`)
-  - 图像读取：`visionrt.image.read`
-  - ROI 投影：`visionrt.roi.projection`
-  - 矩形无拷贝只读裁剪：`visionrt.image.crop`
-  - 图像滤波预处理：`visionrt.image.preprocess`
-  - 自适应二值化：`visiontools.preprocess.adaptive_binary`
-  - 缺陷与目标过滤：`visionrt.detection.filter`
-- **推理模块 (GPU)**: [src/infer](src/infer) (`visiontools_infer.dll`)
-  - YOLO 目标检测：`visionrt.dl.yolo`
-- **推理探针与基线验证**: [probes/infer](probes/infer) (`visiontools_infer_probe.exe`)
-- **外部依赖配置**: [tools/dependencies.yaml](tools/dependencies.yaml)（机器相关默认路径的唯一真相源，换机器只需改此文件）
+- [工具声明](assets/tools)：工具身份、分类、端口、Python 入口及显式资源的唯一作者源，包含平台接收节点声明。
+- [实现绑定](tools/module_bindings.yaml)：C++ 工厂和宿主能力绑定。
+- [预处理领域](src/preprocess)、[推理领域](src/infer)：多个工具共享领域 DLL，不要求每个工具一个 DLL。
+- [生成器](tools/generate_tool_contracts.py)：CMake 按实际选中目标生成合同与中间索引。
+- [打包器](tools/package_tools.py)：消费构建清单与声明；发布前使用 SDK 校验。
+- [共享 SDK 子模块](3rdparty/VisionRTSDK)：与宿主复用相同数据模型及包读取规则。
+- [依赖配置](tools/dependencies.yaml)、[CMake](CMakeLists.txt)：本机路径与实际构建选择。
 
-## 外部依赖
+## Windows 构建与交付
 
-- **yaml-cpp**: [3rdparty/yaml-cpp](3rdparty/yaml-cpp) 子模块（静态构建），克隆后需执行 `git submodule update --init --recursive`。
-- **VisionRTToolSDK** (`VisionRT::ToolSDK`): 由 VisionRT 仓库构建树导出（默认路径见 [tools/dependencies.yaml](tools/dependencies.yaml) 的 `visionrt_sdk` 条目，可用 `VisionRTToolSDK_DIR` 变量或 `VISIONRT_SDK_ROOT` 环境变量覆盖），禁止仓库内自建副本。
-- **OpenCV**: OpenCV 4.8.0+。
-- **InferRT / CUDA / TensorRT**: 仅 GPU 推理模块消费，CPU 模式无需安装。
-- **Python**: 3.9+，构建时依赖 `PyYAML`（默认解释器路径见 [tools/dependencies.yaml](tools/dependencies.yaml) 的 `python` 条目）。
-
-## 构建与测试指南
-
-Windows MSVC x64 环境下可通过统一构建脚本 [tools/build.cmd](tools/build.cmd) 完成完整生命周期：
+依赖 CMake、MSVC、OpenCV 和带 PyYAML 的 Python；推理目标所需前提见对应 CMake 与依赖配置。
 
 ```cmd
-# 1. 完整 GPU 构建并运行所有 CTest 契约与单元测试
-tools\build.cmd --clean --test
-
-# 2. 纯 CPU 环境构建并运行测试 (无 InferRT / CUDA 依赖)
-tools\build.cmd -B build-cpu --no-infer --clean --test
-
-# 3. 打包 GPU 发布包并自动验证闭包完整性
-tools\build.cmd --package dist\VisionTools_GPU
-
-# 4. 打包 CPU 发布包并自动验证无 GPU 污染
-tools\build.cmd -B build-cpu --no-infer --package dist\VisionTools_CPU
+git submodule update --init --recursive
+tools\build.cmd --release --no-infer
+tools\build.cmd --release --no-infer --package dist\VisionTools
+tools\build.cmd ctest --test-dir build --output-on-failure
 ```
 
-## 文档与任务追踪
+`--no-infer` 仅控制当前推理目标是否参与构建，不定义包类型。需要该目标时使用已配置的默认构建；包内容由实际产物决定。打包输出 `dist/VisionTools.zip` 和 `dist/module_index.yaml`，宿主部署脚本以 `--tools-package` 消费 ZIP。
 
-- 文档索引与复用记录：[docs/README.md](docs/README.md)
-- 唯一任务账本：[WORKLOG.md](WORKLOG.md)
+- [文档索引](docs/README.md)
+- [唯一任务账本](WORKLOG.md)

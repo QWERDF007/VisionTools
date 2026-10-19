@@ -34,6 +34,8 @@ file(GLOB_RECURSE VISIONTOOLS_TOOL_YAMLS CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/tools/*.yml"
 )
 set(VISIONTOOLS_MODULE_BINDINGS "${CMAKE_CURRENT_SOURCE_DIR}/tools/module_bindings.yaml")
+set(VISIONTOOLS_DISTRIBUTION "${PROJECT_NAME}-${PROJECT_VERSION}" CACHE STRING "Distribution configuration name")
+set(VISIONTOOLS_BUILT_MODULES visiontools_preprocess)
 set(VISIONTOOLS_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${VISIONTOOLS_GENERATED_DIR}")
 
@@ -44,9 +46,7 @@ set(VISIONTOOLS_GENERATOR_OUTPUTS
 )
 if(VISIONTOOLS_BUILD_INFER)
     list(APPEND VISIONTOOLS_GENERATOR_OUTPUTS "${VISIONTOOLS_GENERATED_DIR}/visiontools_infer_factory.inc")
-    set(VISIONTOOLS_GENERATOR_VARIANT "gpu")
-else()
-    set(VISIONTOOLS_GENERATOR_VARIANT "cpu")
+    list(APPEND VISIONTOOLS_BUILT_MODULES visiontools_infer)
 endif()
 
 set(VISIONTOOLS_SDK_INCLUDE_DIR "${VISIONRT_TOOL_SDK_INCLUDE_DIR}")
@@ -59,7 +59,8 @@ add_custom_command(
             --bindings "${VISIONTOOLS_MODULE_BINDINGS}"
             --output-dir "${VISIONTOOLS_GENERATED_DIR}"
             --index-output "${VISIONTOOLS_GENERATED_DIR}/module_index.yaml"
-            --variant "${VISIONTOOLS_GENERATOR_VARIANT}"
+            --variant "${VISIONTOOLS_DISTRIBUTION}"
+            --modules ${VISIONTOOLS_BUILT_MODULES}
             --sdk-include-dir "${VISIONTOOLS_SDK_INCLUDE_DIR}"
             --validator "$<TARGET_FILE:VisionRT::visionrt_validate_tool>"
     DEPENDS ${VISIONTOOLS_TOOL_YAMLS} ${VISIONTOOLS_MODULE_BINDINGS} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_tool_contracts.py"
@@ -81,16 +82,14 @@ set(_clean_trt_root "${TRT_ROOT}")
 string(REPLACE "\\" "/" _clean_trt_root "${_clean_trt_root}")
 
 set(_resolved_deps_content "# Auto-generated build dependencies manifest\n")
-string(APPEND _resolved_deps_content "variant: \"${VISIONTOOLS_GENERATOR_VARIANT}\"\n")
+string(APPEND _resolved_deps_content "variant: \"${VISIONTOOLS_DISTRIBUTION}\"\n")
 string(APPEND _resolved_deps_content "config: \"$<CONFIG>\"\n")
 string(APPEND _resolved_deps_content "validator: \"$<TARGET_FILE:VisionRT::visionrt_validate_tool>\"\n")
 string(APPEND _resolved_deps_content "modules:\n")
 string(APPEND _resolved_deps_content "  visiontools_preprocess:\n")
-string(APPEND _resolved_deps_content "    variant: \"cpu\"\n")
 string(APPEND _resolved_deps_content "    source: \"$<TARGET_FILE:visiontools_preprocess>\"\n")
 if(VISIONTOOLS_BUILD_INFER)
     string(APPEND _resolved_deps_content "  visiontools_infer:\n")
-    string(APPEND _resolved_deps_content "    variant: \"gpu\"\n")
     string(APPEND _resolved_deps_content "    source: \"$<TARGET_FILE:visiontools_infer>\"\n")
 endif()
 

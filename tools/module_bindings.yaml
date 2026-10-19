@@ -2,9 +2,24 @@
 # Single source of truth for implementation mapping.
 # YAML declarations in assets/tools/ dictate all ports, types, and defaults.
 
+host_bindings:
+  visionrt.flow.receive.bool: visionrt.receiver
+  visionrt.flow.receive.float: visionrt.receiver
+  visionrt.flow.receive.float32_ragged2: visionrt.receiver
+  visionrt.flow.receive.float64_dense1: visionrt.receiver
+  visionrt.flow.receive.float64_dense2: visionrt.receiver
+  visionrt.flow.receive.image: visionrt.receiver
+  visionrt.flow.receive.int: visionrt.receiver
+  visionrt.flow.receive.int64_dense1: visionrt.receiver
+  visionrt.flow.receive.int64_dense2: visionrt.receiver
+  visionrt.flow.receive.int64_ragged2: visionrt.receiver
+  visionrt.flow.receive.roi: visionrt.receiver
+  visionrt.flow.receive.string_dense1: visionrt.receiver
+  visionrt.flow.receive.string_ragged2: visionrt.receiver
+  visionrt.flow.receive.string: visionrt.receiver
+
 modules:
   visiontools_preprocess:
-    variant: "cpu"
     dll_name: "bin/visiontools_preprocess.dll"
     namespace: "visiontools::preprocess"
     tools:
@@ -28,7 +43,6 @@ modules:
         header: "AdaptiveBinaryTool.h"
 
   visiontools_infer:
-    variant: "gpu"
     dll_name: "bin/visiontools_infer.dll"
     namespace: "visionrt::infer"
     tools:

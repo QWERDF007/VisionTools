@@ -1,4 +1,6 @@
 schema_version: 1
+category: 采集
+subcategory: 图像采集
 tool_id: visionrt.image.read
 display_name: 图像读取
 version: 1.0.0

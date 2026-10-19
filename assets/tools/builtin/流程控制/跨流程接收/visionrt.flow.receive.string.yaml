@@ -1,0 +1,38 @@
+schema_version: 1
+category: 流程控制
+subcategory: 跨流程接收
+tool_id: visionrt.flow.receive.string
+display_name: 字符串接收
+version: 1.0.0
+kind: cpp_class
+entry:
+  registry_name: visionrt.flow.receive.string
+init_params:
+- id: source_flow_name
+  name: 源流程名称
+  type: String
+  default: ''
+- id: source_node_name
+  name: 源节点名称
+  type: String
+  default: ''
+- id: source_port_id
+  name: 源端口ID
+  type: String
+  default: ''
+- id: timeout_ms
+  name: 超时时间(ms)
+  type: Int
+  default: 0
+  min: 0
+inputs: []
+outputs:
+- id: value
+  name: 接收字符串
+  type: String
+- id: source_status_code
+  name: 源状态码
+  type: Int
+- id: source_status_message
+  name: 源状态消息
+  type: String

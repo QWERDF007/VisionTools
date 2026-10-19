@@ -14,6 +14,12 @@ namespace {
 
 namespace p = visiontools::ports::visionrt_image_read;
 
+std::string utf8Path(const std::filesystem::path &path)
+{
+    const auto value = path.generic_u8string();
+    return {reinterpret_cast<const char *>(value.data()), value.size()};
+}
+
 std::string toLower(std::string_view s)
 {
     std::string res;
@@ -24,7 +30,7 @@ std::string toLower(std::string_view s)
 
 bool hasExtension(const std::filesystem::path &path, const std::vector<std::string> &extensions)
 {
-    const auto ext = toLower(path.extension().string());
+    const auto ext = toLower(utf8Path(path.extension()));
     for (const auto &candidate : extensions)
     {
         if (ext == candidate || ext == ("." + candidate))
@@ -100,7 +106,7 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         {
             if (!std::filesystem::exists(resolved) || !std::filesystem::is_regular_file(resolved))
             {
-                throw visionrt::ContractError("File does not exist: " + resolved.string());
+                throw visionrt::ContractError("File does not exist: " + utf8Path(resolved));
             }
             files.push_back(resolved);
         }
@@ -108,7 +114,7 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         {
             if (!std::filesystem::exists(resolved) || !std::filesystem::is_directory(resolved))
             {
-                throw visionrt::ContractError("Directory does not exist: " + resolved.string());
+                throw visionrt::ContractError("Directory does not exist: " + utf8Path(resolved));
             }
             const std::vector<std::string>     validExtensions = {"png", "jpg", "jpeg", "bmp", "tif", "tiff"};
             std::vector<std::filesystem::path> candidates;
@@ -120,7 +126,7 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
                 }
             }
             std::sort(candidates.begin(), candidates.end(),
-                      [](const auto &a, const auto &b) { return a.filename().string() < b.filename().string(); });
+                      [](const auto &a, const auto &b) { return a.filename().u8string() < b.filename().u8string(); });
             for (const auto &c : candidates)
             {
                 files.push_back(c);
@@ -143,12 +149,12 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
             std::ifstream stream(f, std::ios::binary | std::ios::ate);
             if (!stream.is_open())
             {
-                throw visionrt::ContractError("Cannot open image file: " + f.string());
+                throw visionrt::ContractError("Cannot open image file: " + utf8Path(f));
             }
             const auto fileSize = stream.tellg();
             if (fileSize <= 0)
             {
-                throw visionrt::ContractError("Empty image file: " + f.string());
+                throw visionrt::ContractError("Empty image file: " + utf8Path(f));
             }
             std::vector<char> buffer(static_cast<std::size_t>(fileSize));
             stream.seekg(0);
@@ -162,15 +168,15 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
             }
             catch (const cv::Exception &err)
             {
-                throw visionrt::ContractError("Cannot decode image: " + f.string() + ": " + err.what());
+                throw visionrt::ContractError("Cannot decode image: " + utf8Path(f) + ": " + err.what());
             }
             if (decoded.empty())
             {
-                throw visionrt::ContractError("Cannot decode image: " + f.string());
+                throw visionrt::ContractError("Cannot decode image: " + utf8Path(f));
             }
 
             images.push_back(visionrt::OwnedImage::take(std::move(decoded)));
-            pathStrings.push_back(f.string());
+            pathStrings.push_back(utf8Path(f));
         }
 
         const auto       count = static_cast<std::int64_t>(pathStrings.size());

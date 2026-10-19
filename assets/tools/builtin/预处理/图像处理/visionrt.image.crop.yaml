@@ -1,4 +1,6 @@
 schema_version: 1
+category: 预处理
+subcategory: 图像处理
 tool_id: visionrt.image.crop
 display_name: 图像裁剪
 version: 1.0.0

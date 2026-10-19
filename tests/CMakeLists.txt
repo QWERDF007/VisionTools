@@ -60,11 +60,14 @@ add_test(
 )
 
 # Python 测试与 C++ 测试共用同一份依赖 PATH（含 validator 所需的 OpenCV 运行时）
+add_test(NAME test_distribution
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tests/test_distribution.py"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 if(WIN32)
     visiontools_test_path(_vt_test_paths)
     set_tests_properties(test_generator PROPERTIES ENVIRONMENT
         "PATH=${_vt_test_paths};VISIONTOOLS_SDK_INCLUDE_DIR=${VISIONTOOLS_SDK_INCLUDE_DIR};VISIONTOOLS_VALIDATOR=$<TARGET_FILE:VisionRT::visionrt_validate_tool>")
-    set_tests_properties(test_package test_python_tools PROPERTIES ENVIRONMENT
-        "PATH=${_vt_test_paths}")
+    set_tests_properties(test_package test_distribution test_python_tools PROPERTIES ENVIRONMENT
+        "PATH=${_vt_test_paths};VISIONTOOLS_VALIDATOR=$<TARGET_FILE:VisionRT::visionrt_validate_tool>")
 endif()
 

@@ -8,12 +8,13 @@
 - **唯一任务账本与验证记录**: [../WORKLOG.md](../WORKLOG.md)
 - **工具声明目录 (SSOT)**: [../assets/tools/](../assets/tools/)
   - 内置算子：`assets/tools/builtin/`
-  - 示例脚本：`assets/tools/custom/`
+  - Python 工具：`assets/tools/custom/`；必要非代码资源在对应声明的 resources 中显式列出。
 - **模块绑定配置**: [../tools/module_bindings.yaml](../tools/module_bindings.yaml)
 - **运行依赖配置**: [../tools/dependencies.yaml](../tools/dependencies.yaml)
 - **代码生成与工厂接入**: [../tools/generate_tool_contracts.py](../tools/generate_tool_contracts.py)
 - **分发打包与闭包校验**: [../tools/package_tools.py](../tools/package_tools.py)
 - **构建驱动脚本**: [../tools/build.cmd](../tools/build.cmd)
+- **发行链测试**: [../tests/test_distribution.py](../tests/test_distribution.py)；设置 VISIONRT_PYTHON_CONSUMER 为宿主构建的 python_contract.exe、VISIONRT_DEPLOY_SCRIPT 为宿主 package_app.py 时，启用真实跨仓 ZIP 部署与执行验证。
 
 ## 复用决策记录
 
@@ -22,7 +23,7 @@
 | 图像预处理与阈值计算 | [OpenCV](https://github.com/opencv/opencv) (`imgproc`, `core`, `imgcodecs`) | 直接调用 `cv::adaptiveThreshold`、`cv::imread` 等成熟接口；矩形区域裁剪采用 `image.region()` 实现零拷贝视图并共享 OpenCV 内存块 `u`，保留 `rowStride`。 |
 | 声明解析与校验 | [PyYAML](https://github.com/yaml/pyyaml) | 严格依赖标准 PyYAML safe_load，消除私有简化解析带来的嵌套结构解析错误与类型歧义。 |
 | 深度学习推理与显存管理 | [InferRT](https://github.com/QWERDF007/InferRT) / TensorRT | PRIVATE 方式链接 `InferRT::model`，公开合同与 ModuleApi 不泄露后端类型；在 GPU 传输完成后同步并将结果封装为独立的 CPU 结构。 |
-| 外部宿主 SDK 抽象 | VisionRTToolSDK (`VisionRT::ToolSDK`) | 严格以 REQUIRED 方式消费外部 SDK（VisionRT 构建树导出包或安装包），使用统一的 `visionrt::Value`、`visionrt::ModuleApi`，不保留任何在树 SDK 分叉副本。 |
+| 共享工具合同 | [VisionRTSDK 子模块](../3rdparty/VisionRTSDK) (`VisionRT::ToolSDK`) | 复用 SDK 的值、模块与包校验，不在生产者维护另一套端口解析语义。 |
 
 ## 契约与接口设计
 

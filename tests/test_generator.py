@@ -101,10 +101,11 @@ class TestToolContractGenerator(unittest.TestCase):
         header2 = generate_port_constants_header([val2])
         self.assertEqual(header1, header2)
 
-    def test_module_index_and_variant_filtering(self):
+    def test_module_index_uses_selected_targets_not_backend_labels(self):
         tools = [
             {
                 "tool_id": "tool.cpu",
+                "definition": "assets/tools/cpu.yaml",
                 "display_name": "CPU Tool",
                 "kind": "cpp_function",
                 "entry": {"registry_name": "tool.cpu"},
@@ -113,6 +114,7 @@ class TestToolContractGenerator(unittest.TestCase):
             },
             {
                 "tool_id": "tool.gpu",
+                "definition": "assets/tools/gpu.yaml",
                 "display_name": "GPU Tool",
                 "kind": "cpp_class",
                 "entry": {"registry_name": "tool.gpu"},
@@ -143,8 +145,8 @@ class TestToolContractGenerator(unittest.TestCase):
         self.assertEqual(gpu_idx["tools"]["tool.gpu"]["module"], "visiontools_infer")
 
         # CPU variant excludes GPU tool
-        cpu_idx = build_module_index(tools, bindings, variant="cpu")
-        self.assertEqual(cpu_idx["variant"], "cpu")
+        cpu_idx = build_module_index(tools, bindings, variant="minimal-release", selected_modules=["visiontools_preprocess"])
+        self.assertEqual(cpu_idx["variant"], "minimal-release")
         self.assertIn("tool.cpu", cpu_idx["tools"])
         self.assertNotIn("tool.gpu", cpu_idx["tools"])
 

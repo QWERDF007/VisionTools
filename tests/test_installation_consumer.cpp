@@ -471,19 +471,29 @@ int main(int argc, char **argv)
         REQUIRE(inst != nullptr, "Create image.read must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize image.read must succeed");
 
-        std::string tempPath = "test_consumer_temp_image.png";
+        const auto tempPath = std::filesystem::path(u8"test_consumer_中文.png");
+        const auto encodedPath = tempPath.generic_u8string();
+        const std::string utf8Path(reinterpret_cast<const char *>(encodedPath.data()), encodedPath.size());
         cv::Mat     sample(24, 24, CV_8UC3, cv::Scalar(10, 20, 30));
-        cv::imwrite(tempPath, sample);
+        std::vector<unsigned char> encoded;
+        REQUIRE(cv::imencode(".png", sample, encoded), "Image fixture must encode");
+        {
+            std::ofstream stream(tempPath, std::ios::binary);
+            stream.write(reinterpret_cast<const char *>(encoded.data()), encoded.size());
+            REQUIRE(stream.good(), "Unicode image fixture must be written");
+        }
 
         visionrt::Values inputs;
         inputs.emplace("mode", visionrt::Utf8("file"));
-        inputs.emplace("path", visionrt::Utf8(tempPath));
+        inputs.emplace("path", visionrt::Utf8(utf8Path));
         inputs.emplace("color", visionrt::Utf8("bgr"));
 
         auto res = inst->execute(inputs);
         std::filesystem::remove(tempPath);
 
         REQUIRE(res.status.code == 0, "Image read execution must succeed");
+        const auto &paths = std::get<visionrt::StringArray>(res.outputs.at("paths"));
+        REQUIRE(paths.buffers()[0].values()[0].ends_with(utf8Path), "Image path must preserve Unicode UTF-8");
         const auto *batch = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
         REQUIRE(batch && batch->images().size() == 1, "Must read 1 image");
         REQUIRE(batch->images()[0].cols() == 24 && batch->images()[0].rows() == 24, "Image dims must match 24x24");

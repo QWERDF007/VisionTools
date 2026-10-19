@@ -1,4 +1,6 @@
 schema_version: 1
+category: 处理
+subcategory: 检测
 tool_id: visionrt.detection.filter
 display_name: 缺陷过滤
 version: 1.0.0

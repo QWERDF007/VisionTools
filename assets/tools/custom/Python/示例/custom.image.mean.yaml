@@ -1,4 +1,6 @@
 schema_version: 1
+category: Python
+subcategory: 示例
 tool_id: custom.image.mean
 display_name: 计算图像均值
 version: 1.0.0

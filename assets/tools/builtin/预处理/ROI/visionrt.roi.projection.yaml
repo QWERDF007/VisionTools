@@ -1,4 +1,6 @@
 schema_version: 1
+category: 预处理
+subcategory: ROI
 tool_id: visionrt.roi.projection
 display_name: 投影ROI
 version: 1.0.0
