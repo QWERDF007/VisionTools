@@ -1,12 +1,12 @@
 schema_version: 1
 category: 流程控制
-subcategory: 跨流程接收
-tool_id: visionrt.flow.receive.int64_ragged2
-display_name: 整数不规则二维数组接收
+subcategory: 跨流程
+tool_id: visionrt.flow.receive
+display_name: 跨流程接收
 version: 1.0.0
 kind: cpp_class
 entry:
-  registry_name: visionrt.flow.receive.int64_ragged2
+  registry_name: visionrt.flow.receive
 init_params:
 - id: source_flow_name
   name: 源流程名称
@@ -28,11 +28,11 @@ init_params:
 inputs: []
 outputs:
 - id: value
-  name: 接收数组
-  type: NumericArray
-  dtype: int64
-  rank: 2
-  layout: batch_ragged
+  name: 接收数据
+  type_from:
+    flow: source_flow_name
+    node: source_node_name
+    port: source_port_id
 - id: source_status_code
   name: 源状态码
   type: Int

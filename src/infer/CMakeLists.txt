@@ -23,6 +23,6 @@ target_link_libraries(visiontools_infer PRIVATE
 
 set_target_properties(visiontools_infer PROPERTIES
     PREFIX ""
-    OUTPUT_NAME visiontools_infer
+    OUTPUT_NAME vst_infer
     WINDOWS_EXPORT_ALL_SYMBOLS ON
 )

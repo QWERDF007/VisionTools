@@ -210,6 +210,17 @@ def validate_tool_declaration(doc: Dict[str, Any], file_path: Path, tools_dir: O
             port_c_idents.add(c_ident)
 
             p_type = p.get("type")
+            if "type_from" in p:
+                reference = p["type_from"]
+                parameters = {item["id"]: item for item in doc.get("init_params", [])}
+                if port_group != "outputs" or not isinstance(reference, dict) or set(reference) != {"flow", "node", "port"}:
+                    raise ContractValidationError(f"{prefix}type_from requires an output and flow/node/port parameters")
+                if any(key in p for key in ("type", "dtype", "rank", "layout", "display", "image_port")):
+                    raise ContractValidationError(f"{prefix}type_from cannot have a concrete type or display attributes")
+                if any(not isinstance(parameter, str) or parameters.get(parameter, {}).get("type") != "String"
+                       for parameter in reference.values()):
+                    raise ContractValidationError(f"{prefix}type_from must reference String initialization parameters")
+                continue
             if p_type not in VALID_TYPES:
                 raise ContractValidationError(f"{prefix}Port '{p_id}' has invalid type '{p_type}'")
 
@@ -296,6 +307,8 @@ def generate_port_constants_header(tools: List[Dict[str, Any]]) -> str:
 
     seen_safe_ids = set()
     for tool in sorted_tools:
+        if any("type_from" in port for port in tool.get("outputs", [])):
+            continue
         tool_id = tool["tool_id"]
         safe_id = to_cpp_identifier(tool_id)
         if safe_id in seen_safe_ids:
@@ -565,6 +578,8 @@ def build_module_index(tools: List[Dict[str, Any]], bindings_data: Optional[Dict
         tool_id = tool["tool_id"]
         registry_name = tool.get("entry", {}).get("registry_name")
         binding = host_bindings.get(tool_id)
+        if not binding and any("type_from" in port for port in tool.get("outputs", [])):
+            raise ContractValidationError(f"Source-derived output types require host_binding: {tool_id}")
         if binding:
             if not tool["kind"].startswith("cpp") or registry_name in by_registry:
                 raise ContractValidationError(f"Invalid host binding combination: {tool_id}")

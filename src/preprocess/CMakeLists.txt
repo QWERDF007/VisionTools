@@ -21,6 +21,6 @@ target_link_libraries(visiontools_preprocess PRIVATE
 
 set_target_properties(visiontools_preprocess PROPERTIES
     PREFIX ""
-    OUTPUT_NAME visiontools_preprocess
+    OUTPUT_NAME vst_image
     WINDOWS_EXPORT_ALL_SYMBOLS ON
 )

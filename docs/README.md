@@ -9,6 +9,8 @@
 - **工具声明目录 (SSOT)**: [../assets/tools/](../assets/tools/)
   - 内置算子：`assets/tools/builtin/`
   - Python 工具：`assets/tools/custom/`；必要非代码资源在对应声明的 resources 中显式列出。
+- **作者命名验收**: [test_distribution.py](../tests/test_distribution.py)；领域 DLL 实际输出名见[图像目标](../src/preprocess/CMakeLists.txt)与[推理目标](../src/infer/CMakeLists.txt)。
+- **单一跨流程接收声明**: [跨流程接收.yaml](../assets/tools/builtin/流程控制/跨流程接收.yaml)；类型引用的公共定义与校验见 SDK [Schema.h](../3rdparty/VisionRTSDK/include/visionrt/sdk/Schema.h)。
 - **模块绑定配置**: [../tools/module_bindings.yaml](../tools/module_bindings.yaml)
 - **运行依赖配置**: [../tools/dependencies.yaml](../tools/dependencies.yaml)
 - **代码生成与工厂接入**: [../tools/generate_tool_contracts.py](../tools/generate_tool_contracts.py)

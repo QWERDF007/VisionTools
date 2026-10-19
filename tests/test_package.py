@@ -75,7 +75,7 @@ class TestPackageTools(unittest.TestCase):
         self.document["entry"] = {"registry_name": "AdaptiveBinaryTool"}
         self.index["modules"] = {"visiontools_preprocess": {}}
         self.index["tools"]["custom.math"]["module"] = "visiontools_preprocess"
-        self.manifest["modules"] = {"visiontools_preprocess": {"source": str(ROOT / "build/src/preprocess/visiontools_preprocess.dll")}}
+        self.manifest["modules"] = {"visiontools_preprocess": {"source": str(ROOT / "build/src/preprocess/vst_image.dll")}}
         self.publish()
         self.assertEqual((self.output / self.declaration.parent.relative_to(self.project) / "bias.dat").read_text(), "42")
 

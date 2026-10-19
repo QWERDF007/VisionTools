@@ -16,6 +16,24 @@ import generate_tool_contracts
 
 
 class DistributionContract(unittest.TestCase):
+    def test_source_derived_output_requires_host_binding(self):
+        declaration = yaml.safe_load((ROOT / "assets/tools/builtin/流程控制/跨流程接收.yaml").read_text(encoding="utf-8"))
+        declaration["_source_path"] = "receive.yaml"
+        bindings = {"modules": {"test": {"tools": {declaration["entry"]["registry_name"]: {}}}}}
+        with self.assertRaisesRegex(generate_tool_contracts.ContractValidationError, "require host_binding"):
+            generate_tool_contracts.build_module_index([declaration], bindings)
+
+    def test_declarations_use_tool_names_and_one_receiver(self):
+        declarations = list((ROOT / "assets/tools").rglob("*.yaml"))
+        receivers = []
+        for path in declarations:
+            declaration = yaml.safe_load(path.read_text(encoding="utf-8"))
+            self.assertEqual(path.stem, declaration["display_name"])
+            if declaration["tool_id"].startswith("visionrt.flow.receive"):
+                receivers.append(declaration)
+        self.assertEqual([item["tool_id"] for item in receivers], ["visionrt.flow.receive"])
+        self.assertIn("type_from", receivers[0]["outputs"][0])
+
     def test_normal_generation_indexes_python_and_platform_declarations(self):
         validator = Path(os.environ.get("VISIONTOOLS_VALIDATOR", ROOT / "build/3rdparty/VisionRTSDK/visionrt_validate_tool.exe"))
         with tempfile.TemporaryDirectory() as temporary:
@@ -33,7 +51,7 @@ class DistributionContract(unittest.TestCase):
             index = yaml.safe_load((generated / "module_index.yaml").read_text(encoding="utf-8"))
             self.assertIn("custom.image.mean", index["tools"])
             self.assertNotIn("module", index["tools"]["custom.image.mean"])
-            self.assertEqual(index["tools"]["visionrt.flow.receive.int"]["host_binding"], "visionrt.receiver")
+            self.assertEqual(index["tools"]["visionrt.flow.receive"]["host_binding"], "visionrt.receiver")
             self.assertEqual(set(index["modules"]), {"visiontools_preprocess"})
 
     def test_python_package_uses_actual_manifest_without_backend_requirements(self):

@@ -114,7 +114,8 @@ inline std::set<std::string> loadExpectedToolsFromIndex(const std::filesystem::p
         const auto package = visionrt::readToolsPackage(packageDir);
         for (const auto &tool : package.tools)
         {
-            if (!tool.moduleLibrary.empty() && (moduleName.empty() || tool.moduleLibrary.stem() == moduleName))
+            const auto &entry = package.index.tools.at(tool.toolId);
+            if (!tool.moduleLibrary.empty() && (moduleName.empty() || entry.module == moduleName))
             {
                 registries.insert(tool.registryName);
             }

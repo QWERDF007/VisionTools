@@ -126,12 +126,10 @@ class TestToolContractGenerator(unittest.TestCase):
             "modules": {
                 "visiontools_preprocess": {
                     "variant": "cpu",
-                    "dll_name": "bin/visiontools_preprocess.dll",
                     "tools": {"tool.cpu": {"class": "CpuTool", "header": "CpuTool.h"}}
                 },
                 "visiontools_infer": {
                     "variant": "gpu",
-                    "dll_name": "bin/visiontools_infer.dll",
                     "tools": {"tool.gpu": {"class": "GpuTool", "header": "GpuTool.h"}}
                 }
             }
@@ -300,7 +298,6 @@ class TestToolContractGenerator(unittest.TestCase):
                 "modules:\n"
                 "  visiontools_preprocess:\n"
                 "    variant: 'cpu'\n"
-                "    dll_name: 'bin/visiontools_preprocess.dll'\n"
                 "    namespace: 'visiontools::preprocess'\n"
                 "    tools:\n"
                 "      'test.fixture.valid':\n"
