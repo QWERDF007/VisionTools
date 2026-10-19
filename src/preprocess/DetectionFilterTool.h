@@ -4,13 +4,14 @@
 
 namespace visiontools::preprocess {
 
-class DetectionFilterTool final : public visionrt::IToolInstance {
+class DetectionFilterTool final : public visionrt::IToolInstance
+{
 public:
-    explicit DetectionFilterTool(const visionrt::ToolServices& services);
+    explicit DetectionFilterTool(const visionrt::ToolServices &services);
     ~DetectionFilterTool() override = default;
 
-    visionrt::ToolStatus initialize(const visionrt::Values& parameters) override;
-    visionrt::ToolResult execute(const visionrt::Values& inputs) override;
+    visionrt::ToolStatus initialize(const visionrt::Values &parameters) override;
+    visionrt::ToolResult execute(const visionrt::Values &inputs) override;
     visionrt::ToolStatus release() override;
 
 private:

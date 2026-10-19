@@ -1,23 +1,28 @@
-#include <visionrt/sdk/Tool.h>
-#include <visionrt/sdk/Module.h>
 #include "src/infer/YoloModel.h"
 #include "src/infer/YoloPostprocess.h"
 
-#include <iostream>
+#include <visionrt/sdk/Module.h>
+#include <visionrt/sdk/Tool.h>
+
 #include <cassert>
 #include <cmath>
+#include <iostream>
 
-#define REQUIRE(cond, msg) \
-    do { \
-        if (!(cond)) { \
+#define REQUIRE(cond, msg)                                                                                      \
+    do                                                                                                          \
+    {                                                                                                           \
+        if (!(cond))                                                                                            \
+        {                                                                                                       \
             std::cerr << "Assertion failed: " << #cond << " (" << msg << ") at line " << __LINE__ << std::endl; \
-            std::exit(1); \
-        } \
-    } while(0)
+            std::exit(1);                                                                                       \
+        }                                                                                                       \
+    }                                                                                                           \
+    while (0)
 
 using namespace visionrt::infer;
 
-void testWhiteboxGeometryProbe() {
+void testWhiteboxGeometryProbe()
+{
     std::cout << "[TEST] Running testWhiteboxGeometryProbe..." << std::endl;
     GeometryProbe pixelProbe = probePreprocessing();
     std::cout << "  maximumPixelError: " << pixelProbe.maximumPixelError << std::endl;
@@ -27,11 +32,12 @@ void testWhiteboxGeometryProbe() {
     std::cout << "[PASS] testWhiteboxGeometryProbe passed." << std::endl;
 }
 
-void testWhiteboxLetterboxRoundtrip() {
+void testWhiteboxLetterboxRoundtrip()
+{
     std::cout << "[TEST] Running testWhiteboxLetterboxRoundtrip..." << std::endl;
     LetterboxGeometry g{1920, 1080, 640, 640, 640, 360, 0, 140, 1.0f / 3.0f};
-    Box netBox{0, 140, 640, 500};
-    Box src = toSource(netBox, g);
+    Box               netBox{0, 140, 640, 500};
+    Box               src = toSource(netBox, g);
     REQUIRE(std::abs(src.x1 - 0.0) < 1e-3, "src x1 match");
     REQUIRE(std::abs(src.y1 - 0.0) < 1e-3, "src y1 match");
     REQUIRE(std::abs(src.x2 - 1920.0) < 1e-3, "src x2 match");
@@ -39,10 +45,11 @@ void testWhiteboxLetterboxRoundtrip() {
     std::cout << "[PASS] testWhiteboxLetterboxRoundtrip passed." << std::endl;
 }
 
-void testWhiteboxYoloUninitializedErrorPath() {
+void testWhiteboxYoloUninitializedErrorPath()
+{
     std::cout << "[TEST] Running testWhiteboxYoloUninitializedErrorPath..." << std::endl;
     const visionrt::ToolServices services{visionrt::PathResolver(std::filesystem::current_path())};
-    YoloTool tool(services);
+    YoloTool                     tool(services);
 
     // 1. Verify tensorDescriptions interface on uninitialized tool
     auto desc = tool.tensorDescriptions();
@@ -51,7 +58,7 @@ void testWhiteboxYoloUninitializedErrorPath() {
 
     // 2. Verify executeWithTrace interface fails on uninitialized tool
     std::vector<ImageTrace> traces;
-    visionrt::Values inputs;
+    visionrt::Values        inputs;
     inputs.emplace("images", visionrt::ImageBatch{});
     inputs.emplace("conf_threshold", 0.25);
     inputs.emplace("nms_threshold", 0.45);
@@ -61,30 +68,39 @@ void testWhiteboxYoloUninitializedErrorPath() {
     std::cout << "[PASS] testWhiteboxYoloUninitializedErrorPath passed." << std::endl;
 }
 
-void testWhiteboxYoloInitializedTrace() {
+void testWhiteboxYoloInitializedTrace()
+{
     std::cout << "[TEST] Running testWhiteboxYoloInitializedTrace..." << std::endl;
-    const char* engineEnv = std::getenv("VISIONTOOLS_TEST_YOLO_ENGINE");
-    const char* wtsEnv = std::getenv("VISIONTOOLS_TEST_YOLO_WTS");
+    const char *engineEnv = std::getenv("VISIONTOOLS_TEST_YOLO_ENGINE");
+    const char *wtsEnv    = std::getenv("VISIONTOOLS_TEST_YOLO_WTS");
 
-    if (!engineEnv && !wtsEnv) {
-        std::cout << "  [SKIP] No external YOLO engine or weights specified (set VISIONTOOLS_TEST_YOLO_ENGINE/WTS); skipping initialized model trace (exit 77)." << std::endl;
+    if (!engineEnv && !wtsEnv)
+    {
+        std::cout << "  [SKIP] No external YOLO engine or weights specified (set VISIONTOOLS_TEST_YOLO_ENGINE/WTS); "
+                     "skipping initialized model trace (exit 77)."
+                  << std::endl;
         std::exit(77);
     }
 
     const visionrt::ToolServices services{visionrt::PathResolver(std::filesystem::current_path())};
-    YoloTool tool(services);
+    YoloTool                     tool(services);
 
     visionrt::Values initParams;
     initParams.emplace("model_name", visionrt::Utf8("yolov8n"));
-    if (engineEnv) {
-        if (!std::filesystem::exists(engineEnv)) {
+    if (engineEnv)
+    {
+        if (!std::filesystem::exists(engineEnv))
+        {
             std::cerr << "  [ERROR] Specified VISIONTOOLS_TEST_YOLO_ENGINE does not exist: " << engineEnv << std::endl;
             std::exit(1);
         }
         initParams.emplace("load_mode", visionrt::Utf8("engine"));
         initParams.emplace("model_path", visionrt::Utf8(engineEnv));
-    } else if (wtsEnv) {
-        if (!std::filesystem::exists(wtsEnv)) {
+    }
+    else if (wtsEnv)
+    {
+        if (!std::filesystem::exists(wtsEnv))
+        {
             std::cerr << "  [ERROR] Specified VISIONTOOLS_TEST_YOLO_WTS does not exist: " << wtsEnv << std::endl;
             std::exit(1);
         }
@@ -105,13 +121,13 @@ void testWhiteboxYoloInitializedTrace() {
     REQUIRE(!desc.empty(), "Initialized model must provide tensor descriptions");
 
     // Execute with trace on non-empty synthetic image
-    cv::Mat testMat(640, 640, CV_8UC3, cv::Scalar(128, 128, 128));
+    cv::Mat                           testMat(640, 640, CV_8UC3, cv::Scalar(128, 128, 128));
     std::vector<visionrt::OwnedImage> imgs;
     imgs.push_back(visionrt::OwnedImage::copyOf(testMat));
     visionrt::ImageBatch batch(std::move(imgs));
 
     std::vector<ImageTrace> traces;
-    visionrt::Values inputs;
+    visionrt::Values        inputs;
     inputs.emplace("images", batch);
     inputs.emplace("conf_threshold", 0.25);
     inputs.emplace("nms_threshold", 0.45);
@@ -120,20 +136,25 @@ void testWhiteboxYoloInitializedTrace() {
     auto res = tool.executeWithTrace(inputs, traces);
     REQUIRE(res.status.code == 0, "Initialized executeWithTrace must succeed");
     REQUIRE(traces.size() == 1, "Must produce one trace per input image");
-    REQUIRE(traces[0].geometry.inputWidth == 640 && traces[0].geometry.inputHeight == 640, "Trace geometry network dims match");
+    REQUIRE(traces[0].geometry.inputWidth == 640 && traces[0].geometry.inputHeight == 640,
+            "Trace geometry network dims match");
     std::cout << "[PASS] testWhiteboxYoloInitializedTrace passed." << std::endl;
 }
 
-int main() {
+int main()
+{
     std::cout << "[TEST] Running test_infer_whitebox_trace (isolated whitebox test)..." << std::endl;
-    try {
+    try
+    {
         testWhiteboxGeometryProbe();
         testWhiteboxLetterboxRoundtrip();
         testWhiteboxYoloUninitializedErrorPath();
         testWhiteboxYoloInitializedTrace();
         std::cout << "[ALL TESTS PASSED] test_infer_whitebox_trace passed successfully." << std::endl;
         return 0;
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception &e)
+    {
         std::cerr << "[ERROR] Whitebox trace test failed: " << e.what() << std::endl;
         return 1;
     }

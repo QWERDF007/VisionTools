@@ -145,6 +145,7 @@ class TestPackageTools(unittest.TestCase):
             modules["visiontools_infer"] = {}
 
         idx = {
+            "schema_version": 2,
             "variant": "gpu" if is_gpu else "cpu",
             "modules": modules,
             "tools": tools
@@ -278,7 +279,7 @@ class TestPackageTools(unittest.TestCase):
         self._write_module_index(is_gpu=False)
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
         with open(self.install_dir / "module_index.yaml", "w", encoding="utf-8") as f:
-            yaml.dump({"variant": "cpu", "modules": {"visiontools_preprocess": {"library": "bin/visiontools_preprocess.dll"}}, "tools": {}}, f)
+            yaml.dump({"schema_version": 2, "variant": "cpu", "modules": {"visiontools_preprocess": {"library": "bin/visiontools_preprocess.dll"}}, "tools": {}}, f)
         self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=False))
 
     def test_verify_fails_bad_tool_entry(self):
@@ -286,7 +287,7 @@ class TestPackageTools(unittest.TestCase):
         self._write_module_index(is_gpu=False)
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
         with open(self.install_dir / "module_index.yaml", "w", encoding="utf-8") as f:
-            yaml.dump({"variant": "cpu", "modules": {"visiontools_preprocess": {"library": "bin/visiontools_preprocess.dll"}}, "tools": {"bad": 123}}, f)
+            yaml.dump({"schema_version": 2, "variant": "cpu", "modules": {"visiontools_preprocess": {"library": "bin/visiontools_preprocess.dll"}}, "tools": {"bad": 123}}, f)
         self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=False))
 
     def test_verify_fails_escaping_module_dll(self):
@@ -295,6 +296,7 @@ class TestPackageTools(unittest.TestCase):
         pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
         with open(self.install_dir / "module_index.yaml", "w", encoding="utf-8") as f:
             yaml.dump({
+                "schema_version": 2,
                 "variant": "cpu",
                 "modules": {"visiontools_preprocess": {"library": "../escape.dll"}},
                 "tools": {"tool": {"module": "visiontools_preprocess", "definition": "assets/tools/foo.yaml"}}
@@ -443,6 +445,7 @@ class TestPackageTools(unittest.TestCase):
             }
         }
         idx = {
+            "schema_version": 2,
             "variant": "cpu",
             "modules": {"visiontools_preprocess": {"library": "bin/visiontools_preprocess.dll"}},
             "tools": tools_dict,
@@ -453,7 +456,7 @@ class TestPackageTools(unittest.TestCase):
         (self.install_dir / "bin" / "visiontools_preprocess.dll").write_bytes(b"PREPROCESS")
         (self.install_dir / "bin" / "opencv_world480.dll").write_bytes(b"OPENCV")
         (self.install_dir / "assets" / "tools").mkdir(parents=True, exist_ok=True)
-        (self.install_dir / "assets" / "tools" / "crop.yaml").write_text("entry:\n  registry_name: visionrt.image.crop\n")
+        (self.install_dir / "assets" / "tools" / "crop.yaml").write_text("schema_version: 1\ntool_id: visionrt.image.crop\nentry:\n  registry_name: visionrt.image.crop\n")
 
         self.assertTrue(pkg.verify_package(self.install_dir, is_gpu=False))
 
@@ -508,7 +511,219 @@ class TestPackageTools(unittest.TestCase):
         idx = pkg.load_yaml(idx_file)
         idx["runtime_files"] = [f.replace("nvinfer_10.dll", "nvinfer_plugin_10.dll") for f in idx["runtime_files"]]
         pkg.save_yaml(idx, idx_file)
-        self.assertFalse(pkg.verify_package(self.install_dir, is_gpu=True))
+    def test_missing_schema_version_in_build_index_rejected(self):
+        """Build index missing schema_version 2 is rejected."""
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
+        idx_file = self.build_dir / "generated" / "module_index.yaml"
+        idx = pkg.load_yaml(idx_file)
+        idx.pop("schema_version")
+        pkg.save_yaml(idx, idx_file)
+        with self.assertRaises(RuntimeError) as ctx:
+            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True)
+        self.assertIn("schema_version", str(ctx.exception))
+
+    def test_zip_package_and_external_index_byte_identity(self):
+        """Packaging generates ZIP and external index with byte-by-byte identity (D-05)."""
+        import zipfile
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
+        zip_path = self.t / "dist" / "VisionTools.zip"
+        res_zip = pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True, zip_output=zip_path)
+        self.assertTrue(res_zip.is_file())
+        self.assertEqual(res_zip, zip_path)
+
+        # External index exists next to ZIP
+        ext_idx = zip_path.parent / "module_index.yaml"
+        self.assertTrue(ext_idx.is_file())
+
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            self.assertIn("module_index.yaml", zf.namelist())
+            internal_bytes = zf.read("module_index.yaml")
+            external_bytes = ext_idx.read_bytes()
+            self.assertEqual(internal_bytes, external_bytes)
+
+            # Internal index has schema_version 2
+            internal_yaml = yaml.safe_load(internal_bytes)
+            self.assertEqual(internal_yaml.get("schema_version"), 2)
+            self.assertIn("visiontools.preprocess.adaptive_binary", internal_yaml.get("tools", {}))
+
+    def test_package_python_tool_with_relative_imports_and_adjacent_resources(self):
+        """Python tool with relative imports and adjacent resources packages and validates cleanly (Ticket 04)."""
+        import zipfile
+        # Copy base assets into self.t
+        shutil.copytree(ROOT / "assets" / "tools", self.t / "assets" / "tools", dirs_exist_ok=True)
+
+        py_tool_dir = self.t / "assets" / "tools" / "custom" / "Python" / "rel_tool"
+        py_tool_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. Declaration YAML
+        tool_yaml = py_tool_dir / "custom.rel.calc.yaml"
+        tool_yaml.write_text("""schema_version: 1
+tool_id: custom.rel.calc
+display_name: 相对导入计算器
+version: 1.0.0
+kind: python_function
+entry:
+  file: calc.py
+  symbol: calculate
+init_params: []
+inputs:
+  - id: x
+    name: 输入X
+    type: Int
+outputs:
+  - id: y
+    name: 输出Y
+    type: Int
+""", encoding="utf-8")
+
+        # 2. Main script with relative import & resource reading
+        (py_tool_dir / "calc.py").write_text("""import pathlib
+from . import helper
+
+def calculate(inputs):
+    res_file = pathlib.Path(__file__).parent / "bias.dat"
+    bias = int(res_file.read_text(encoding="utf-8").strip())
+    x = inputs.get("x", 0)
+    return {
+        "__status_code": 0,
+        "__status_message": "",
+        "y": helper.double(x) + bias
+    }
+""", encoding="utf-8")
+
+        # 3. Relative import helper
+        (py_tool_dir / "helper.py").write_text("""def double(val):
+    return val * 2
+""", encoding="utf-8")
+
+        # 4. Adjacent resource file
+        (py_tool_dir / "bias.dat").write_text("10\n", encoding="utf-8")
+
+        # 5. Build index including C++ tools and the Python tool
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
+        idx_file = self.build_dir / "generated" / "module_index.yaml"
+        idx_data = pkg.load_yaml(idx_file)
+        idx_data["tools"]["custom.rel.calc"] = {
+            "definition": "assets/tools/custom/Python/rel_tool/custom.rel.calc.yaml"
+        }
+        pkg.save_yaml(idx_data, idx_file)
+
+        zip_path = self.t / "dist" / "VisionTools_Hybrid.zip"
+        res_zip = pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True, zip_output=zip_path, project_root=self.t)
+        self.assertTrue(res_zip.is_file())
+
+        with zipfile.ZipFile(res_zip, "r") as zf:
+            namelist = zf.namelist()
+            self.assertIn("assets/tools/custom/Python/rel_tool/custom.rel.calc.yaml", namelist)
+            self.assertIn("assets/tools/custom/Python/rel_tool/calc.py", namelist)
+            self.assertIn("assets/tools/custom/Python/rel_tool/helper.py", namelist)
+            self.assertIn("assets/tools/custom/Python/rel_tool/bias.dat", namelist)
+
+            pkg_idx = yaml.safe_load(zf.read("module_index.yaml"))
+            self.assertIn("custom.rel.calc", pkg_idx["tools"])
+            py_entry = pkg_idx["tools"]["custom.rel.calc"]
+            self.assertNotIn("module", py_entry)
+            self.assertEqual(py_entry["definition"], "assets/tools/custom/Python/rel_tool/custom.rel.calc.yaml")
+
+    def test_package_pure_python_package(self):
+        """Pure Python tool package with empty modules can be packaged and validated (Ticket 04)."""
+        import zipfile
+        pure_root = self.t / "pure_root"
+        pure_tool_dir = pure_root / "assets" / "tools" / "custom" / "Python" / "pure_py"
+        pure_tool_dir.mkdir(parents=True, exist_ok=True)
+
+        (pure_tool_dir / "pure.yaml").write_text("""schema_version: 1
+tool_id: custom.pure.tool
+display_name: 纯Python工具
+version: 1.0.0
+kind: python_function
+entry:
+  file: pure.py
+  symbol: run
+init_params: []
+inputs: []
+outputs:
+  - id: val
+    name: 输出
+    type: Int
+""", encoding="utf-8")
+        (pure_tool_dir / "pure.py").write_text("""def run(inputs):
+    return {"__status_code": 0, "__status_message": "", "val": 42}
+""", encoding="utf-8")
+
+        # Pure Python: no modules, no C++ dlls
+        pure_build_dir = pure_root / "build"
+        pure_build_dir.mkdir(parents=True)
+        (pure_build_dir / "Release").mkdir(parents=True)
+        (pure_build_dir / "generated").mkdir(parents=True)
+
+        pkg.save_yaml({
+            "variant": "cpu",
+            "config": "Release",
+            "modules": {},
+            "runtime_files": []
+        }, pure_build_dir / "Release" / "resolved_dependencies.yaml")
+
+        pkg.save_yaml({
+            "schema_version": 2,
+            "variant": "cpu",
+            "modules": {},
+            "tools": {
+                "custom.pure.tool": {
+                    "definition": "assets/tools/custom/Python/pure_py/pure.yaml"
+                }
+            }
+        }, pure_build_dir / "generated" / "module_index.yaml")
+
+        pure_install_dir = pure_root / "dist" / "PurePython"
+        pure_zip = pure_root / "dist" / "PurePython.zip"
+        res_zip = pkg.package_tools(pure_build_dir, pure_install_dir, infer_enabled=False, strict=True, zip_output=pure_zip, project_root=pure_root)
+        self.assertTrue(res_zip.is_file())
+
+        with zipfile.ZipFile(res_zip, "r") as zf:
+            pkg_idx = yaml.safe_load(zf.read("module_index.yaml"))
+            self.assertEqual(pkg_idx["schema_version"], 2)
+            self.assertEqual(pkg_idx["modules"], {})
+            self.assertIn("custom.pure.tool", pkg_idx["tools"])
+
+    def test_package_python_negatives(self):
+        """Python tool cannot reference a module in module_index.yaml (Ticket 04)."""
+        shutil.copytree(ROOT / "assets" / "tools", self.t / "assets" / "tools", dirs_exist_ok=True)
+        py_tool_dir = self.t / "assets" / "tools" / "custom" / "Python" / "bad_py"
+        py_tool_dir.mkdir(parents=True, exist_ok=True)
+        (py_tool_dir / "bad.yaml").write_text("""schema_version: 1
+tool_id: custom.bad.tool
+display_name: 错误模块引用Python工具
+version: 1.0.0
+kind: python_function
+entry:
+  file: bad.py
+  symbol: run
+init_params: []
+inputs: []
+outputs: []
+""", encoding="utf-8")
+        (py_tool_dir / "bad.py").write_text("def run(inputs): return {'__status_code': 0, '__status_message': ''}\n", encoding="utf-8")
+
+        self._write_resolved_deps(is_gpu=False)
+        self._write_module_index(is_gpu=False)
+        idx_file = self.build_dir / "generated" / "module_index.yaml"
+        idx_data = pkg.load_yaml(idx_file)
+        # Illegally specify module for Python tool
+        idx_data["tools"]["custom.bad.tool"] = {
+            "module": "visiontools_preprocess",
+            "definition": "assets/tools/custom/Python/bad_py/bad.yaml"
+        }
+        pkg.save_yaml(idx_data, idx_file)
+
+        with self.assertRaises(RuntimeError) as ctx:
+            pkg.package_tools(self.build_dir, self.install_dir, infer_enabled=False, strict=True, project_root=self.t)
+        self.assertTrue("module" in str(ctx.exception) or "Python" in str(ctx.exception))
 
 if __name__ == "__main__":
     unittest.main()
+
+

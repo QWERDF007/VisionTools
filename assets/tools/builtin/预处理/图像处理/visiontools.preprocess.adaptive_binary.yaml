@@ -4,7 +4,7 @@ display_name: 自适应二值化
 version: 1.0.0
 kind: cpp_function
 entry:
-  registry_name: visiontools.preprocess.adaptive_binary
+  registry_name: AdaptiveBinaryTool
 init_params: []
 inputs:
   - id: images

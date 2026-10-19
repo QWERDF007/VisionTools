@@ -2,6 +2,6 @@
 	path = 3rdparty/yaml-cpp
 	url = https://github.com/jbeder/yaml-cpp.git
 	branch = master
-[submodule "3rdparty/VisionRTToolSDK"]
-	path = 3rdparty/VisionRTToolSDK
+[submodule "3rdparty/VisionRTSDK"]
+	path = 3rdparty/VisionRTSDK
 	url = https://github.com/QWERDF007/VisionRTSDK.git

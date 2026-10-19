@@ -1,11 +1,13 @@
 #include "YoloModel.h"
+
 #include "InferProtocol.h"
 #include "PortConstants.h"
 
-#include <inferrt/model/ModelFactory.hpp>
 #include <inferrt/model/Buffers.hpp>
+#include <inferrt/model/ModelFactory.hpp>
 #include <inferrt/model/Utils.hpp>
 #include <opencv2/imgproc.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -16,140 +18,200 @@
 namespace visionrt::infer {
 namespace {
 namespace yolo_ports = visiontools::ports::visionrt_dl_yolo;
-constexpr std::array strides{8, 16, 32};
-constexpr std::array<const char*, 3> outputNames{"output0", "output1", "output2"};
-template<class T> T parameter(const Values& values, const char* name, T fallback) {
+constexpr std::array                  strides{8, 16, 32};
+constexpr std::array<const char *, 3> outputNames{"output0", "output1", "output2"};
+
+template<class T>
+T parameter(const Values &values, const char *name, T fallback)
+{
     const auto found = values.find(name);
-    if (found == values.end()) return fallback;
-    if (const auto* value = std::get_if<T>(&found->second)) return *value;
+    if (found == values.end())
+        return fallback;
+    if (const auto *value = std::get_if<T>(&found->second))
+        return *value;
     throw ContractError(std::string(name) + ": missing or incorrect value type");
 }
-int integer(const Values& values, const char* name, int fallback, int minimum) {
+
+int integer(const Values &values, const char *name, int fallback, int minimum)
+{
     const auto value = parameter<std::int64_t>(values, name, fallback);
     if (value < minimum || value > std::numeric_limits<int>::max())
         throw ContractError(std::string(name) + ": value outside supported integer range");
     return static_cast<int>(value);
 }
-std::string text(const Values& values, const char* name, const char* fallback = "") {
+
+std::string text(const Values &values, const char *name, const char *fallback = "")
+{
     return parameter<Utf8>(values, name, Utf8(fallback)).str();
 }
-std::string utf8Path(const std::filesystem::path& path) {
+
+std::string utf8Path(const std::filesystem::path &path)
+{
     const auto value = path.u8string();
-    return {reinterpret_cast<const char*>(value.data()), value.size()};
+    return {reinterpret_cast<const char *>(value.data()), value.size()};
 }
-irt::PreprocessSpec preprocessingSpec(int width, int height) {
+
+irt::PreprocessSpec preprocessingSpec(int width, int height)
+{
     irt::PreprocessSpec spec;
-    spec.input_width = width;
-    spec.input_height = height;
+    spec.input_width    = width;
+    spec.input_height   = height;
     spec.input_channels = spec.source_channels = 3;
-    spec.src_color = irt::ColorFormat::BGR;
-    spec.dst_color = irt::ColorFormat::RGB;
-    spec.padding_mode = irt::PaddingMode::Letterbox;
-    spec.pad_value = 114.0F;
-    spec.mean = {0.0F, 0.0F, 0.0F};
-    spec.stddev = {1.0F, 1.0F, 1.0F};
-    spec.scale = 1.0F / 255.0F;
+    spec.src_color                             = irt::ColorFormat::BGR;
+    spec.dst_color                             = irt::ColorFormat::RGB;
+    spec.padding_mode                          = irt::PaddingMode::Letterbox;
+    spec.pad_value                             = 114.0F;
+    spec.mean                                  = {0.0F, 0.0F, 0.0F};
+    spec.stddev                                = {1.0F, 1.0F, 1.0F};
+    spec.scale                                 = 1.0F / 255.0F;
     return spec;
 }
-void cudaCheck(cudaError_t code, const char* operation) {
-    if (code != cudaSuccess) throw std::runtime_error(std::string(operation) + ": " + cudaGetErrorString(code));
+
+void cudaCheck(cudaError_t code, const char *operation)
+{
+    if (code != cudaSuccess)
+        throw std::runtime_error(std::string(operation) + ": " + cudaGetErrorString(code));
 }
-void verifyTensor(const irt::TensorInfo& tensor, const char* name, const irt::Shape& shape,
-                  irt::TensorIOMode mode) {
-    if (tensor.name != name || tensor.mode != mode || tensor.desc.data_type != irt::TensorDataType::F32 ||
-        tensor.desc.layout != irt::TensorLayout::Opaque || tensor.desc.shape != shape)
-        throw ContractError(std::string("InferRT native yolov8n tensor mismatch: ") + name +
-            "; expected float32/Opaque " + irt::model::dimsToString(shape) + ", got " +
-            tensor.name + " " + irt::model::dataTypeToString(tensor.desc.data_type) + " " +
-            irt::model::dimsToString(tensor.desc.shape));
+
+void verifyTensor(const irt::TensorInfo &tensor, const char *name, const irt::Shape &shape, irt::TensorIOMode mode)
+{
+    if (tensor.name != name || tensor.mode != mode || tensor.desc.data_type != irt::TensorDataType::F32
+        || tensor.desc.layout != irt::TensorLayout::Opaque || tensor.desc.shape != shape)
+        throw ContractError(std::string("InferRT native yolov8n tensor mismatch: ") + name
+                            + "; expected float32/Opaque " + irt::model::dimsToString(shape) + ", got " + tensor.name
+                            + " " + irt::model::dataTypeToString(tensor.desc.data_type) + " "
+                            + irt::model::dimsToString(tensor.desc.shape));
 }
-std::vector<std::string> labels(const Values& values, const PathResolver& paths, int count) {
+
+std::vector<std::string> labels(const Values &values, const PathResolver &paths, int count)
+{
     std::vector<std::string> result;
-    const auto path = text(values, yolo_ports::init::LABELS_PATH);
-    if (!path.empty()) {
+    const auto               path = text(values, yolo_ports::init::LABELS_PATH);
+    if (!path.empty())
+    {
         std::ifstream file(paths.resolve(path), std::ios::binary);
-        if (!file) throw ContractError("Cannot open labels_path: " + path);
+        if (!file)
+            throw ContractError("Cannot open labels_path: " + path);
         std::string line;
-        while (std::getline(file, line)) {
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            if (result.empty() && line.starts_with("\xEF\xBB\xBF")) line.erase(0, 3);
+        while (std::getline(file, line))
+        {
+            if (!line.empty() && line.back() == '\r')
+                line.pop_back();
+            if (result.empty() && line.starts_with("\xEF\xBB\xBF"))
+                line.erase(0, 3);
             validateUtf8(line);
             result.push_back(std::move(line));
         }
         if (file.bad() || result.size() != static_cast<std::size_t>(count))
             throw ContractError("labels_path must contain exactly num_classes UTF-8 lines");
-    } else {
+    }
+    else
+    {
         result.reserve(count);
         for (int i = 0; i < count; ++i) result.push_back(std::to_string(i));
     }
     return result;
 }
-}
+} // namespace
 
-struct YoloTool::State {
-    int device = 0, width = 640, height = 640, classes = 80;
-    std::vector<std::string> names;
-    std::unique_ptr<irt::model::IModel> model;
+struct YoloTool::State
+{
+    int                                         device = 0, width = 640, height = 640, classes = 80;
+    std::vector<std::string>                    names;
+    std::unique_ptr<irt::model::IModel>         model;
     std::unique_ptr<irt::ITensorRuntimeSession> session;
-    cudaStream_t stream = nullptr;
-    irt::model::DeviceBuffer deviceInput;
-    irt::model::PinnedHostBuffer hostInput;
-    std::array<irt::model::DeviceBuffer, 3> deviceOutputs;
+    cudaStream_t                                stream = nullptr;
+    irt::model::DeviceBuffer                    deviceInput;
+    irt::model::PinnedHostBuffer                hostInput;
+    std::array<irt::model::DeviceBuffer, 3>     deviceOutputs;
     std::array<irt::model::PinnedHostBuffer, 3> hostOutputs;
-    std::array<cv::Mat, 3> planes;
-    std::vector<irt::BufferView> views;
-    std::vector<irt::TensorInfo> descriptors;
-    irt::PreprocessSpec preprocessing;
+    std::array<cv::Mat, 3>                      planes;
+    std::vector<irt::BufferView>                views;
+    std::vector<irt::TensorInfo>                descriptors;
+    irt::PreprocessSpec                         preprocessing;
 
-    ToolStatus close() noexcept {
-        cudaError_t first = cudaSuccess;
-        const auto remember = [&first](cudaError_t code) { if (first == cudaSuccess) first = code; };
-        if (model || stream) remember(cudaSetDevice(device));
-        if (stream) remember(cudaStreamSynchronize(stream));
+    ToolStatus close() noexcept
+    {
+        cudaError_t first    = cudaSuccess;
+        const auto  remember = [&first](cudaError_t code)
+        {
+            if (first == cudaSuccess)
+                first = code;
+        };
+        if (model || stream)
+            remember(cudaSetDevice(device));
+        if (stream)
+            remember(cudaStreamSynchronize(stream));
         // CUDA work has finished before session/buffer/model destruction.
         session.reset();
         views.clear();
-        for (auto& plane : planes) plane.release();
-        for (auto& buffer : deviceOutputs) buffer.reset();
-        for (auto& buffer : hostOutputs) buffer.reset();
+        for (auto &plane : planes) plane.release();
+        for (auto &buffer : deviceOutputs) buffer.reset();
+        for (auto &buffer : hostOutputs) buffer.reset();
         deviceInput.reset();
         hostInput.reset();
         model.reset();
-        if (stream) { remember(cudaStreamDestroy(stream)); stream = nullptr; }
-        if (first != cudaSuccess) {
-            try { return {-4, std::string("YOLO release: ") + cudaGetErrorString(first)}; }
-            catch (...) { return {-4, {}}; }
+        if (stream)
+        {
+            remember(cudaStreamDestroy(stream));
+            stream = nullptr;
+        }
+        if (first != cudaSuccess)
+        {
+            try
+            {
+                return {-4, std::string("YOLO release: ") + cudaGetErrorString(first)};
+            }
+            catch (...)
+            {
+                return {-4, {}};
+            }
         }
         return {};
     }
-    ~State() { close(); }
+
+    ~State()
+    {
+        close();
+    }
 };
 
-YoloTool::YoloTool(const ToolServices& services) : paths_(services.paths) {}
+YoloTool::YoloTool(const ToolServices &services)
+    : paths_(services.paths)
+{
+}
+
 YoloTool::~YoloTool() = default;
 
-ToolStatus YoloTool::initialize(const Values& parameters) {
+ToolStatus YoloTool::initialize(const Values &parameters)
+{
     const auto cleanup = release();
-    if (!cleanup) return cleanup;
-    try {
-        auto state = std::make_unique<State>();
-        const auto modelName = text(parameters, yolo_ports::init::MODEL_NAME, "yolov8n");
-        const auto mode = text(parameters, yolo_ports::init::LOAD_MODE, "engine");
-        const auto precision = text(parameters, yolo_ports::init::PRECISION, "fp32");
-        const auto modelPath = text(parameters, yolo_ports::init::MODEL_PATH);
+    if (!cleanup)
+        return cleanup;
+    try
+    {
+        auto       state      = std::make_unique<State>();
+        const auto modelName  = text(parameters, yolo_ports::init::MODEL_NAME, "yolov8n");
+        const auto mode       = text(parameters, yolo_ports::init::LOAD_MODE, "engine");
+        const auto precision  = text(parameters, yolo_ports::init::PRECISION, "fp32");
+        const auto modelPath  = text(parameters, yolo_ports::init::MODEL_PATH);
         const auto outputPath = text(parameters, yolo_ports::init::ENGINE_OUTPUT_PATH);
-        if (modelName != "yolov8n") throw ContractError("Only native yolov8n is supported by this tool");
-        if (mode != "engine" && mode != "build_wts") throw ContractError("load_mode must be engine or build_wts");
-        if (precision != "fp32" && precision != "fp16") throw ContractError("precision must be fp32 or fp16");
-        if (modelPath.empty()) throw ContractError("model_path is empty");
-        state->device = integer(parameters, yolo_ports::init::GPU_INDEX, 0, 0);
-        state->width = integer(parameters, yolo_ports::init::INPUT_WIDTH, 640, 32);
-        state->height = integer(parameters, yolo_ports::init::INPUT_HEIGHT, 640, 32);
+        if (modelName != "yolov8n")
+            throw ContractError("Only native yolov8n is supported by this tool");
+        if (mode != "engine" && mode != "build_wts")
+            throw ContractError("load_mode must be engine or build_wts");
+        if (precision != "fp32" && precision != "fp16")
+            throw ContractError("precision must be fp32 or fp16");
+        if (modelPath.empty())
+            throw ContractError("model_path is empty");
+        state->device  = integer(parameters, yolo_ports::init::GPU_INDEX, 0, 0);
+        state->width   = integer(parameters, yolo_ports::init::INPUT_WIDTH, 640, 32);
+        state->height  = integer(parameters, yolo_ports::init::INPUT_HEIGHT, 640, 32);
         state->classes = integer(parameters, yolo_ports::init::NUM_CLASSES, 80, 1);
         if (state->width % 32 || state->height % 32 || state->classes > std::numeric_limits<int>::max() - 4)
             throw ContractError("Native yolov8n input dimensions must be multiples of 32; num_classes must fit 4+C");
-        state->names = labels(parameters, paths_, state->classes);
-        int deviceCount = 0;
+        state->names      = labels(parameters, paths_, state->classes);
+        int  deviceCount  = 0;
         auto deviceStatus = cudaGetDeviceCount(&deviceCount);
         if (deviceStatus != cudaSuccess)
             return {-3, std::string("YOLO CUDA unavailable: ") + cudaGetErrorString(deviceStatus)};
@@ -158,10 +220,11 @@ ToolStatus YoloTool::initialize(const Values& parameters) {
         deviceStatus = cudaSetDevice(state->device);
         if (deviceStatus != cudaSuccess)
             return {-3, std::string("YOLO CUDA device unavailable: ") + cudaGetErrorString(deviceStatus)};
-        if (!irt::model::isSupportedModel(modelName)) return {-3, "InferRT registry does not contain yolov8n"};
+        if (!irt::model::isSupportedModel(modelName))
+            return {-3, "InferRT registry does not contain yolov8n"};
         auto config = std::make_unique<irt::model::IModelConfig>();
         config->setRuntime(irt::model::ModelRuntime(irt::model::ModelRuntime::Backend::TensorRT,
-                                                  irt::model::ModelRuntime::Device::GPU, state->device));
+                                                    irt::model::ModelRuntime::Device::GPU, state->device));
         config->setInputShape({1, 3, state->height, state->width});
         config->setNumClasses(state->classes);
         config->setDynamicBatch(false);
@@ -169,133 +232,178 @@ ToolStatus YoloTool::initialize(const Values& parameters) {
         config->setOutputTensorNames({"output0", "output1", "output2"});
         config->setPrecision(precision == "fp16" ? irt::model::ModelPrecision::FP16 : irt::model::ModelPrecision::FP32);
         state->model = irt::model::CreateModel(modelName, std::move(config));
-        if (!state->model) return {-3, "InferRT CreateModel(yolov8n) returned null"};
+        if (!state->model)
+            return {-3, "InferRT CreateModel(yolov8n) returned null"};
         const auto resolved = utf8Path(paths_.resolve(modelPath));
-        if (mode == "engine") state->model->load(resolved);
-        else {
+        if (mode == "engine")
+            state->model->load(resolved);
+        else
+        {
             state->model->build(resolved);
-            if (!outputPath.empty()) state->model->save(utf8Path(paths_.resolve(outputPath)));
+            if (!outputPath.empty())
+                state->model->save(utf8Path(paths_.resolve(outputPath)));
         }
-        auto inputs = state->model->inputs();
+        auto inputs  = state->model->inputs();
         auto outputs = state->model->outputs();
         if (inputs.size() != 1 || outputs.size() != 3)
             throw ContractError("Native yolov8n requires one input and three stride outputs");
         verifyTensor(inputs[0], "input", {1, 3, state->height, state->width}, irt::TensorIOMode::Input);
         state->descriptors.push_back(inputs[0]);
-        for (std::size_t branch = 0; branch < strides.size(); ++branch) {
-            const auto found = std::find_if(outputs.begin(), outputs.end(), [branch](const auto& value) {
-                return value.name == outputNames[branch];
-            });
-            if (found == outputs.end()) throw ContractError(std::string("Missing native output: ") + outputNames[branch]);
-            const auto grid = static_cast<std::int64_t>(state->width / strides[branch]) * (state->height / strides[branch]);
+        for (std::size_t branch = 0; branch < strides.size(); ++branch)
+        {
+            const auto found = std::find_if(outputs.begin(), outputs.end(),
+                                            [branch](const auto &value) { return value.name == outputNames[branch]; });
+            if (found == outputs.end())
+                throw ContractError(std::string("Missing native output: ") + outputNames[branch]);
+            const auto grid
+                = static_cast<std::int64_t>(state->width / strides[branch]) * (state->height / strides[branch]);
             verifyTensor(*found, outputNames[branch], {1, 4 + state->classes, grid}, irt::TensorIOMode::Output);
             state->descriptors.push_back(*found);
         }
         state->session = state->model->createSession();
-        if (!state->session) throw std::runtime_error("InferRT returned null execution session");
+        if (!state->session)
+            throw std::runtime_error("InferRT returned null execution session");
         cudaCheck(cudaStreamCreateWithFlags(&state->stream, cudaStreamNonBlocking), "cudaStreamCreateWithFlags");
         const auto inputElements = inputs[0].desc.shape.elementCount();
         state->deviceInput.resize(inputElements);
         state->hostInput.resize(inputElements);
-        const auto pixels = static_cast<std::size_t>(state->width) * state->height;
-        auto* inputData = static_cast<float*>(state->hostInput.data());
+        const auto pixels    = static_cast<std::size_t>(state->width) * state->height;
+        auto      *inputData = static_cast<float *>(state->hostInput.data());
         for (std::size_t channel = 0; channel < 3; ++channel)
             state->planes[channel] = cv::Mat(state->height, state->width, CV_32FC1, inputData + channel * pixels);
         state->views.reserve(4);
         state->views.push_back(irt::BufferView::fromBytes(state->deviceInput.data(), state->deviceInput.sizeBytes(),
-                                                         irt::MemoryKind::DEVICE, "input"));
-        for (std::size_t branch = 0; branch < strides.size(); ++branch) {
+                                                          irt::MemoryKind::DEVICE, "input"));
+        for (std::size_t branch = 0; branch < strides.size(); ++branch)
+        {
             const auto elements = state->descriptors[branch + 1].desc.shape.elementCount();
             state->deviceOutputs[branch].resize(elements);
             state->hostOutputs[branch].resize(elements);
             state->views.push_back(irt::BufferView::fromBytes(state->deviceOutputs[branch].data(),
-                state->deviceOutputs[branch].sizeBytes(), irt::MemoryKind::DEVICE, outputNames[branch]));
+                                                              state->deviceOutputs[branch].sizeBytes(),
+                                                              irt::MemoryKind::DEVICE, outputNames[branch]));
         }
         state->preprocessing = preprocessingSpec(state->width, state->height);
-        state_ = std::move(state);
+        state_               = std::move(state);
         return {};
-    } catch (const std::exception& error) {
+    }
+    catch (const std::exception &error)
+    {
         return {1, std::string("YOLO initialize: ") + error.what()};
-    } catch (...) {
+    }
+    catch (...)
+    {
         return {-1, "YOLO initialize: unknown exception"};
     }
 }
 
-ToolResult YoloTool::execute(const Values& inputs) { return run(inputs, nullptr); }
-ToolResult YoloTool::executeWithTrace(const Values& inputs, std::vector<ImageTrace>& traces) {
+ToolResult YoloTool::execute(const Values &inputs)
+{
+    return run(inputs, nullptr);
+}
+
+ToolResult YoloTool::executeWithTrace(const Values &inputs, std::vector<ImageTrace> &traces)
+{
     traces.clear();
     return run(inputs, &traces);
 }
 
-ToolResult YoloTool::run(const Values& inputs, std::vector<ImageTrace>* traces) {
-    try {
-        if (!state_) return missingResult({-3, "YOLO execute: model is not initialized"});
+ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
+{
+    try
+    {
+        if (!state_)
+            return missingResult({-3, "YOLO execute: model is not initialized"});
         const auto found = inputs.find(yolo_ports::in::IMAGES);
         if (found == inputs.end() || !std::holds_alternative<ImageBatch>(found->second))
             throw ContractError("images: missing or not an ImageBatch");
-        const auto& images = std::get<ImageBatch>(found->second);
+        const auto               &images = std::get<ImageBatch>(found->second);
         const DetectionParameters parameters{parameter<double>(inputs, yolo_ports::in::CONF_THRESHOLD, 0.25),
-            parameter<double>(inputs, yolo_ports::in::NMS_THRESHOLD, 0.45), parameter<std::int64_t>(inputs, yolo_ports::in::MAX_DETECTIONS, 100)};
+                                             parameter<double>(inputs, yolo_ports::in::NMS_THRESHOLD, 0.45),
+                                             parameter<std::int64_t>(inputs, yolo_ports::in::MAX_DETECTIONS, 100)};
         validateParameters(parameters);
-        for (const auto& image : images.images()) {
-            if (image.empty() || image.readOnlyMat().depth() != CV_8U ||
-                (image.channels() != 1 && image.channels() != 3 && image.channels() != 4))
+        for (const auto &image : images.images())
+        {
+            if (image.empty() || image.readOnlyMat().depth() != CV_8U
+                || (image.channels() != 1 && image.channels() != 3 && image.channels() != 4))
                 throw ContractError("images must contain nonempty uint8 gray/BGR/BGRA images");
         }
-        auto& state = *state_;
+        auto &state = *state_;
         cudaCheck(cudaSetDevice(state.device), "cudaSetDevice");
         std::vector<std::vector<Roi>> rois;
-        std::vector<NumericBuffer> scores, classes;
-        std::vector<StringBuffer> names;
-        const auto batch = images.images().size();
-        rois.reserve(batch); scores.reserve(batch); classes.reserve(batch); names.reserve(batch);
-        if (traces) traces->reserve(batch);
-        for (const auto& image : images.images()) {
-            cv::Mat converted;
-            const cv::Mat* bgr = &image.readOnlyMat();
-            if (image.channels() != 3) {
+        std::vector<NumericBuffer>    scores, classes;
+        std::vector<StringBuffer>     names;
+        const auto                    batch = images.images().size();
+        rois.reserve(batch);
+        scores.reserve(batch);
+        classes.reserve(batch);
+        names.reserve(batch);
+        if (traces)
+            traces->reserve(batch);
+        for (const auto &image : images.images())
+        {
+            cv::Mat        converted;
+            const cv::Mat *bgr = &image.readOnlyMat();
+            if (image.channels() != 3)
+            {
                 cv::cvtColor(*bgr, converted, image.channels() == 1 ? cv::COLOR_GRAY2BGR : cv::COLOR_BGRA2BGR);
                 bgr = &converted;
             }
             const auto preprocessed = irt::model::ImageNetUtil::preprocessWithGeometry(*bgr, state.preprocessing);
-            if (preprocessed.image.type() != CV_32FC3 || preprocessed.image.cols != state.width ||
-                preprocessed.image.rows != state.height) throw ContractError("InferRT preprocess returned an incompatible image");
+            if (preprocessed.image.type() != CV_32FC3 || preprocessed.image.cols != state.width
+                || preprocessed.image.rows != state.height)
+                throw ContractError("InferRT preprocess returned an incompatible image");
             cv::split(preprocessed.image, state.planes.data());
             cudaCheck(cudaMemcpyAsync(state.deviceInput.data(), state.hostInput.data(), state.hostInput.sizeBytes(),
-                                      cudaMemcpyHostToDevice, state.stream), "YOLO H2D");
+                                      cudaMemcpyHostToDevice, state.stream),
+                      "YOLO H2D");
             state.model->executeSession(*state.session, state.views,
-                {reinterpret_cast<std::uintptr_t>(state.stream), true});
+                                        {reinterpret_cast<std::uintptr_t>(state.stream), true});
             for (std::size_t branch = 0; branch < strides.size(); ++branch)
                 cudaCheck(cudaMemcpyAsync(state.hostOutputs[branch].data(), state.deviceOutputs[branch].data(),
-                    state.hostOutputs[branch].sizeBytes(), cudaMemcpyDeviceToHost, state.stream), "YOLO D2H");
+                                          state.hostOutputs[branch].sizeBytes(), cudaMemcpyDeviceToHost, state.stream),
+                          "YOLO D2H");
             cudaCheck(cudaStreamSynchronize(state.stream), "YOLO stream completion");
-            const auto& actual = preprocessed.geometry;
-            const LetterboxGeometry geometry{actual.original_width, actual.original_height, state.width, state.height,
-                actual.resized_width, actual.resized_height, actual.pad_left, actual.pad_top, actual.scale};
+            const auto             &actual = preprocessed.geometry;
+            const LetterboxGeometry geometry{actual.original_width, actual.original_height, state.width,
+                                             state.height,          actual.resized_width,   actual.resized_height,
+                                             actual.pad_left,       actual.pad_top,         actual.scale};
             std::array<HeadView, 3> heads;
             for (std::size_t branch = 0; branch < strides.size(); ++branch)
-                heads[branch] = {{static_cast<const float*>(state.hostOutputs[branch].data()), state.hostOutputs[branch].size()},
-                                 strides[branch], state.width / strides[branch], state.height / strides[branch], state.classes};
-            ImageTrace* trace = nullptr;
-            if (traces) {
+                heads[branch] = {
+                    {static_cast<const float *>(state.hostOutputs[branch].data()), state.hostOutputs[branch].size()},
+                    strides[branch],
+                    state.width / strides[branch],
+                    state.height / strides[branch],
+                    state.classes
+                };
+            ImageTrace *trace = nullptr;
+            if (traces)
+            {
                 traces->emplace_back();
-                trace = &traces->back();
+                trace           = &traces->back();
                 trace->geometry = geometry;
                 for (std::size_t branch = 0; branch < strides.size(); ++branch)
                     trace->rawOutputs[branch].assign(heads[branch].values.begin(), heads[branch].values.end());
             }
             const auto detections = postprocess(heads, geometry, parameters, trace ? &trace->candidates : nullptr);
-            if (trace) trace->detections = detections;
-            std::vector<Roi> imageRois;
-            std::vector<float> imageScores;
+            if (trace)
+                trace->detections = detections;
+            std::vector<Roi>          imageRois;
+            std::vector<float>        imageScores;
             std::vector<std::int64_t> imageClasses;
-            std::vector<std::string> imageNames;
-            const auto count = detections.size();
-            imageRois.reserve(count); imageScores.reserve(count); imageClasses.reserve(count); imageNames.reserve(count);
-            for (const auto& detection : detections) {
-                const auto& box = detection.box;
+            std::vector<std::string>  imageNames;
+            const auto                count = detections.size();
+            imageRois.reserve(count);
+            imageScores.reserve(count);
+            imageClasses.reserve(count);
+            imageNames.reserve(count);
+            for (const auto &detection : detections)
+            {
+                const auto &box = detection.box;
                 imageRois.push_back(Roi::rectangle(static_cast<float>(box.x1), static_cast<float>(box.y1),
-                    static_cast<float>(box.x2 - box.x1), static_cast<float>(box.y2 - box.y1), 0));
+                                                   static_cast<float>(box.x2 - box.x1),
+                                                   static_cast<float>(box.y2 - box.y1), 0));
                 imageScores.push_back(detection.score);
                 imageClasses.push_back(detection.classId);
                 imageNames.push_back(state.names[static_cast<std::size_t>(detection.classId)]);
@@ -306,54 +414,74 @@ ToolResult YoloTool::run(const Values& inputs, std::vector<ImageTrace>* traces) 
             classes.push_back(NumericBuffer::copy(DType::Int64, {length}, std::as_bytes(std::span(imageClasses))));
             names.emplace_back(std::vector<std::int64_t>{length}, std::move(imageNames));
         }
-        return {{}, {{yolo_ports::out::IMAGES, images}, {yolo_ports::out::ROIS, RoiBatch(std::move(rois))},
-            {yolo_ports::out::SCORES, NumericArray(DType::Float32, 2, Layout::BatchRagged, std::move(scores))},
-            {yolo_ports::out::CLASSES, NumericArray(DType::Int64, 2, Layout::BatchRagged, std::move(classes))},
-            {yolo_ports::out::CLASS_NAMES, StringArray(2, Layout::BatchRagged, std::move(names))}}};
-    } catch (const std::exception& error) {
-        if (state_ && state_->stream) cudaStreamSynchronize(state_->stream);
-        if (traces) traces->clear();
+        return {
+            {},
+            {{yolo_ports::out::IMAGES, images},
+             {yolo_ports::out::ROIS, RoiBatch(std::move(rois))},
+             {yolo_ports::out::SCORES, NumericArray(DType::Float32, 2, Layout::BatchRagged, std::move(scores))},
+             {yolo_ports::out::CLASSES, NumericArray(DType::Int64, 2, Layout::BatchRagged, std::move(classes))},
+             {yolo_ports::out::CLASS_NAMES, StringArray(2, Layout::BatchRagged, std::move(names))}}
+        };
+    }
+    catch (const std::exception &error)
+    {
+        if (state_ && state_->stream)
+            cudaStreamSynchronize(state_->stream);
+        if (traces)
+            traces->clear();
         return missingResult({1, std::string("YOLO execute: ") + error.what()});
-    } catch (...) {
-        if (state_ && state_->stream) cudaStreamSynchronize(state_->stream);
-        if (traces) traces->clear();
+    }
+    catch (...)
+    {
+        if (state_ && state_->stream)
+            cudaStreamSynchronize(state_->stream);
+        if (traces)
+            traces->clear();
         return missingResult({-1, "YOLO execute: unknown exception"});
     }
 }
 
-ToolStatus YoloTool::release() {
-    if (!state_) return {};
+ToolStatus YoloTool::release()
+{
+    if (!state_)
+        return {};
     auto status = state_->close();
     state_.reset();
     return status;
 }
 
-std::vector<TensorDescription> YoloTool::tensorDescriptions() const {
+std::vector<TensorDescription> YoloTool::tensorDescriptions() const
+{
     std::vector<TensorDescription> descriptions;
-    if (state_) for (const auto& descriptor : state_->descriptors)
-        descriptions.push_back({descriptor.name, irt::model::dataTypeToString(descriptor.desc.data_type),
-                                "Opaque", descriptor.desc.shape.dims});
+    if (state_)
+        for (const auto &descriptor : state_->descriptors)
+            descriptions.push_back({descriptor.name, irt::model::dataTypeToString(descriptor.desc.data_type), "Opaque",
+                                    descriptor.desc.shape.dims});
     return descriptions;
 }
 
-GeometryProbe probePreprocessing() {
+GeometryProbe probePreprocessing()
+{
     cv::Mat ramp(7, 13, CV_8UC3);
     for (int y = 0; y < ramp.rows; ++y)
         for (int x = 0; x < ramp.cols; ++x)
-            ramp.at<cv::Vec3b>(y, x) = cv::Vec3b(static_cast<unsigned char>(x * 10),
-                                               static_cast<unsigned char>(y * 20), 0);
-    const auto transformed = irt::model::ImageNetUtil::preprocessWithGeometry(ramp, preprocessingSpec(640, 640));
-    const auto& actual = transformed.geometry;
-    GeometryProbe result{{13, 7, 640, 640, actual.resized_width, actual.resized_height,
-                          actual.pad_left, actual.pad_top, actual.scale}};
-    for (int y = 0; y < actual.resized_height; ++y) {
+            ramp.at<cv::Vec3b>(y, x)
+                = cv::Vec3b(static_cast<unsigned char>(x * 10), static_cast<unsigned char>(y * 20), 0);
+    const auto    transformed = irt::model::ImageNetUtil::preprocessWithGeometry(ramp, preprocessingSpec(640, 640));
+    const auto   &actual      = transformed.geometry;
+    GeometryProbe result{
+        {13, 7, 640, 640, actual.resized_width, actual.resized_height, actual.pad_left, actual.pad_top, actual.scale}
+    };
+    for (int y = 0; y < actual.resized_height; ++y)
+    {
         const auto sourceY = std::clamp((y + 0.5) * 7.0 / actual.resized_height - 0.5, 0.0, 6.0);
-        for (int x = 0; x < actual.resized_width; ++x) {
+        for (int x = 0; x < actual.resized_width; ++x)
+        {
             const auto sourceX = std::clamp((x + 0.5) * 13.0 / actual.resized_width - 0.5, 0.0, 12.0);
-            const auto pixel = transformed.image.at<cv::Vec3f>(y + actual.pad_top, x + actual.pad_left);
-            result.maximumPixelError = std::max({result.maximumPixelError,
-                std::abs(pixel[0] * 255.0), std::abs(pixel[1] * 255.0 - sourceY * 20),
-                std::abs(pixel[2] * 255.0 - sourceX * 10)});
+            const auto pixel   = transformed.image.at<cv::Vec3f>(y + actual.pad_top, x + actual.pad_left);
+            result.maximumPixelError
+                = std::max({result.maximumPixelError, std::abs(pixel[0] * 255.0),
+                            std::abs(pixel[1] * 255.0 - sourceY * 20), std::abs(pixel[2] * 255.0 - sourceX * 10)});
         }
     }
     const auto padding = transformed.image.at<cv::Vec3f>(0, 0);

@@ -23,7 +23,7 @@ modules:
       "visionrt.detection.filter":
         class: "DetectionFilterTool"
         header: "DetectionFilterTool.h"
-      "visiontools.preprocess.adaptive_binary":
+      "AdaptiveBinaryTool":
         class: "AdaptiveBinaryTool"
         header: "AdaptiveBinaryTool.h"
 

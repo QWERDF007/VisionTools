@@ -3,7 +3,7 @@
 # root may be a path or a variable read from CMakeCache.txt / the listed CMake file.
 # default defines the local default path; <platform>_default (windows/linux/macos) 优先于 default。
 # CMake 侧消费入口：cmake/ConfigDependencyDefaults.cmake（visiontools_dependency_default / DEPENDENCY 参数）。
-# yaml-cpp 与 VisionRTToolSDK 均为源码子模块静态集成（3rdparty/yaml-cpp 与 3rdparty/VisionRTToolSDK），无运行时文件。
+# yaml-cpp 与 VisionRTSDK 均为源码子模块静态集成（3rdparty/yaml-cpp 与 3rdparty/VisionRTSDK），无运行时文件。
 dependencies:
   - name: opencv
     cmake: cmake/ConfigOpenCV.cmake

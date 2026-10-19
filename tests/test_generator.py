@@ -281,7 +281,7 @@ class TestToolContractGenerator(unittest.TestCase):
         validator_env = os.environ.get("VISIONTOOLS_VALIDATOR", "")
         validator = Path(validator_env) if validator_env else Path(__file__).resolve().parent.parent / "build" / "bin" / "visionrt_validate_tool.exe"
         sdk_inc_env = os.environ.get("VISIONTOOLS_SDK_INCLUDE_DIR", "")
-        sdk_inc = Path(sdk_inc_env) if sdk_inc_env else Path(__file__).resolve().parent.parent / "3rdparty" / "VisionRTToolSDK" / "include"
+        sdk_inc = Path(sdk_inc_env) if sdk_inc_env else Path(__file__).resolve().parent.parent / "3rdparty" / "VisionRTSDK" / "include"
         if not validator.is_file() or not sdk_inc.is_dir():
             self.skipTest(f"VisionRT validator / SDK headers not provided ({validator}, {sdk_inc})")
 

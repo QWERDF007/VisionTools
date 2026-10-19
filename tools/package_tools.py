@@ -67,8 +67,9 @@ def package_tools(
     infer_enabled: bool = True,
     strict: bool = True,
     project_root: Optional[Path] = None,
-    validator: Optional[Path] = None
-) -> None:
+    validator: Optional[Path] = None,
+    zip_output: Optional[Path] = None,
+) -> Path:
     """
     Direct destructive rebuild of the installation directory (YS-03 / YVT2-03).
     Clears install_dir immediately upon starting; generates artifacts directly.
@@ -121,6 +122,8 @@ def package_tools(
         build_index = load_yaml(index_src) or {}
         if not isinstance(build_index, dict):
             raise RuntimeError(f"Invalid YAML structure in {index_src}")
+        if build_index.get("schema_version") != 2:
+            raise RuntimeError(f"Build index schema_version mismatch or missing: expected 2, got '{build_index.get('schema_version')}'")
         if "variant" not in build_index or not build_index["variant"]:
             raise RuntimeError(f"Missing required 'variant' in build index: {index_src}")
         if build_index["variant"] != target_variant:
@@ -133,11 +136,14 @@ def package_tools(
         raise RuntimeError(f"Corrupt build index {index_src}: {e}")
 
     # Exact set comparison between active declarations and build index tools (BS-03, N01)
+    indexed_tools = build_index.get("tools", {})
     src_tools_dir = project_root / "assets" / "tools"
     declared_tool_ids = set()
     if src_tools_dir.exists():
         decl_files = sorted(set(src_tools_dir.glob("**/*.yaml")) | set(src_tools_dir.glob("**/*.yml")))
         bindings_file = project_root / "tools" / "module_bindings.yaml"
+        if not bindings_file.exists():
+            bindings_file = Path(__file__).resolve().parent.parent / "tools" / "module_bindings.yaml"
         tool_variants = {}
         if bindings_file.exists():
             b_data = load_yaml(bindings_file) or {}
@@ -151,18 +157,19 @@ def package_tools(
 
         for df in decl_files:
             rel = df.relative_to(src_tools_dir)
-            if any(part in rel.parts for part in ("custom", "示例", "examples")):
-                continue
             doc = load_yaml(df) or {}
-            reg = doc.get("entry", {}).get("registry_name") or doc.get("tool_id")
-            if not reg:
+            tid = doc.get("tool_id") or doc.get("entry", {}).get("registry_name")
+            reg = doc.get("entry", {}).get("registry_name") or tid
+            if not tid:
                 continue
-            tool_variant = tool_variants.get(reg, doc.get("variant", "cpu"))
+            is_custom = any(part in rel.parts for part in ("custom", "示例", "examples"))
+            if is_custom and tid not in indexed_tools:
+                continue
+            tool_variant = tool_variants.get(reg, tool_variants.get(tid, doc.get("variant", "cpu")))
             if not infer_enabled and tool_variant == "gpu":
                 continue
-            declared_tool_ids.add(reg)
+            declared_tool_ids.add(tid)
 
-    indexed_tools = build_index.get("tools", {})
     if set(declared_tool_ids) != set(indexed_tools.keys()):
         raise RuntimeError(
             f"Exact tool set mismatch between declarations and build index: "
@@ -232,8 +239,8 @@ def package_tools(
             raise RuntimeError(f"Tool entry '{tool_id}' in build index must be a dictionary")
         mod_ref = tool_info.get("module")
         def_path_str = tool_info.get("definition")
-        if not mod_ref or not def_path_str:
-            raise RuntimeError(f"Tool entry '{tool_id}' missing 'module' or 'definition'")
+        if not def_path_str:
+            raise RuntimeError(f"Tool entry '{tool_id}' missing 'definition'")
 
         src_decl = project_root / def_path_str
         if not src_decl.exists():
@@ -245,26 +252,61 @@ def package_tools(
         decl_data = load_yaml(src_decl)
         if not isinstance(decl_data, dict):
             raise RuntimeError(f"Tool declaration at {src_decl} is not a valid YAML dictionary")
-        decl_reg = decl_data.get("entry", {}).get("registry_name") or decl_data.get("tool_id")
-        if decl_reg != tool_id:
-            raise RuntimeError(f"Tool declaration at {src_decl} declares registry '{decl_reg}' which does not match indexed tool '{tool_id}'")
+        decl_tid = decl_data.get("tool_id") or decl_data.get("entry", {}).get("registry_name")
+        if decl_tid != tool_id:
+            raise RuntimeError(f"Tool declaration at {src_decl} declares tool_id '{decl_tid}' which does not match indexed tool '{tool_id}'")
 
         dest_decl = install_dir / def_path_str
         dest_decl.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_decl, dest_decl)
 
-        py_entry = decl_data.get("entry", {}).get("file")
-        if py_entry:
-            src_py = src_decl.parent / py_entry
-            if src_py.exists():
-                dest_py = dest_decl.parent / py_entry
-                dest_py.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src_py, dest_py)
+        kind = decl_data.get("kind", "")
+        host_binding = tool_info.get("host_binding")
+        if host_binding:
+            if mod_ref:
+                raise RuntimeError(f"Tool '{tool_id}' cannot specify both 'module' and 'host_binding'")
+            if kind in ("python_function", "python_class"):
+                raise RuntimeError(f"Python tool '{tool_id}' cannot specify 'host_binding'")
+            installed_tools[tool_id] = {
+                "host_binding": host_binding,
+                "definition": def_path_str.replace("\\", "/")
+            }
+        elif kind in ("python_function", "python_class"):
+            if mod_ref:
+                raise RuntimeError(f"Python tool '{tool_id}' cannot specify 'module' in module_index.yaml")
 
-        installed_tools[tool_id] = {
-            "module": mod_ref,
-            "definition": def_path_str.replace("\\", "/")
-        }
+            py_entry = decl_data.get("entry", {}).get("file")
+            if not py_entry:
+                raise RuntimeError(f"Python tool '{tool_id}' declaration missing entry.file")
+            src_py = src_decl.parent / py_entry
+            if not src_py.exists():
+                raise RuntimeError(f"Python tool '{tool_id}' entry script not found: {src_py}")
+
+            # Copy script, relative imports, and adjacent resources in src_decl.parent
+            for item in src_decl.parent.rglob("*"):
+                if item.is_dir():
+                    continue
+                if "__pycache__" in item.parts or item.suffix == ".pyc":
+                    continue
+                if (item.suffix in (".yaml", ".yml")) and item.resolve() != src_decl.resolve():
+                    continue
+                rel_to_parent = item.relative_to(src_decl.parent)
+                dest_item = dest_decl.parent / rel_to_parent
+                dest_item.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, dest_item)
+
+            installed_tools[tool_id] = {
+                "definition": def_path_str.replace("\\", "/")
+            }
+        else:
+            if not mod_ref:
+                raise RuntimeError(f"C++ tool entry '{tool_id}' missing 'module'")
+            if mod_ref not in installed_modules:
+                raise RuntimeError(f"Tool entry '{tool_id}' references unknown or uninstalled module '{mod_ref}'")
+            installed_tools[tool_id] = {
+                "module": mod_ref,
+                "definition": def_path_str.replace("\\", "/")
+            }
 
     # 6. Copy runtime dependency files
     runtime_entries = deps_meta.get("runtime_files", [])
@@ -290,8 +332,9 @@ def package_tools(
             shutil.rmtree(ex_dir)
         shutil.copytree(custom_dir, ex_dir)
 
-    # 8. Write final output_dir/module_index.yaml (YS-01)
+    # 8. Write final output_dir/module_index.yaml (YS-01, schema_version 2)
     final_index = {
+        "schema_version": 2,
         "variant": target_variant,
         "modules": installed_modules,
         "tools": installed_tools,
@@ -319,8 +362,41 @@ def package_tools(
     if not verify_package(install_dir, is_gpu=infer_enabled, validator=validator):
         raise RuntimeError(f"Package verification failed on install directory {install_dir}")
 
+    # 10. Generate ZIP package and external matching index (D-05)
+    import zipfile
+    if zip_output is None:
+        zip_output = install_dir.with_name(f"{install_dir.name}.zip")
+    else:
+        zip_output = Path(zip_output).resolve()
+
+    zip_output.parent.mkdir(parents=True, exist_ok=True)
+    if zip_output.exists():
+        zip_output.unlink()
+
+    with zipfile.ZipFile(zip_output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for root_path, dirs, files in os.walk(install_dir):
+            dirs.sort()
+            for f in sorted(files):
+                full_f = Path(root_path) / f
+                arc_name = full_f.relative_to(install_dir).as_posix()
+                zf.write(full_f, arcname=arc_name)
+
+    # Ensure external index exists next to ZIP output and matches byte-for-byte
+    external_index_path = zip_output.parent / "module_index.yaml"
+    if external_index_path.resolve() != final_index_path.resolve():
+        shutil.copy2(final_index_path, external_index_path)
+
+    with zipfile.ZipFile(zip_output, "r") as zf:
+        internal_bytes = zf.read("module_index.yaml")
+        external_bytes = external_index_path.read_bytes()
+        if internal_bytes != external_bytes:
+            raise RuntimeError("ZIP internal module_index.yaml and external index are not byte-by-byte identical")
+
     print(f"[package_tools] Successfully packaged {len(installed_tools)} tools to {install_dir}")
     print(f"[package_tools] Final index generated at {final_index_path}")
+    print(f"[package_tools] Created ZIP package at {zip_output}")
+    print(f"[package_tools] External index verified at {external_index_path}")
+    return zip_output
 
 def verify_package(install_dir: Path, is_gpu: bool = False, validator: Optional[Path] = None) -> bool:
     """
@@ -342,14 +418,18 @@ def verify_package(install_dir: Path, is_gpu: bool = False, validator: Optional[
         print("[ERROR] module_index.yaml must be a dictionary")
         return False
 
+    if idx.get("schema_version") != 2:
+        print(f"[ERROR] module_index.yaml schema_version mismatch: expected 2, got '{idx.get('schema_version')}'")
+        return False
+
     expected_variant = "gpu" if is_gpu else "cpu"
     if idx.get("variant") != expected_variant:
         print(f"[ERROR] module_index.yaml variant mismatch: expected '{expected_variant}', got '{idx.get('variant')}'")
         return False
 
     modules_dict = idx.get("modules")
-    if not isinstance(modules_dict, dict) or not modules_dict:
-        print("[ERROR] module_index.yaml 'modules' must be a non-empty dictionary")
+    if not isinstance(modules_dict, dict):
+        print("[ERROR] module_index.yaml 'modules' must be a dictionary")
         return False
 
     for mod_name, mod_info in modules_dict.items():
@@ -371,59 +451,82 @@ def verify_package(install_dir: Path, is_gpu: bool = False, validator: Optional[
         print("[ERROR] module_index.yaml 'tools' must be a non-empty dictionary")
         return False
 
-    # Collect declared tool registries from packaged YAML files
+    # Collect declared tool IDs from packaged YAML files
     yaml_files = list(install_dir.glob("assets/tools/**/*.yaml")) + list(install_dir.glob("assets/tools/**/*.yml"))
     if not yaml_files:
         print("[ERROR] No tool declaration YAML files found in assets/tools")
         return False
 
-    declared_registries = set()
+    declared_tool_ids = set()
     for yf in yaml_files:
         try:
             yd = load_yaml(yf) or {}
-            r = yd.get("entry", {}).get("registry_name") or yd.get("tool_id")
-            if r:
-                declared_registries.add(r)
+            tid = yd.get("tool_id") or yd.get("entry", {}).get("registry_name")
+            if tid:
+                declared_tool_ids.add(tid)
         except Exception as e:
             print(f"[ERROR] Failed to parse tool declaration {yf}: {e}")
             return False
 
-    index_registries = set(tools_dict.keys())
-    if index_registries != declared_registries:
-        missing_in_index = declared_registries - index_registries
-        extra_in_index = index_registries - declared_registries
-        print(f"[ERROR] module_index.yaml registry set does not match declared tool definitions: missing_in_index={missing_in_index}, extra_in_index={extra_in_index}")
+    index_tool_ids = set(tools_dict.keys())
+    if index_tool_ids != declared_tool_ids:
+        missing_in_index = declared_tool_ids - index_tool_ids
+        extra_in_index = index_tool_ids - declared_tool_ids
+        print(f"[ERROR] module_index.yaml tool set does not match declared tool definitions: missing_in_index={missing_in_index}, extra_in_index={extra_in_index}")
         return False
 
-    for reg, tinfo in tools_dict.items():
+    referenced_modules = set()
+    for tool_id, tinfo in tools_dict.items():
         if not isinstance(tinfo, dict):
-            print(f"[ERROR] Tool '{reg}' entry must be a dictionary")
-            return False
-        mod_ref = tinfo.get("module")
-        if not mod_ref or mod_ref not in modules_dict:
-            print(f"[ERROR] Tool '{reg}' references unknown module '{mod_ref}'")
+            print(f"[ERROR] Tool '{tool_id}' entry must be a dictionary")
             return False
         def_ref = tinfo.get("definition")
         if not def_ref or not (install_dir / def_ref).exists():
-            print(f"[ERROR] Tool '{reg}' definition file not found: {install_dir / str(def_ref)}")
+            print(f"[ERROR] Tool '{tool_id}' definition file not found: {install_dir / str(def_ref)}")
             return False
 
         # Validate that definition declares matching tool (R73)
         decl_path = install_dir / def_ref
         try:
             decl_data = load_yaml(decl_path) or {}
-            decl_reg = decl_data.get("entry", {}).get("registry_name") or decl_data.get("tool_id")
-            if decl_reg != reg:
-                print(f"[ERROR] Definition '{def_ref}' declares registry '{decl_reg}' which does not match indexed tool '{reg}'")
+            decl_tid = decl_data.get("tool_id") or decl_data.get("entry", {}).get("registry_name")
+            if decl_tid != tool_id:
+                print(f"[ERROR] Definition '{def_ref}' declares tool_id '{decl_tid}' which does not match indexed tool '{tool_id}'")
                 return False
-            py_entry = decl_data.get("entry", {}).get("file")
-            if py_entry:
+            kind = decl_data.get("kind", "")
+            host_binding = tinfo.get("host_binding")
+            if host_binding:
+                if "module" in tinfo:
+                    print(f"[ERROR] Tool '{tool_id}' with host_binding must not specify 'module'")
+                    return False
+                if kind in ("python_function", "python_class"):
+                    print(f"[ERROR] Python tool '{tool_id}' must not specify 'host_binding'")
+                    return False
+            elif kind in ("python_function", "python_class"):
+                if "module" in tinfo:
+                    print(f"[ERROR] Python tool '{tool_id}' must not specify 'module'")
+                    return False
+                py_entry = decl_data.get("entry", {}).get("file")
+                if not py_entry:
+                    print(f"[ERROR] Python tool '{tool_id}' missing entry.file")
+                    return False
                 py_file = decl_path.parent / py_entry
                 if not py_file.exists():
-                    print(f"[ERROR] Python tool '{reg}' script file not found: {py_file}")
+                    print(f"[ERROR] Python tool '{tool_id}' script file not found: {py_file}")
                     return False
+            else:
+                mod_ref = tinfo.get("module")
+                if not mod_ref or mod_ref not in modules_dict:
+                    print(f"[ERROR] Tool '{tool_id}' references unknown module '{mod_ref}'")
+                    return False
+                referenced_modules.add(mod_ref)
         except Exception as e:
-            print(f"[ERROR] Failed to parse declaration for '{reg}': {e}")
+            print(f"[ERROR] Failed to parse declaration for '{tool_id}': {e}")
+            return False
+
+    for mod_name in modules_dict:
+        if mod_name not in referenced_modules:
+            print(f"[ERROR] Module '{mod_name}' is not referenced by any tool")
             return False
 
     # Verify runtime_files
@@ -467,13 +570,14 @@ def verify_package(install_dir: Path, is_gpu: bool = False, validator: Optional[
                 print(f"[ERROR] CPU package verification failed: {m_name}.dll found in CPU package")
                 return False
 
-        # CPU package requires opencv (R75 / VT-S01)
-        if not any("opencv" in r.lower() for r in runtime_files):
-            print("[ERROR] CPU package verification failed: opencv missing in runtime_files")
-            return False
-        if not any("opencv" in f.name.lower() for f in bin_dir.glob("*.dll")):
-            print("[ERROR] CPU package verification failed: opencv missing in bin/")
-            return False
+        if modules_dict:
+            # CPU package with C++ modules requires opencv (R75 / VT-S01)
+            if not any("opencv" in r.lower() for r in runtime_files):
+                print("[ERROR] CPU package verification failed: opencv missing in runtime_files")
+                return False
+            if not any("opencv" in f.name.lower() for f in bin_dir.glob("*.dll")):
+                print("[ERROR] CPU package verification failed: opencv missing in bin/")
+                return False
 
         # CPU package forbids any GPU DLLs (R77)
         for f in bin_dir.glob("*.dll"):
@@ -527,7 +631,11 @@ def verify_package(install_dir: Path, is_gpu: bool = False, validator: Optional[
             print(f"[ERROR] Validator executable not found: {validator_path}")
             return False
         import subprocess
-        res = subprocess.run([str(validator_path), "--package", str(install_dir)], capture_output=True, text=True)
+        env = os.environ.copy()
+        pkg_bin = install_dir / "bin"
+        if pkg_bin.is_dir():
+            env["PATH"] = str(pkg_bin) + os.pathsep + env.get("PATH", "")
+        res = subprocess.run([str(validator_path), "--package", str(install_dir)], env=env, capture_output=True, text=True)
         if res.returncode != 0:
             print(f"[ERROR] visionrt_validate_tool --package failed for {install_dir}:\n{res.stderr or res.stdout}")
             return False
@@ -579,6 +687,7 @@ def main():
     parser.add_argument("--install-dir", default="dist/VisionTools", help="Destination directory")
     parser.add_argument("--config", default="Release", help="Build configuration (Release, Debug)")
     parser.add_argument("--no-infer", action="store_true", help="Package CPU-only tools (exclude GPU)")
+    parser.add_argument("--zip-output", default=None, help="Explicit output path for ZIP package (default: <install-dir>.zip)")
     parser.add_argument("--validator", default=None, help="Explicit path to visionrt_validate_tool binary")
     parser.add_argument("--verify-only", action="store_true", help="Run verification without rebuilding")
     parser.add_argument("--verify-runtime", action="store_true", help="Run dynamic consumer in clean PATH")
@@ -587,6 +696,7 @@ def main():
     install_dir = Path(args.install_dir)
     is_gpu = not args.no_infer
     val_arg = Path(args.validator).resolve() if args.validator else None
+    zip_arg = Path(args.zip_output).resolve() if args.zip_output else None
 
     if args.verify_only:
         ok = verify_package(install_dir, is_gpu=is_gpu, validator=val_arg)
@@ -601,7 +711,8 @@ def main():
             config=args.config,
             infer_enabled=is_gpu,
             strict=True,
-            validator=val_arg
+            validator=val_arg,
+            zip_output=zip_arg,
         )
         if args.verify_runtime:
             if not verify_runtime(install_dir):

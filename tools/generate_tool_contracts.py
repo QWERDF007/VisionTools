@@ -67,7 +67,7 @@ def load_sdk_enums(sdk_include_dir: Optional[Path] = None) -> Tuple[Set[str], Se
         search_dirs = [sdir]
     else:
         search_dirs = [
-            Path(__file__).resolve().parent.parent / "3rdparty" / "VisionRTToolSDK" / "include",
+            Path(__file__).resolve().parent.parent / "3rdparty" / "VisionRTSDK" / "include",
         ]
 
     for sdir in search_dirs:
@@ -99,7 +99,7 @@ def load_sdk_enums(sdk_include_dir: Optional[Path] = None) -> Tuple[Set[str], Se
 
     raise ContractValidationError(
         f"Failed to extract SDK enums from: {[str(p) for p in search_dirs]}. "
-        "Please ensure 3rdparty/VisionRTToolSDK is checked out."
+        "Please ensure 3rdparty/VisionRTSDK is checked out."
     )
 
 VALID_TYPES, VALID_DTYPES, VALID_LAYOUTS, VALID_KINDS = load_sdk_enums()
@@ -588,12 +588,14 @@ def build_module_index(tools: List[Dict[str, Any]], bindings_data: Optional[Dict
                     else:
                         def_str = f"assets/tools/{reg}.yaml"
 
-                    tools_map[reg] = {
+                    tool_id = matching_tool.get("tool_id") or reg
+                    tools_map[tool_id] = {
                         "module": mod_name,
                         "definition": def_str
                     }
 
     return {
+        "schema_version": 2,
         "variant": variant,
         "modules": modules,
         "tools": tools_map

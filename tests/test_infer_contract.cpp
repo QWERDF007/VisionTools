@@ -1,22 +1,27 @@
-#include <visionrt/sdk/Tool.h>
-#include <visionrt/sdk/Module.h>
 #include "src/infer/YoloPostprocess.h"
 
-#include <iostream>
+#include <visionrt/sdk/Module.h>
+#include <visionrt/sdk/Tool.h>
+
 #include <cassert>
 #include <cmath>
+#include <iostream>
 
-#define REQUIRE(cond, msg) \
-    do { \
-        if (!(cond)) { \
+#define REQUIRE(cond, msg)                                                                                      \
+    do                                                                                                          \
+    {                                                                                                           \
+        if (!(cond))                                                                                            \
+        {                                                                                                       \
             std::cerr << "Assertion failed: " << #cond << " (" << msg << ") at line " << __LINE__ << std::endl; \
-            std::exit(1); \
-        } \
-    } while(0)
+            std::exit(1);                                                                                       \
+        }                                                                                                       \
+    }                                                                                                           \
+    while (0)
 
 using namespace visionrt::infer;
 
-void testPostprocessIoU() {
+void testPostprocessIoU()
+{
     std::cout << "[TEST] Running testPostprocessIoU..." << std::endl;
     Box a{0, 0, 10, 10};
     Box b{0, 0, 10, 10};
@@ -32,14 +37,15 @@ void testPostprocessIoU() {
     std::cout << "[PASS] testPostprocessIoU passed." << std::endl;
 }
 
-void testPostprocessGeometry() {
+void testPostprocessGeometry()
+{
     std::cout << "[TEST] Running testPostprocessGeometry..." << std::endl;
     LetterboxGeometry geo{
-        1920, 1080, // original
-        640, 640,   // network input
-        640, 360,   // resized
-        0, 140,     // padLeft, padTop
-        1.0f / 3.0f // scale
+        1920,       1080, // original
+        640,        640,  // network input
+        640,        360,  // resized
+        0,          140,  // padLeft, padTop
+        1.0f / 3.0f       // scale
     };
 
     Box netBox{0, 140, 640, 500};
@@ -51,14 +57,18 @@ void testPostprocessGeometry() {
     std::cout << "[PASS] testPostprocessGeometry passed." << std::endl;
 }
 
-int main() {
+int main()
+{
     std::cout << "[TEST] Running test_infer_contract..." << std::endl;
-    try {
+    try
+    {
         testPostprocessIoU();
         testPostprocessGeometry();
         std::cout << "\n[ALL TESTS PASSED] All infer contract tests passed successfully.\n" << std::endl;
         return 0;
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception &e)
+    {
         std::cerr << "[FATAL] Unhandled exception: " << e.what() << std::endl;
         return 1;
     }
