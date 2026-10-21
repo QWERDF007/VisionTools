@@ -22,7 +22,8 @@ inputs:
   name: 文件或目录路径
   type: String
   default: ''
-  editor: file
+  editor: path
+  path_mode_from: mode
   tab: 基本输入
 - id: color
   name: 色彩模式

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <visionrt/sdk/Tool.h>
+#include <visionrt/contracts/Tool.h>
 
 namespace visiontools::preprocess {
 

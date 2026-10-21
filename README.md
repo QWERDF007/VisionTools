@@ -9,7 +9,7 @@ VisionRT 的工具库。普通 CMake 构建输出领域 DLL；显式打包输出
 - [预处理领域](src/preprocess)、[推理领域](src/infer)：多个工具共享领域 DLL，不要求每个工具一个 DLL。
 - [生成器](tools/generate_tool_contracts.py)：CMake 按实际选中目标生成合同与中间索引。
 - [打包器](tools/package_tools.py)：消费构建清单与声明；发布前使用 SDK 校验。
-- [共享 SDK 子模块](3rdparty/VisionRTSDK)：与宿主复用相同数据模型及包读取规则。
+- [共享 SDK 子模块](3rdparty/VisionRTContracts)：与宿主复用相同数据模型及包读取规则。
 - [依赖配置](tools/dependencies.yaml)、[CMake](CMakeLists.txt)：本机路径与实际构建选择。
 
 ## Windows 构建与交付

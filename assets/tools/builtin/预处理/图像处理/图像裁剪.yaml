@@ -3,7 +3,7 @@ category: 预处理
 subcategory: 图像处理
 tool_id: visionrt.image.crop
 display_name: 图像裁剪
-version: 1.0.0
+version: 2.0.0
 kind: cpp_function
 entry:
   registry_name: visionrt.image.crop
@@ -12,9 +12,9 @@ inputs:
 - id: images
   name: 图像批次
   type: ImageBatch
-- id: rois
-  name: ROI区域
-  type: RoiBatch
+- id: rect
+  name: 矩形区域
+  type: Rect
   image_input: images
 outputs:
 - id: images
@@ -22,12 +22,6 @@ outputs:
   type: ImageBatch
   display:
     color_order: BGR
-- id: source_indices
-  name: 源图索引
-  type: NumericArray
-  dtype: int64
-  rank: 2
-  layout: dense
 - id: origins
   name: 原点坐标
   type: NumericArray

@@ -1,9 +1,9 @@
 #include <cuda_runtime.h>
-#include <visionrt/sdk/Contract.h>
-#include <visionrt/sdk/Module.h>
-#include <visionrt/sdk/SchemaYaml.h>
-#include <visionrt/sdk/Tool.h>
-#include <visionrt/sdk/Value.h>
+#include <visionrt/contracts/Contract.h>
+#include <visionrt/contracts/Module.h>
+#include <visionrt/contracts/SchemaYaml.h>
+#include <visionrt/contracts/Tool.h>
+#include <visionrt/contracts/Value.h>
 #include <yaml-cpp/yaml.h>
 
 #ifndef VISIONRT_SDK_VERSION

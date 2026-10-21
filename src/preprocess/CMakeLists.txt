@@ -15,7 +15,7 @@ target_include_directories(visiontools_preprocess PUBLIC
 )
 
 target_link_libraries(visiontools_preprocess PRIVATE
-    VisionRT::ToolSDK
+    VisionRT::Contracts
     ${OpenCV_LIBS}
 )
 

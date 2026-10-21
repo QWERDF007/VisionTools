@@ -55,12 +55,15 @@ def verify_package(install_dir: Path, validator: Path) -> bool:
     validator = Path(validator).resolve()
     if not validator.is_file():
         raise RuntimeError(f"SDK validator not found: {validator}")
+    environment = os.environ.copy()
+    environment["PATH"] = os.pathsep.join([str(Path(install_dir).resolve() / "bin"), *os.get_exec_path(environment)])
     result = subprocess.run(
         [str(validator), "--package", str(Path(install_dir).resolve())],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env=environment,
     )
     if result.returncode:
-        print(result.stderr or result.stdout, file=sys.stderr)
+        print(f"SDK validator failed ({result.returncode}): {result.stderr or result.stdout}", file=sys.stderr)
     return result.returncode == 0
 
 
@@ -114,9 +117,10 @@ def package_tools(
         if not source.is_file():
             raise RuntimeError(f"Missing built module: {source}")
         relative = f"bin/{source.name}"
-        target = resolve_inside(install_dir, relative)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+        if not metadata.get("runtime_install"):
+            target = resolve_inside(install_dir, relative)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
         final_index["modules"][module_name] = {"library": relative}
 
     for tool_id, entry in final_index["tools"].items():
@@ -151,6 +155,20 @@ def package_tools(
             else:
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source_resource, destination)
+
+    if runtime_install := metadata.get("runtime_install"):
+        result = subprocess.run([
+            runtime_install["cmake"], "--install", str(build_dir), "--config", config,
+            "--component", runtime_install["component"], "--prefix", str(install_dir),
+        ], capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if result.returncode:
+            raise RuntimeError(f"Runtime installation failed: {result.stderr or result.stdout}")
+        module_files = {module["library"] for module in final_index["modules"].values()}
+        manifest = build_dir / f"install_manifest_{runtime_install['component']}.txt"
+        for installed in manifest.read_text(encoding="utf-8").splitlines():
+            relative = Path(installed).resolve().relative_to(install_dir).as_posix()
+            if relative not in module_files:
+                final_index["runtime_files"].append(relative)
 
     for runtime in metadata.get("runtime_files", []):
         source = Path(runtime["source"])

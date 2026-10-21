@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 import yaml
@@ -19,7 +20,7 @@ class TestPackageTools(unittest.TestCase):
         self.project = Path(temporary.name)
         self.build = self.project / "build"
         self.output = self.project / "dist/工具 包"
-        self.validator = Path(os.environ.get("VISIONTOOLS_VALIDATOR", ROOT / "build/3rdparty/VisionRTSDK/visionrt_validate_tool.exe"))
+        self.validator = Path(os.environ.get("VISIONTOOLS_VALIDATOR", ROOT / "build/3rdparty/VisionRTContracts/visionrt_validate_tool.exe"))
         self.assertTrue(self.validator.is_file(), "Build the SDK validator before package tests")
         self.declaration = self.project / "assets/tools/custom/Math/Arithmetic/tool.yaml"
         self.declaration.parent.mkdir(parents=True)
@@ -106,6 +107,19 @@ class TestPackageTools(unittest.TestCase):
         self.manifest["runtime_files"] = [{"source": str(dependency), "destination": "runtime/accelerator.dat"}]
         self.publish()
         self.assertEqual((self.output / "runtime/accelerator.dat").read_bytes(), b"runtime data")
+
+    @unittest.skipUnless(os.name == "nt", "Windows DLL search path contract")
+    def test_validator_uses_collected_runtime_without_developer_path(self):
+        runtime = next(
+            candidate for directory in os.get_exec_path()
+            for candidate in Path(directory).glob("opencv_world*.dll")
+            if candidate.stem[-1].isdigit()
+        )
+        self.manifest["runtime_files"] = [{"source": str(runtime), "destination": f"bin/{runtime.name}"}]
+        system_root = Path(os.environ["SystemRoot"])
+        with patch.dict(os.environ, {"PATH": os.pathsep.join(map(str, [system_root / "System32", system_root]))}):
+            archive = self.publish()
+        self.assertTrue(archive.is_file())
 
     def test_republish_removes_obsolete_files(self):
         self.publish()

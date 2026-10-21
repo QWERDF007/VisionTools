@@ -7,8 +7,8 @@
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
-#include <visionrt/sdk/Module.h>
-#include <visionrt/sdk/Tool.h>
+#include <visionrt/contracts/Module.h>
+#include <visionrt/contracts/Tool.h>
 
 #include <cassert>
 #include <cmath>
@@ -219,7 +219,7 @@ void testImageCropTool()
 
         Values inputs;
         inputs.emplace("images", ImageBatch({srcImage}));
-        inputs.emplace("rois", RoiBatch({{roi}}));
+        inputs.emplace("rect", roi);
 
         auto res = tool.execute(inputs);
         REQUIRE(res.status, "Crop must succeed");
@@ -255,7 +255,7 @@ void testImageCropTool()
         auto   roi = Roi::rectangle(0.75F, 0.0F, 1.0F, 1.0F, 0.0F);
         Values inputs;
         inputs.emplace("images", ImageBatch({OwnedImage::copyOf(nonUniform)}));
-        inputs.emplace("rois", RoiBatch({{roi}}));
+        inputs.emplace("rect", roi);
 
         auto res = tool.execute(inputs);
         REQUIRE(res.status, "Fractional crop must succeed via mask path");
@@ -274,12 +274,59 @@ void testImageCropTool()
         auto    roi = Roi::rectangle(0.1F, 0.1F, 0.1F, 0.1F, 0.0F);
         Values  inputs;
         inputs.emplace("images", ImageBatch({OwnedImage::copyOf(img)}));
-        inputs.emplace("rois", RoiBatch({{roi}}));
+        inputs.emplace("rect", roi);
 
         auto res = tool.execute(inputs);
         REQUIRE(!res.status, "Narrow ROI with no pixel centers must fail");
         REQUIRE(res.status.message.find("no valid pixel centers") != std::string::npos,
                 "Error must mention no valid pixel centers");
+    }
+
+    {
+        const auto first = OwnedImage::copyOf(cv::Mat(8, 10, CV_8UC1, cv::Scalar(31)));
+        const auto second = OwnedImage::copyOf(cv::Mat(12, 14, CV_8UC1, cv::Scalar(79)));
+        Values inputs{{"images", ImageBatch({first, second})}, {"rect", Roi::rectangle(-2, 1, 6, 3, 0)}};
+        const auto result = tool.execute(inputs);
+        REQUIRE(result.status, "One rectangle must crop every image in batch order");
+        const auto &batch = std::get<ImageBatch>(result.outputs.at("images")).images();
+        REQUIRE(batch.size() == 2, "Crop must preserve batch cardinality");
+        REQUIRE(batch[0].cols() == 4 && batch[1].rows() == 3, "Crop must clip partial bounds");
+        REQUIRE(batch[0].readOnlyMat().at<unsigned char>(0, 0) == 31, "First image order must be retained");
+        REQUIRE(batch[1].readOnlyMat().at<unsigned char>(0, 0) == 79, "Second image order must be retained");
+        REQUIRE(result.outputs.count("source_indices") == 0, "Scalar rectangle crop has no expanded ROI indices");
+        const auto &origin = std::get<NumericArray>(result.outputs.at("origins")).buffers()[0];
+        REQUIRE(origin.shape().size() == 2 && origin.shape()[0] == 2 && origin.shape()[1] == 2,
+                "Origins must have B by 2 shape");
+        const auto coordinates = origin.values<double>();
+        REQUIRE(coordinates[0] == 0 && coordinates[1] == 1 && coordinates[2] == 0 && coordinates[3] == 1,
+                "Each origin must correspond to the same-index crop");
+    }
+
+    {
+        Values inputs{{"images", ImageBatch({OwnedImage::copyOf(cv::Mat(4, 4, CV_8UC1, cv::Scalar(8)))})}};
+        for (const PortValue &invalid : std::vector<PortValue>{Missing{}, Roi::circle(1, 1, 1),
+                                                              RoiBatch({{Roi::rectangle(0, 0, 2, 2, 0)}}),
+                                                              Roi::rectangle(10, 10, 2, 2, 0)})
+        {
+            inputs.insert_or_assign("rect", invalid);
+            const auto result = tool.execute(inputs);
+            REQUIRE(!result.status, "Missing, non-rectangle, batch and disjoint inputs must fail");
+            REQUIRE(isMissing(result.outputs.at("images")) && isMissing(result.outputs.at("origins")),
+                    "Failure must not publish partial outputs");
+        }
+        inputs.insert_or_assign("images", ImageBatch{});
+        inputs.insert_or_assign("rect", Roi::rectangle(0, 0, 2, 2, 0));
+        const auto empty = tool.execute(inputs);
+        REQUIRE(empty.status && std::get<ImageBatch>(empty.outputs.at("images")).images().empty(),
+                "A valid empty image batch must yield an empty crop batch");
+        REQUIRE(std::get<NumericArray>(empty.outputs.at("origins")).buffers()[0].shape()[0] == 0,
+                "An empty batch must have zero origin rows");
+        inputs.insert_or_assign("images", ImageBatch({OwnedImage::copyOf(cv::Mat(4, 4, CV_8UC1, cv::Scalar(8))),
+                                                     OwnedImage::copyOf(cv::Mat(1, 1, CV_8UC1, cv::Scalar(9)))}));
+        inputs.insert_or_assign("rect", Roi::rectangle(2, 2, 2, 2, 45));
+        const auto partial = tool.execute(inputs);
+        REQUIRE(!partial.status && isMissing(partial.outputs.at("images")),
+                "A later disjoint image must fail the whole batch without publishing earlier crops");
     }
 
     std::cout << "[PASS] testImageCropTool passed." << std::endl;
@@ -469,6 +516,12 @@ void testReadImageTool()
         const auto *batch = std::get_if<ImageBatch>(&res.outputs["images"]);
         REQUIRE(batch && batch->images().size() == 1, "Must read 1 image");
         REQUIRE(batch->images()[0].cols() == 24 && batch->images()[0].rows() == 24, "Image dims must match 24x24");
+        cv::imwrite(tempPath, sample);
+        inputs.emplace("limit", std::int64_t{-1});
+        const auto negativeLimit = tool.execute(inputs);
+        std::filesystem::remove(tempPath);
+        REQUIRE(!negativeLimit.status && negativeLimit.status.message.find("limit") != std::string::npos,
+                "Negative image limit must be rejected rather than treated as unlimited");
     }
 
     std::cout << "[PASS] testReadImageTool passed." << std::endl;

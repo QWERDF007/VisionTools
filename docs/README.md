@@ -7,12 +7,14 @@
 - **项目概览与构建使用**: [../README.md](../README.md)
 - **唯一任务账本与验证记录**: [../WORKLOG.md](../WORKLOG.md)
 - **工具声明目录 (SSOT)**: [../assets/tools/](../assets/tools/)
+- **矩形裁剪**: [作者声明](../assets/tools/builtin/预处理/图像处理/图像裁剪.yaml)、[算子实现](../src/preprocess/ImageCropTool.cpp)、[执行契约](../tests/test_preprocess_contract.cpp)、[真实 DLL 消费](../tests/test_installation_consumer.cpp)。
   - 内置算子：`assets/tools/builtin/`
   - Python 工具：`assets/tools/custom/`；必要非代码资源在对应声明的 resources 中显式列出。
 - **作者命名验收**: [test_distribution.py](../tests/test_distribution.py)；领域 DLL 实际输出名见[图像目标](../src/preprocess/CMakeLists.txt)与[推理目标](../src/infer/CMakeLists.txt)。
-- **单一跨流程接收声明**: [跨流程接收.yaml](../assets/tools/builtin/流程控制/跨流程接收.yaml)；类型引用的公共定义与校验见 SDK [Schema.h](../3rdparty/VisionRTSDK/include/visionrt/sdk/Schema.h)。
+- **单一跨流程接收声明**: [跨流程接收.yaml](../assets/tools/builtin/流程控制/跨流程接收.yaml)；类型引用的公共定义与校验见 SDK [Schema.h](../3rdparty/VisionRTContracts/include/visionrt/contracts/Schema.h)。
 - **模块绑定配置**: [../tools/module_bindings.yaml](../tools/module_bindings.yaml)
-- **运行依赖配置**: [../tools/dependencies.yaml](../tools/dependencies.yaml)
+- **依赖路径默认值**: [../tools/dependencies.yaml](../tools/dependencies.yaml)
+- **原生运行库收集**: [CMake 安装组件](../CMakeLists.txt)；打包入口消费该组件的实际安装清单，动态加载的后端资源由同一组件安装。
 - **代码生成与工厂接入**: [../tools/generate_tool_contracts.py](../tools/generate_tool_contracts.py)
 - **分发打包与闭包校验**: [../tools/package_tools.py](../tools/package_tools.py)
 - **构建驱动脚本**: [../tools/build.cmd](../tools/build.cmd)
@@ -25,7 +27,7 @@
 | 图像预处理与阈值计算 | [OpenCV](https://github.com/opencv/opencv) (`imgproc`, `core`, `imgcodecs`) | 直接调用 `cv::adaptiveThreshold`、`cv::imread` 等成熟接口；矩形区域裁剪采用 `image.region()` 实现零拷贝视图并共享 OpenCV 内存块 `u`，保留 `rowStride`。 |
 | 声明解析与校验 | [PyYAML](https://github.com/yaml/pyyaml) | 严格依赖标准 PyYAML safe_load，消除私有简化解析带来的嵌套结构解析错误与类型歧义。 |
 | 深度学习推理与显存管理 | [InferRT](https://github.com/QWERDF007/InferRT) / TensorRT | PRIVATE 方式链接 `InferRT::model`，公开合同与 ModuleApi 不泄露后端类型；在 GPU 传输完成后同步并将结果封装为独立的 CPU 结构。 |
-| 共享工具合同 | [VisionRTSDK 子模块](../3rdparty/VisionRTSDK) (`VisionRT::ToolSDK`) | 复用 SDK 的值、模块与包校验，不在生产者维护另一套端口解析语义。 |
+| 共享工具合同 | [VisionRTContracts 子模块](../3rdparty/VisionRTContracts) (`VisionRT::Contracts`) | 复用 SDK 的值、模块与包校验，不在生产者维护另一套端口解析语义。 |
 
 ## 契约与接口设计
 

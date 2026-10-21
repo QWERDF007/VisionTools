@@ -15,7 +15,7 @@ target_include_directories(visiontools_infer PUBLIC
 )
 
 target_link_libraries(visiontools_infer PRIVATE
-    VisionRT::ToolSDK
+    VisionRT::Contracts
     InferRT::model
     CUDA::cudart
     ${OpenCV_LIBS}

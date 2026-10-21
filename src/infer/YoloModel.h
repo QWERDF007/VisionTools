@@ -2,7 +2,7 @@
 
 #include "YoloPostprocess.h"
 
-#include <visionrt/sdk/Tool.h>
+#include <visionrt/contracts/Tool.h>
 
 #include <array>
 

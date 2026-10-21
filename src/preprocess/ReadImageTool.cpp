@@ -83,6 +83,8 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         const auto color   = getStr(p::in::COLOR, "bgr");
         const auto rawPath = getStr(p::in::PATH, "");
         const auto limit   = getInt(p::in::LIMIT, 0);
+        if (limit < 0)
+            throw visionrt::ContractError("Image limit must be nonnegative");
 
         int flags = cv::IMREAD_COLOR;
         if (color == "unchanged")

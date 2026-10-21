@@ -11,7 +11,7 @@ include(ConfigCompiler)
 include(ConfigDependencyDefaults)
 include(ConfigOpenCV)
 include(ConfigYamlCpp)
-add_subdirectory(3rdparty/VisionRTSDK)
+add_subdirectory(3rdparty/VisionRTContracts)
 include(ConfigPython)
 include(AddTest)
 include(PrintConfig)
@@ -49,7 +49,7 @@ if(VISIONTOOLS_BUILD_INFER)
     list(APPEND VISIONTOOLS_BUILT_MODULES visiontools_infer)
 endif()
 
-set(VISIONTOOLS_SDK_INCLUDE_DIR "${VISIONRT_TOOL_SDK_INCLUDE_DIR}")
+set(VISIONTOOLS_SDK_INCLUDE_DIR "${VISIONRT_CONTRACTS_INCLUDE_DIR}")
 
 add_custom_command(
     OUTPUT ${VISIONTOOLS_GENERATOR_OUTPUTS}
@@ -64,8 +64,8 @@ add_custom_command(
             --sdk-include-dir "${VISIONTOOLS_SDK_INCLUDE_DIR}"
             --validator "$<TARGET_FILE:VisionRT::visionrt_validate_tool>"
     DEPENDS ${VISIONTOOLS_TOOL_YAMLS} ${VISIONTOOLS_MODULE_BINDINGS} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_tool_contracts.py"
-            "${VISIONTOOLS_SDK_INCLUDE_DIR}/visionrt/sdk/Value.h"
-            "${VISIONTOOLS_SDK_INCLUDE_DIR}/visionrt/sdk/Schema.h"
+            "${VISIONTOOLS_SDK_INCLUDE_DIR}/visionrt/contracts/Value.h"
+            "${VISIONTOOLS_SDK_INCLUDE_DIR}/visionrt/contracts/Schema.h"
             VisionRT::visionrt_validate_tool
     COMMENT "Generating tool contracts, constants, and module factories from YAML declarations..."
     VERBATIM
@@ -73,82 +73,19 @@ add_custom_command(
 
 add_custom_target(generate_contracts DEPENDS ${VISIONTOOLS_GENERATOR_OUTPUTS})
 
-# 导出 CMake 解析的运行依赖路径供打包脚本单源消费 (YS-01 / YS-03 / VT-S01)
-set(_clean_inferrt_root "${INFERRT_ROOT}")
-string(REPLACE "\\" "/" _clean_inferrt_root "${_clean_inferrt_root}")
-set(_clean_cuda_root "${CUDAToolkit_ROOT}")
-string(REPLACE "\\" "/" _clean_cuda_root "${_clean_cuda_root}")
-set(_clean_trt_root "${TRT_ROOT}")
-string(REPLACE "\\" "/" _clean_trt_root "${_clean_trt_root}")
-
-set(_resolved_deps_content "# Auto-generated build dependencies manifest\n")
-string(APPEND _resolved_deps_content "variant: \"${VISIONTOOLS_DISTRIBUTION}\"\n")
+set(_resolved_deps_content "variant: \"${VISIONTOOLS_DISTRIBUTION}\"\n")
 string(APPEND _resolved_deps_content "config: \"$<CONFIG>\"\n")
 string(APPEND _resolved_deps_content "validator: \"$<TARGET_FILE:VisionRT::visionrt_validate_tool>\"\n")
-string(APPEND _resolved_deps_content "modules:\n")
-string(APPEND _resolved_deps_content "  visiontools_preprocess:\n")
-string(APPEND _resolved_deps_content "    source: \"$<TARGET_FILE:visiontools_preprocess>\"\n")
-if(VISIONTOOLS_BUILD_INFER)
-    string(APPEND _resolved_deps_content "  visiontools_infer:\n")
-    string(APPEND _resolved_deps_content "    source: \"$<TARGET_FILE:visiontools_infer>\"\n")
-endif()
-
-string(APPEND _resolved_deps_content "runtime_files:\n")
-
-# OpenCV runtime dependency (Release / Debug sensitive)
-get_filename_component(_opencv_rel_name "${VISIONTOOLS_OPENCV_RELEASE_DLL}" NAME)
-if(VISIONTOOLS_OPENCV_DEBUG_DLL)
-    get_filename_component(_opencv_dbg_name "${VISIONTOOLS_OPENCV_DEBUG_DLL}" NAME)
-    string(APPEND _resolved_deps_content "  - source: \"$<IF:$<CONFIG:Debug>,${VISIONTOOLS_OPENCV_DEBUG_DLL},${VISIONTOOLS_OPENCV_RELEASE_DLL}>\"\n")
-    string(APPEND _resolved_deps_content "    destination: \"bin/$<IF:$<CONFIG:Debug>,${_opencv_dbg_name},${_opencv_rel_name}>\"\n")
-else()
-    string(APPEND _resolved_deps_content "  - source: \"${VISIONTOOLS_OPENCV_RELEASE_DLL}\"\n")
-    string(APPEND _resolved_deps_content "    destination: \"bin/${_opencv_rel_name}\"\n")
-endif()
-
-if(VISIONTOOLS_BUILD_INFER)
-    if(NOT EXISTS "${_clean_inferrt_root}/bin/inferrt_core.dll")
-        message(FATAL_ERROR "Required InferRT runtime DLL not found: ${_clean_inferrt_root}/bin/inferrt_core.dll")
-    endif()
-    if(NOT EXISTS "${_clean_inferrt_root}/bin/inferrt_model.dll")
-        message(FATAL_ERROR "Required InferRT runtime DLL not found: ${_clean_inferrt_root}/bin/inferrt_model.dll")
-    endif()
-    string(APPEND _resolved_deps_content "  - source: \"${_clean_inferrt_root}/bin/inferrt_core.dll\"\n")
-    string(APPEND _resolved_deps_content "    destination: \"bin/inferrt_core.dll\"\n")
-    string(APPEND _resolved_deps_content "  - source: \"${_clean_inferrt_root}/bin/inferrt_model.dll\"\n")
-    string(APPEND _resolved_deps_content "    destination: \"bin/inferrt_model.dll\"\n")
-
-    file(GLOB _cuda_runtime_dlls "${_clean_cuda_root}/bin/cudart64_*.dll")
-    if(NOT _cuda_runtime_dlls)
-        message(FATAL_ERROR "Required CUDA runtime DLL (cudart64_*.dll) not found in ${_clean_cuda_root}/bin")
-    endif()
-    list(GET _cuda_runtime_dlls 0 _cuda_rt_dll)
-    get_filename_component(_cuda_rt_name "${_cuda_rt_dll}" NAME)
-    string(APPEND _resolved_deps_content "  - source: \"${_cuda_rt_dll}\"\n")
-    string(APPEND _resolved_deps_content "    destination: \"bin/${_cuda_rt_name}\"\n")
-
-    file(GLOB _trt_candidates "${_clean_trt_root}/bin/nvinfer_*.dll" "${_clean_trt_root}/lib/nvinfer_*.dll")
-    set(_trt_core_dll "")
-    foreach(_tc IN LISTS _trt_candidates)
-        get_filename_component(_tc_name "${_tc}" NAME)
-        string(TOLOWER "${_tc_name}" _tc_lower)
-        if(NOT _tc_lower MATCHES "plugin" AND NOT _tc_lower MATCHES "dispatch" AND NOT _tc_lower MATCHES "lean")
-            set(_trt_core_dll "${_tc}")
-            break()
-        endif()
-    endforeach()
-    if(NOT _trt_core_dll)
-        message(FATAL_ERROR "Required TensorRT core runtime DLL (nvinfer_*.dll) not found in ${_clean_trt_root}")
-    endif()
-    get_filename_component(_trt_core_name "${_trt_core_dll}" NAME)
-    string(APPEND _resolved_deps_content "  - source: \"${_trt_core_dll}\"\n")
-    string(APPEND _resolved_deps_content "    destination: \"bin/${_trt_core_name}\"\n")
-endif()
-
+string(APPEND _resolved_deps_content "runtime_install:\n  cmake: \"${CMAKE_COMMAND}\"\n  component: VisionToolsRuntime\n")
+string(APPEND _resolved_deps_content "runtime_files: []\nmodules:\n")
+foreach(_module IN LISTS VISIONTOOLS_BUILT_MODULES)
+    string(APPEND _resolved_deps_content "  ${_module}:\n    source: \"$<TARGET_FILE:${_module}>\"\n")
+endforeach()
 file(GENERATE
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/resolved_dependencies.yaml"
     CONTENT "${_resolved_deps_content}"
 )
+
 
 # 导出开发环境 PATH 前缀（全部来自依赖解析结果），供 tools\build.cmd 打包等阶段复用，避免机器硬编码
 set(_devenv_dirs "${VISIONTOOLS_OPENCV_BIN}")
@@ -171,6 +108,21 @@ if(VISIONTOOLS_BUILD_INFER AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/infer")
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/probes/infer")
         add_subdirectory(probes/infer)
     endif()
+endif()
+
+install(TARGETS ${VISIONTOOLS_BUILT_MODULES}
+    RUNTIME_DEPENDENCIES
+        DIRECTORIES ${_devenv_dirs}
+        PRE_EXCLUDE_REGEXES "api-ms-.*" "ext-ms-.*"
+        POST_EXCLUDE_REGEXES ".*[Ss][Yy][Ss][Tt][Ee][Mm]32/.*"
+    RUNTIME DESTINATION bin COMPONENT VisionToolsRuntime
+    LIBRARY DESTINATION bin COMPONENT VisionToolsRuntime
+)
+if(VISIONTOOLS_BUILD_INFER AND WIN32)
+    install(DIRECTORY "${TRT_ROOT}/bin/"
+        DESTINATION bin COMPONENT VisionToolsRuntime
+        FILES_MATCHING PATTERN "nvinfer_builder_resource*.dll"
+    )
 endif()
 
 # 包含契约与单元测试

@@ -1,9 +1,9 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
-#include <visionrt/sdk/Module.h>
-#include <visionrt/sdk/Package.h>
-#include <visionrt/sdk/Tool.h>
+#include <visionrt/contracts/Module.h>
+#include <visionrt/contracts/Package.h>
+#include <visionrt/contracts/Tool.h>
 
 #include <cassert>
 #include <cstdlib>
@@ -53,7 +53,7 @@ inline void freeSharedLib(LibHandle h)
 }
 #endif
 
-#include <visionrt/sdk/SchemaYaml.h>
+#include <visionrt/contracts/SchemaYaml.h>
 #include <yaml-cpp/yaml.h>
 
 #define REQUIRE_STRUCTURE(cond, msg)                                                                        \
@@ -177,6 +177,7 @@ int main(int argc, char **argv)
     }
 
     std::filesystem::path dllPath = target;
+    std::vector<std::filesystem::path> modulePaths;
     std::filesystem::path packageDir;
     if (std::filesystem::is_directory(target))
     {
@@ -191,6 +192,8 @@ int main(int argc, char **argv)
             REQUIRE_STRUCTURE(it != indexData.modules.end() && !it->second.library.empty(),
                               "module_index.yaml must declare visiontools_preprocess module");
             dllPath = target / it->second.library;
+            for (const auto &[name, module] : indexData.modules)
+                modulePaths.push_back(target / module.library);
         }
         catch (const std::exception &e)
         {
@@ -212,34 +215,50 @@ int main(int argc, char **argv)
         }
     }
 
-    std::filesystem::path p = std::filesystem::absolute(dllPath);
-#ifdef _WIN32
-    SetDllDirectoryW(p.parent_path().wstring().c_str());
-#endif
-    std::cout << "[INFO] Loading module dynamically: " << p.string() << std::endl;
-    LibHandle handle = loadSharedLib(p);
-    if (!handle)
-    {
-#ifdef _WIN32
-        std::cerr << "[LOADING_ERROR] Failed to load library: " << p.string() << " (GetLastError=" << GetLastError()
-                  << ")" << std::endl;
-#else
-        std::cerr << "[LOADING_ERROR] Failed to load library: " << p.string() << " (" << dlerror() << ")" << std::endl;
-#endif
-    }
-    REQUIRE_LOADING(handle != nullptr, "loadSharedLib must succeed");
-
+    if (modulePaths.empty())
+        modulePaths.push_back(dllPath);
+    LibHandle handle = nullptr;
+    const visionrt::ModuleApi *api = nullptr;
     using ModuleApiFn = const visionrt::ModuleApi *(*)();
-    auto *apiFn       = reinterpret_cast<ModuleApiFn>(getProcAddr(handle, "visiontoolsModuleApi"));
-    REQUIRE_ABI(apiFn != nullptr, "getProcAddr(visiontoolsModuleApi) must succeed");
+    for (const auto &modulePath : modulePaths)
+    {
+        std::filesystem::path moduleFile = std::filesystem::absolute(modulePath);
+#ifdef _WIN32
+        SetDllDirectoryW(moduleFile.parent_path().wstring().c_str());
+#endif
+        std::cout << "[INFO] Loading module dynamically: " << moduleFile.string() << std::endl;
+        LibHandle moduleHandle = loadSharedLib(moduleFile);
+        if (!moduleHandle)
+        {
+#ifdef _WIN32
+            std::cerr << "[LOADING_ERROR] Failed to load library: " << moduleFile.string() << " (GetLastError=" << GetLastError()
+                      << ")" << std::endl;
+#else
+            std::cerr << "[LOADING_ERROR] Failed to load library: " << moduleFile.string() << " (" << dlerror() << ")" << std::endl;
+#endif
+        }
+        REQUIRE_LOADING(moduleHandle != nullptr, "loadSharedLib must succeed");
 
-    const visionrt::ModuleApi *api = apiFn();
-    REQUIRE_ABI(api != nullptr, "visiontoolsModuleApi() must return non-null pointer");
-    REQUIRE_ABI(api->abi_major == visionrt::MODULE_ABI_MAJOR, "ABI major must match SDK MODULE_ABI_MAJOR");
-    REQUIRE_ABI(api->struct_bytes == sizeof(visionrt::ModuleApi),
-                "struct_bytes must match sizeof(visionrt::ModuleApi)");
-    REQUIRE_ABI(api->create != nullptr, "create pointer must be non-null");
-    REQUIRE_ABI(api->destroy != nullptr, "destroy pointer must be non-null");
+        auto *apiFn = reinterpret_cast<ModuleApiFn>(getProcAddr(moduleHandle, "visiontoolsModuleApi"));
+        REQUIRE_ABI(apiFn != nullptr, "getProcAddr(visiontoolsModuleApi) must succeed");
+
+        const visionrt::ModuleApi *moduleApi = apiFn();
+        REQUIRE_ABI(moduleApi != nullptr, "visiontoolsModuleApi() must return non-null pointer");
+        REQUIRE_ABI(moduleApi->abi_major == visionrt::MODULE_ABI_MAJOR, "ABI major must match SDK MODULE_ABI_MAJOR");
+        REQUIRE_ABI(moduleApi->struct_bytes == sizeof(visionrt::ModuleApi),
+                    "struct_bytes must match sizeof(visionrt::ModuleApi)");
+        REQUIRE_ABI(moduleApi->create != nullptr, "create pointer must be non-null");
+        REQUIRE_ABI(moduleApi->destroy != nullptr, "destroy pointer must be non-null");
+        if (std::filesystem::equivalent(moduleFile, dllPath))
+        {
+            handle = moduleHandle;
+            api = moduleApi;
+        }
+        else
+            freeSharedLib(moduleHandle);
+    }
+    REQUIRE_ABI(api != nullptr, "Preprocess module must provide an API");
+    std::cout << "[INFO] Loaded module ABI contracts: " << modulePaths.size() << std::endl;
 
     visionrt::ToolServices services{visionrt::PathResolver(std::filesystem::current_path())};
     visionrt::ToolStatus   status;
@@ -334,7 +353,7 @@ int main(int argc, char **argv)
         visionrt::Values     inputs;
         inputs.emplace("images", visionrt::ImageBatch({inImg}));
         auto roi = visionrt::Roi::rectangle(10.0F, 10.0F, 20.0F, 20.0F, 0.0F);
-        inputs.emplace("rois", visionrt::RoiBatch({{roi}}));
+        inputs.emplace("rect", roi);
 
         auto res = inst->execute(inputs);
         REQUIRE_EXECUTION(res.status.code == 0, "Crop tool execution must succeed");
@@ -506,7 +525,7 @@ int main(int argc, char **argv)
 
     // Verify tool coverage: expected == actual
     std::cout << "[INFO] Installation consumer summary:" << std::endl;
-    std::cout << "  DLL path: " << p.string() << std::endl;
+    std::cout << "  DLL path: " << std::filesystem::absolute(dllPath).string() << std::endl;
     std::cout << "  Expected tools count: " << expectedTools.size() << std::endl;
     std::cout << "  Actual executed tools count: " << actualExecutedTools.size() << std::endl;
     REQUIRE(actualExecutedTools == expectedTools, "All expected tools must be tested and succeed without skipping");

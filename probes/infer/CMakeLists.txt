@@ -12,8 +12,8 @@ endif()
 if(NOT TARGET opencv_core)
     find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc imgcodecs)
 endif()
-if(NOT TARGET VisionRT::ToolSDK)
-    find_package(VisionRTToolSDK CONFIG REQUIRED)
+if(NOT TARGET VisionRT::Contracts)
+    find_package(VisionRTContracts CONFIG REQUIRED)
 endif()
 if(NOT TARGET CUDA::cudart)
     find_package(CUDAToolkit REQUIRED)
@@ -29,7 +29,7 @@ target_include_directories(visiontools_infer_probe PRIVATE
 
 # 公开 probe 动态加载 visiontools_infer，仅依赖公开 SDK、OpenCV、CUDA 与 yaml-cpp (YS-04 / YVT2-04)
 target_link_libraries(visiontools_infer_probe PRIVATE
-    VisionRT::ToolSDK
+    VisionRT::Contracts
     ${OpenCV_LIBS}
     CUDA::cudart
     yaml-cpp::yaml-cpp
@@ -37,4 +37,4 @@ target_link_libraries(visiontools_infer_probe PRIVATE
 if(WIN32)
     target_link_libraries(visiontools_infer_probe PRIVATE version)
 endif()
-target_compile_definitions(visiontools_infer_probe PRIVATE VISIONRT_SDK_VERSION="${VisionRTToolSDK_VERSION}")
+target_compile_definitions(visiontools_infer_probe PRIVATE VISIONRT_SDK_VERSION="${VisionRTContracts_VERSION}")

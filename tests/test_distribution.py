@@ -35,7 +35,7 @@ class DistributionContract(unittest.TestCase):
         self.assertIn("type_from", receivers[0]["outputs"][0])
 
     def test_normal_generation_indexes_python_and_platform_declarations(self):
-        validator = Path(os.environ.get("VISIONTOOLS_VALIDATOR", ROOT / "build/3rdparty/VisionRTSDK/visionrt_validate_tool.exe"))
+        validator = Path(os.environ.get("VISIONTOOLS_VALIDATOR", ROOT / "build/3rdparty/VisionRTContracts/visionrt_validate_tool.exe"))
         with tempfile.TemporaryDirectory() as temporary:
             generated = Path(temporary)
             result = subprocess.run([
@@ -44,7 +44,7 @@ class DistributionContract(unittest.TestCase):
                 "--bindings", str(ROOT / "tools/module_bindings.yaml"),
                 "--output-dir", str(generated), "--index-output", str(generated / "module_index.yaml"),
                 "--variant", "portable-release", "--modules", "visiontools_preprocess",
-                "--sdk-include-dir", str(ROOT / "3rdparty/VisionRTSDK/include"),
+                "--sdk-include-dir", str(ROOT / "3rdparty/VisionRTContracts/include"),
                 "--validator", str(validator),
             ], capture_output=True, text=True, encoding="utf-8", errors="replace")
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -55,7 +55,7 @@ class DistributionContract(unittest.TestCase):
             self.assertEqual(set(index["modules"]), {"visiontools_preprocess"})
 
     def test_python_package_uses_actual_manifest_without_backend_requirements(self):
-        validator = Path(os.environ.get("VISIONTOOLS_VALIDATOR", ROOT / "build/3rdparty/VisionRTSDK/visionrt_validate_tool.exe"))
+        validator = Path(os.environ.get("VISIONTOOLS_VALIDATOR", ROOT / "build/3rdparty/VisionRTContracts/visionrt_validate_tool.exe"))
         self.assertTrue(validator.is_file(), "Build the SDK validator before this contract")
         with tempfile.TemporaryDirectory() as temporary:
             project = Path(temporary)

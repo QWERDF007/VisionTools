@@ -1,5 +1,5 @@
-#include <visionrt/sdk/Module.h>
-#include <visionrt/sdk/Tool.h>
+#include <visionrt/contracts/Module.h>
+#include <visionrt/contracts/Tool.h>
 
 #include <algorithm>
 #include <cassert>

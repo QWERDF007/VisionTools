@@ -33,12 +33,6 @@ bool insidePolygon(std::span<const cv::Point2d> vertices, double x, double y)
     return inside;
 }
 
-template<class T>
-visionrt::NumericBuffer makeBuffer(visionrt::DType dtype, std::vector<std::int64_t> shape, const std::vector<T> &values)
-{
-    return visionrt::NumericBuffer::copy(dtype, std::move(shape), std::as_bytes(std::span(values)));
-}
-
 } // namespace
 
 ImageCropTool::ImageCropTool(const visionrt::ToolServices &services)
@@ -49,9 +43,7 @@ ImageCropTool::ImageCropTool(const visionrt::ToolServices &services)
 visionrt::ToolStatus ImageCropTool::initialize(const visionrt::Values &parameters)
 {
     if (!parameters.empty())
-    {
         return {1, "ImageCropTool accepts no init parameters"};
-    }
     return {};
 }
 
@@ -59,194 +51,94 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
 {
     try
     {
-        auto imgIt = inputs.find(p::in::IMAGES);
-        auto roiIt = inputs.find(p::in::ROIS);
-        if (imgIt == inputs.end() || visionrt::isMissing(imgIt->second))
+        const auto imageInput = inputs.find(p::in::IMAGES);
+        const auto rectangleInput = inputs.find(p::in::RECT);
+        if (imageInput == inputs.end() || visionrt::isMissing(imageInput->second))
             throw visionrt::ContractError("Missing input: images");
-        if (roiIt == inputs.end() || visionrt::isMissing(roiIt->second))
-            throw visionrt::ContractError("Missing input: rois");
-
-        const auto *images = std::get_if<visionrt::ImageBatch>(&imgIt->second);
-        const auto *rois   = std::get_if<visionrt::RoiBatch>(&roiIt->second);
+        if (rectangleInput == inputs.end() || visionrt::isMissing(rectangleInput->second))
+            throw visionrt::ContractError("Missing input: rect");
+        const auto *images = std::get_if<visionrt::ImageBatch>(&imageInput->second);
         if (!images)
             throw visionrt::ContractError("Expected ImageBatch for input: images");
-        if (!rois)
-            throw visionrt::ContractError("Expected RoiBatch for input: rois");
-
-        if (images->images().size() != rois->images().size())
+        visionrt::validateValue({visionrt::Type::Rect}, rectangleInput->second);
+        const auto &rectangle = std::get<visionrt::Roi>(rectangleInput->second);
+        const auto corners = rectangle.rectangleCorners();
+        double minimumX = corners[0].x, maximumX = corners[0].x;
+        double minimumY = corners[0].y, maximumY = corners[0].y;
+        for (const auto &corner : corners)
         {
-            throw visionrt::ContractError("Crop image/ROI batch lengths differ");
+            minimumX = std::min(minimumX, corner.x);
+            minimumY = std::min(minimumY, corner.y);
+            maximumX = std::max(maximumX, corner.x);
+            maximumY = std::max(maximumY, corner.y);
         }
-
-        std::vector<visionrt::OwnedImage> output;
-        std::vector<std::int64_t>         indices;
-        std::vector<double>               origins;
-
-        for (std::size_t b = 0; b < images->images().size(); ++b)
+        const auto snap = [](double value)
         {
-            const auto &image = images->images()[b];
-            for (std::size_t n = 0; n < rois->images()[b].size(); ++n)
+            const double nearest = std::round(value);
+            return std::abs(value - nearest)
+                        <= 32 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(value))
+                     ? nearest : value;
+        };
+        const bool axisAligned = std::remainder(static_cast<double>(rectangle.encoded()[5]), 360.0) == 0.0;
+        const double epsilon = 32 * std::numeric_limits<double>::epsilon()
+                             * std::max({1.0, std::abs(minimumX), std::abs(minimumY), std::abs(maximumX), std::abs(maximumY)});
+        std::vector<visionrt::OwnedImage> output;
+        std::vector<double> origins;
+        output.reserve(images->images().size());
+        origins.reserve(images->images().size() * 2);
+        for (std::size_t index = 0; index < images->images().size(); ++index)
+        {
+            const auto &image = images->images()[index];
+            const std::string context = "Crop image=" + std::to_string(index) + ": ";
+            const int left = static_cast<int>(std::clamp(std::floor(snap(minimumX)), 0.0, static_cast<double>(image.cols())));
+            const int top = static_cast<int>(std::clamp(std::floor(snap(minimumY)), 0.0, static_cast<double>(image.rows())));
+            const int right = static_cast<int>(std::clamp(std::ceil(snap(maximumX)), 0.0, static_cast<double>(image.cols())));
+            const int bottom = static_cast<int>(std::clamp(std::ceil(snap(maximumY)), 0.0, static_cast<double>(image.rows())));
+            if (left >= right || top >= bottom)
+                throw visionrt::ContractError(context + "Rect is outside the image");
+            const cv::Rect bounds(left, top, right - left, bottom - top);
+            const bool coversEveryPixelCenter = axisAligned && left + 0.5 >= minimumX - epsilon
+                                             && right - 0.5 <= maximumX + epsilon && top + 0.5 >= minimumY - epsilon
+                                             && bottom - 0.5 <= maximumY + epsilon;
+            if (coversEveryPixelCenter)
+                output.push_back(image.region(bounds));
+            else
             {
-                const auto       &roi     = rois->images()[b][n];
-                const std::string context = "Crop b=" + std::to_string(b) + " n=" + std::to_string(n) + ": ";
-                if (roi.kind() == visionrt::RoiKind::Segment || roi.kind() == visionrt::RoiKind::PointSet)
-                {
-                    throw visionrt::ContractError(context + "line and point-set ROI have no supported area");
-                }
-                const auto                   encoded = roi.encoded();
-                std::array<cv::Point2d, 4>   corners;
-                std::vector<cv::Point2d>     polygon;
-                std::span<const cv::Point2d> vertices;
-                double                       minimumX, minimumY, maximumX, maximumY;
-
-                if (roi.kind() == visionrt::RoiKind::Circle)
-                {
-                    minimumX = static_cast<double>(encoded[1]) - encoded[3];
-                    minimumY = static_cast<double>(encoded[2]) - encoded[3];
-                    maximumX = static_cast<double>(encoded[1]) + encoded[3];
-                    maximumY = static_cast<double>(encoded[2]) + encoded[3];
-                }
-                else
-                {
-                    if (roi.kind() == visionrt::RoiKind::Rectangle)
-                    {
-                        corners  = roi.rectangleCorners();
-                        vertices = corners;
-                    }
-                    else
-                    {
-                        polygon.reserve((encoded.size() - 1) / 2);
-                        for (std::size_t i = 1; i < encoded.size(); i += 2)
-                        {
-                            polygon.emplace_back(encoded[i], encoded[i + 1]);
-                        }
-                        vertices = polygon;
-                    }
-                    minimumX = maximumX = vertices[0].x;
-                    minimumY = maximumY = vertices[0].y;
-                    for (const auto &vertex : vertices)
-                    {
-                        minimumX = std::min(minimumX, vertex.x);
-                        minimumY = std::min(minimumY, vertex.y);
-                        maximumX = std::max(maximumX, vertex.x);
-                        maximumY = std::max(maximumY, vertex.y);
-                    }
-                }
-
-                const auto snap = [](double value)
-                {
-                    const double nearest = std::round(value);
-                    return std::abs(value - nearest)
-                                <= 32 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(value))
-                             ? nearest
-                             : value;
-                };
-
-                const int left
-                    = static_cast<int>(std::clamp(std::floor(snap(minimumX)), 0.0, static_cast<double>(image.cols())));
-                const int top
-                    = static_cast<int>(std::clamp(std::floor(snap(minimumY)), 0.0, static_cast<double>(image.rows())));
-                const int right
-                    = static_cast<int>(std::clamp(std::ceil(snap(maximumX)), 0.0, static_cast<double>(image.cols())));
-                const int bottom
-                    = static_cast<int>(std::clamp(std::ceil(snap(maximumY)), 0.0, static_cast<double>(image.rows())));
-
-                if (left >= right || top >= bottom)
-                {
-                    throw visionrt::ContractError(context + "ROI is outside the image");
-                }
-
-                const cv::Rect bounds(left, top, right - left, bottom - top);
-
-                // Zero-copy readonly view for axis-aligned rectangles:
-                // Only taken if EVERY pixel center within bounds is covered by the ROI (N04 / NS-03)
-                // Shares image.owner() and preserves rowStride() per TS-03 / VS-03 / F06
-                const bool isAxisAlignedRect = (roi.kind() == visionrt::RoiKind::Rectangle
-                                                && std::remainder(static_cast<double>(encoded[5]), 360.0) == 0.0);
-
-                const double eps
-                    = 32.0 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::max(maximumX, maximumY));
-                const bool coversEveryPixelCenter = isAxisAlignedRect && (left + 0.5 >= minimumX - eps)
-                                                 && (left + bounds.width - 0.5 <= maximumX + eps)
-                                                 && (top + 0.5 >= minimumY - eps)
-                                                 && (top + bounds.height - 0.5 <= maximumY + eps);
-
-                if (coversEveryPixelCenter)
-                {
-                    output.push_back(image.region(bounds));
-                    indices.push_back(static_cast<std::int64_t>(b));
-                    indices.push_back(static_cast<std::int64_t>(n));
-                    origins.push_back(left);
-                    origins.push_back(top);
-                    continue;
-                }
-
                 cv::Mat mask(bounds.height, bounds.width, CV_8UC1, cv::Scalar(0));
-                bool    any = false;
-
-                for (int y = 0; y < bounds.height; ++y)
+                bool any = false;
+                for (int rowIndex = 0; rowIndex < bounds.height; ++rowIndex)
                 {
-                    auto *row = mask.ptr<unsigned char>(y);
-                    for (int x = 0; x < bounds.width; ++x)
+                    auto *row = mask.ptr<unsigned char>(rowIndex);
+                    for (int column = 0; column < bounds.width; ++column)
                     {
-                        const double centerX = left + x + 0.5;
-                        const double centerY = top + y + 0.5;
-                        bool         covered;
-                        if (roi.kind() == visionrt::RoiKind::Circle)
+                        if (insidePolygon(corners, left + column + 0.5, top + rowIndex + 0.5))
                         {
-                            const double dx = centerX - encoded[1];
-                            const double dy = centerY - encoded[2];
-                            covered         = dx * dx + dy * dy <= static_cast<double>(encoded[3]) * encoded[3];
-                        }
-                        else
-                        {
-                            covered = insidePolygon(vertices, centerX, centerY);
-                        }
-                        if (covered)
-                        {
-                            row[x] = 255;
-                            any    = true;
+                            row[column] = 255;
+                            any = true;
                         }
                     }
                 }
-
                 if (!any)
-                {
-                    throw visionrt::ContractError(context + "ROI has no valid pixel centers");
-                }
-
+                    throw visionrt::ContractError(context + "Rect has no valid pixel centers");
                 cv::Mat cropped;
                 image.readOnlyMat()(bounds).copyTo(cropped, mask);
                 output.push_back(visionrt::OwnedImage::take(std::move(cropped)));
-                indices.push_back(static_cast<std::int64_t>(b));
-                indices.push_back(static_cast<std::int64_t>(n));
-                origins.push_back(left);
-                origins.push_back(top);
             }
+            origins.push_back(left);
+            origins.push_back(top);
         }
-
-        const auto       count = static_cast<std::int64_t>(output.size());
+        const auto count = static_cast<std::int64_t>(output.size());
         visionrt::Values results;
         results.emplace(p::out::IMAGES, visionrt::ImageBatch(std::move(output)));
-        results.emplace(p::out::SOURCE_INDICES,
-                        visionrt::NumericArray(visionrt::DType::Int64, 2, visionrt::Layout::Dense,
-                                               {makeBuffer(visionrt::DType::Int64, {count, 2}, indices)}));
         results.emplace(p::out::ORIGINS,
                         visionrt::NumericArray(visionrt::DType::Float64, 2, visionrt::Layout::Dense,
-                                               {makeBuffer(visionrt::DType::Float64, {count, 2}, origins)}));
-
+                            {visionrt::NumericBuffer::copy(visionrt::DType::Float64, {count, 2},
+                                                          std::as_bytes(std::span(origins)))}));
         return {{}, std::move(results)};
     }
-    catch (const std::exception &e)
+    catch (const std::exception &error)
     {
-        visionrt::Values results;
-        results.emplace(p::out::IMAGES, visionrt::Missing{});
-        results.emplace(p::out::SOURCE_INDICES, visionrt::Missing{});
-        results.emplace(p::out::ORIGINS, visionrt::Missing{});
-        return {
-            {1, e.what()},
-            std::move(results)
-        };
+        return {{1, error.what()}, {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ORIGINS, visionrt::Missing{}}}};
     }
 }
 
