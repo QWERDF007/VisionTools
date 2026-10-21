@@ -4,4 +4,4 @@
 	branch = master
 [submodule "3rdparty/VisionRTContracts"]
 	path = 3rdparty/VisionRTContracts
-	url = https://github.com/QWERDF007/VisionRTSDK.git
+	url = https://github.com/QWERDF007/VisionRTContracts.git
