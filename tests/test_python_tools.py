@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""
-Unit tests for Python custom tool contracts (VT-07 / VS-07).
-Validates:
-  - mean.py missing input
-  - mean.py empty batch
-  - mean.py read-only views with ragged/different shapes
-  - mean.py float64 dense rank=1 output
-  - counter.py lifecycle and counting
-"""
+"""Public lifecycle and input/output contracts for Python example tools."""
 
 import importlib.util
 import pathlib
@@ -35,13 +27,69 @@ class TestPythonToolContracts(unittest.TestCase):
         init_res = instance.initialize({})
         self.assertEqual(init_res.get("__status_code"), 0)
 
-        res = instance.execute({})
-        self.assertNotEqual(res.get("__status_code"), 0)
-        self.assertIn("images", res.get("__status_message"))
-        self.assertIsNone(res.get("means"))
+        for inputs in ({}, {"images": None}):
+            with self.subTest(inputs=inputs):
+                res = instance.execute(inputs)
+                self.assertEqual(res.get("__status_code"), 1)
+                self.assertIn("输入端口 'images' 缺失", res.get("__status_message"))
+                self.assertIsNone(res.get("means"))
 
         rel_res = instance.release()
         self.assertEqual(rel_res.get("__status_code"), 0)
+
+    def test_mean_rejects_non_batch_inputs(self):
+        instance = load_module_from_file(self.mean_py).ToolInstance()
+        instance.initialize({})
+        image = np.ones((2, 3), dtype=np.uint8)
+        for images in (image, (image,), {"image": image}, 7):
+            with self.subTest(container=type(images).__name__):
+                result = instance.execute({"images": images})
+                self.assertEqual(result["__status_code"], 1)
+                self.assertIn("输入端口 'images'", result["__status_message"])
+                self.assertIn("list", result["__status_message"])
+                self.assertIsNone(result["means"])
+
+    def test_mean_rejects_non_image_elements(self):
+        instance = load_module_from_file(self.mean_py).ToolInstance()
+        instance.initialize({})
+        image = np.ones((2, 3), dtype=np.uint8)
+        for invalid in (np.float32(2), "bad", [[1, 2]], None):
+            with self.subTest(element=type(invalid).__name__):
+                result = instance.execute({"images": [image, invalid]})
+                self.assertEqual(result["__status_code"], 1)
+                self.assertIn("输入端口 'images'", result["__status_message"])
+                self.assertIn("批次索引 1", result["__status_message"])
+                self.assertIn("ndarray", result["__status_message"])
+                self.assertIsNone(result["means"])
+
+    def test_mean_rejects_invalid_image_shapes(self):
+        instance = load_module_from_file(self.mean_py).ToolInstance()
+        instance.initialize({})
+        valid = np.ones((2, 3), dtype=np.uint8)
+        for shape in ((), (3,), (1, 2, 3, 4), (0, 3), (2, 0), (2, 3, 0)):
+            with self.subTest(shape=shape):
+                result = instance.execute({"images": [valid, np.zeros(shape, dtype=np.uint8)]})
+                self.assertEqual(result["__status_code"], 1)
+                self.assertIn("输入端口 'images'", result["__status_message"])
+                self.assertIn("批次索引 1", result["__status_message"])
+                self.assertIn("图像形状", result["__status_message"])
+                self.assertIn(str(shape), result["__status_message"])
+                self.assertIsNone(result["means"])
+
+    def test_mean_rejects_non_real_pixels(self):
+        instance = load_module_from_file(self.mean_py).ToolInstance()
+        instance.initialize({})
+        image = np.ones((2, 3), dtype=np.uint8)
+        for dtype in (np.str_, object, np.bool_, np.complex64):
+            with self.subTest(dtype=dtype):
+                invalid = np.full((2, 3), 2, dtype=dtype)
+                result = instance.execute({"images": [image, invalid]})
+                self.assertEqual(result["__status_code"], 1)
+                self.assertIn("输入端口 'images'", result["__status_message"])
+                self.assertIn("批次索引 1", result["__status_message"])
+                self.assertIn("实数数值", result["__status_message"])
+                self.assertIn(str(invalid.dtype), result["__status_message"])
+                self.assertIsNone(result["means"])
 
     def test_mean_empty_batch(self):
         mod = load_module_from_file(self.mean_py)
@@ -79,6 +127,29 @@ class TestPythonToolContracts(unittest.TestCase):
         self.assertTrue(means.flags.c_contiguous)
         self.assertAlmostEqual(means[0], 2.5, places=5)
         self.assertAlmostEqual(means[1], 7.0, places=5)
+
+    def test_mean_real_pixel_types_and_strided_color_inputs(self):
+        instance = load_module_from_file(self.mean_py).ToolInstance()
+        instance.initialize({})
+        for dtype in (np.uint8, np.int8, np.uint16, np.int16,
+                      np.int32, np.float16, np.float32, np.float64):
+            with self.subTest(dtype=dtype):
+                gray = np.arange(0, 12, 2, dtype=dtype).reshape(2, 3)
+                color = np.arange(24, dtype=dtype).reshape(2, 4, 3)[::-1, ::2, :]
+                gray.setflags(write=False)
+                color.setflags(write=False)
+                result = instance.execute({"images": [gray, color]})
+                self.assertEqual(result["__status_code"], 0)
+                self.assertEqual(result["__status_message"], "运行成功")
+                self.assertEqual(result["means"].dtype, np.float64)
+                self.assertEqual(result["means"].shape, (2,))
+                self.assertTrue(result["means"].flags.c_contiguous)
+                np.testing.assert_array_equal(result["means"], [5.0, 10.0])
+                np.testing.assert_array_equal(gray, [[0, 2, 4], [6, 8, 10]])
+                np.testing.assert_array_equal(color,
+                                              [[[12, 13, 14], [18, 19, 20]],
+                                               [[0, 1, 2], [6, 7, 8]]])
+        self.assertEqual(instance.release()["__status_code"], 0)
 
     def test_counter_tool(self):
         mod = load_module_from_file(self.counter_py)
