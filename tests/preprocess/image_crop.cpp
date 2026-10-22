@@ -1,5 +1,6 @@
 #include "src/preprocess/ImageCropTool.h"
 #include "TestSupport.h"
+#include "MatAllocationProbe.h"
 
 #include <initializer_list>
 #include <string_view>
@@ -302,6 +303,67 @@ void testImageCropTool()
         result                  = tool.execute(inputs);
         requireSuccess(result, "Mixed-size crop must succeed");
         REQUIRE(testing::maskBuildCount == 2, "Different bounds must build independent masks");
+    }
+
+    {
+        const cv::Mat      full(40, 40, CV_8UC3, cv::Scalar(17, 31, 47));
+        const cv::Mat      clipped(20, 20, CV_8UC3, cv::Scalar(71, 83, 97));
+        MatAllocationProbe memory;
+        for (const int batch : {8, 32, 2})
+        {
+            Image images(static_cast<std::size_t>(batch), full);
+            if (batch == 2)
+                images.back() = clipped;
+            const std::size_t expectedMasks = batch == 2 ? 2 : 1;
+            Values            inputs{
+                           {crop_ports::in::IMAGES,                  DataRef<Image>(std::move(images))},
+                           {  crop_ports::in::RECT, DataRef<ROI>(ROI{{{2., 10., 10., 15., 15., 15.}}})},
+            };
+            for (int iteration = 0; iteration < 100; ++iteration)
+            {
+                const auto before = memory.snapshot(CV_8UC1);
+                {
+                    const auto result = tool.execute(inputs);
+                    requireSuccess(result, "Tracked rotated crop must succeed");
+                    const auto mask = memory.snapshot(CV_8UC1);
+                    REQUIRE(mask.allocations - before.allocations == expectedMasks
+                                && mask.releases - before.releases == expectedMasks && mask.liveBytes == 0,
+                            "Every execute must release exactly its per-bounds mask allocations before returning");
+                    const auto outputs = memory.snapshot(CV_8UC3);
+                    REQUIRE(outputs.allocations - outputs.releases == static_cast<std::size_t>(batch)
+                                && outputs.liveBytes > 0,
+                            "Returned cropped pixels must remain alive independently of temporary masks");
+                }
+                const auto outputs = memory.snapshot(CV_8UC3);
+                REQUIRE(outputs.allocations == outputs.releases && outputs.liveBytes == 0,
+                        "Dropping the cropped result must release every output allocation");
+            }
+        }
+        Values invalid{
+            {crop_ports::in::IMAGES, DataRef<Image>(Image{full, full(cv::Rect(0, 0, 5, 5))})},
+            {  crop_ports::in::RECT,      DataRef<ROI>(ROI{{{2., 10., 10., 15., 15., 15.}}})},
+        };
+        const auto failed = tool.execute(invalid);
+        REQUIRE(!failed.status && isMissing(failed.outputs.at(crop_ports::out::IMAGES)),
+                "Later-image failure must not publish an earlier cropped output");
+        invalid.insert_or_assign(crop_ports::in::IMAGES, DataRef<Image>(Image{full}));
+        invalid.insert_or_assign(crop_ports::in::RECT, DataRef<ROI>(ROI{{{2., 0.1, 0.1, 0.1, 0.1, 30.}}}));
+        const auto emptyMask = tool.execute(invalid);
+        requireFailure(emptyMask, "没有有效像素中心",
+                       "An empty rotated mask must fail without retaining its allocation");
+        for (const int type : {CV_8UC1, CV_8UC3})
+        {
+            const auto allocations = memory.snapshot(type);
+            REQUIRE(allocations.allocations == allocations.releases && allocations.liveBytes == 0,
+                    "Failure unwinding must release every mask and partial output");
+        }
+        const auto masks   = memory.snapshot(CV_8UC1);
+        const auto outputs = memory.snapshot(CV_8UC3);
+        REQUIRE(masks.allocations == 402 && outputs.allocations == 4201,
+                "Allocation probe must observe every successful and failed crop without silent bypass");
+        std::cout << "[ALLOCATIONS] crop executes=302 masks=" << masks.allocations << '/' << masks.releases
+                  << " mask_live_bytes=" << masks.liveBytes << " mask_peak_bytes=" << masks.peakBytes
+                  << " outputs=" << outputs.allocations << '/' << outputs.releases << std::endl;
     }
 
     std::cout << "[PASS] testImageCropTool passed." << std::endl;
