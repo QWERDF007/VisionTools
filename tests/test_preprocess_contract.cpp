@@ -518,6 +518,14 @@ void testImageCropTool()
     // 7. Mask reuse within one execute, no cache across executes
     {
         const auto rectangle = Roi::rectangle(10.0F, 10.0F, 15.0F, 15.0F, 15.0F);
+        {
+            Values single{{crop_ports::in::IMAGES, ImageBatch({OwnedImage::copyOf(gradient(40, 40))})},
+                          {crop_ports::in::RECT, rectangle}};
+            testing::maskBuildCount = 0;
+            auto result = tool.execute(single);
+            requireSuccess(result, "1-image rotated crop must succeed");
+            REQUIRE(testing::maskBuildCount == 1, "One image must build exactly one mask");
+        }
         std::vector<OwnedImage> sameBounds;
         for (int i = 0; i < 8; ++i)
             sameBounds.push_back(OwnedImage::copyOf(gradient(40, 40)));
@@ -530,20 +538,28 @@ void testImageCropTool()
         REQUIRE(testing::maskBuildCount == 1, "Same bounds must build exactly one mask for 8 images");
         const auto &batch = std::get<ImageBatch>(result.outputs.at(crop_ports::out::IMAGES)).images();
         const auto expected = referenceCrop(gradient(40, 40), rectangle);
+        std::size_t outputBytes = 0;
         for (const auto &image : batch)
+        {
+            outputBytes += image.readOnlyMat().total() * image.readOnlyMat().elemSize();
             REQUIRE(cv::countNonZero(image.readOnlyMat() != expected) == 0,
                     "Every reused-mask output must match pixel-center gold");
-        std::cout << "[METRICS] 8-image rotated crop: " << elapsed << " ms, masks=" << testing::maskBuildCount << std::endl;
+        }
+        std::cout << "[METRICS] 8-image rotated crop: " << elapsed << " ms, masks=" << testing::maskBuildCount
+                  << ", output_bytes=" << outputBytes << std::endl;
 
         std::vector<OwnedImage> thirtyTwo;
         for (int i = 0; i < 32; ++i)
             thirtyTwo.push_back(OwnedImage::copyOf(gradient(40, 40)));
         inputs.insert_or_assign(crop_ports::in::IMAGES, ImageBatch(thirtyTwo));
         testing::maskBuildCount = 0;
+        const auto started32 = std::chrono::steady_clock::now();
         result = tool.execute(inputs);
+        const auto elapsed32 = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started32).count();
         requireSuccess(result, "32-image rotated crop must succeed");
         REQUIRE(testing::maskBuildCount == 1, "Same bounds must build exactly one mask for 32 images");
-        std::cout << "[METRICS] 32-image rotated crop: masks=" << testing::maskBuildCount << std::endl;
+        std::cout << "[METRICS] 32-image rotated crop: " << elapsed32 << " ms, masks=" << testing::maskBuildCount
+                  << std::endl;
 
         // Same bounds in a new execute must rebuild instead of using a global cache.
         testing::maskBuildCount = 0;
