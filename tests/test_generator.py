@@ -1,358 +1,356 @@
 #!/usr/bin/env python3
-"""
-Unit and contract tests for generate_tool_contracts.py.
-Verifies TS-02 and VS-02 requirements:
-- Invalid dtype / layout fails
-- Invalid default value fails
-- Missing implementation/entry fails
-- Duplicate tool_id / registry_name / port_id fails
-- Min > Max or Default out of range fails
-- Identifier normalization collision fails
-- YAML key reordering preserves semantic identity
-- CLI correctly creates module_index.json and PortConstants.h
-- CPU variant excludes GPU tools
-- Module bindings validation (unbound implementation or declaration without binding)
+"""Lightweight generator tests.
+
+Schema semantics belong to the real VisionRTContracts validator. These tests
+cover generator-only rules and, when the real validator is available, the
+formal CLI path. The formal distribution test never skips a missing validator.
 """
 
-import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-# Add tools directory to path
-tools_dir = Path(__file__).resolve().parent.parent / "tools"
-sys.path.insert(0, str(tools_dir))
+ROOT = Path(__file__).resolve().parent.parent
+TOOLS = ROOT / "tools"
+sys.path.insert(0, str(TOOLS))
 
 from generate_tool_contracts import (
-    load_yaml,
-    validate_tool_declaration,
-    generate_port_constants_header,
-    generate_module_factory_inc,
+    ContractValidationError,
     build_module_index,
-    ContractValidationError
+    generate_module_factory_inc,
+    generate_port_constants_header,
+    load_and_validate_declarations,
+    normalize_declaration,
+    validate_generation_rules,
 )
+
+
+def find_validator():
+    configured = os.environ.get("VISIONTOOLS_VALIDATOR")
+    if configured and Path(configured).is_file():
+        return Path(configured)
+    discovered = shutil.which("visionrt_validate_tool")
+    return Path(discovered) if discovered else None
+
+
+VALIDATOR = find_validator()
+
 
 class TestToolContractGenerator(unittest.TestCase):
     def setUp(self):
         self.fixtures_dir = Path(__file__).resolve().parent / "fixtures" / "generator"
+        self.validator = VALIDATOR
 
-    def test_valid_tool_declaration(self):
-        valid_path = self.fixtures_dir / "valid_tool.yaml"
-        doc = load_yaml(valid_path)
-        validated = validate_tool_declaration(doc, valid_path)
-        self.assertEqual(validated["tool_id"], "test.fixture.valid")
-        self.assertEqual(validated["schema_version"], 1)
+    def require_validator(self):
+        if self.validator is None:
+            self.skipTest("lightweight generator unit group: real validator not provided")
 
-    def test_missing_entry_rejected(self):
-        invalid_path = self.fixtures_dir / "missing_entry_tool.yaml"
-        doc = load_yaml(invalid_path)
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, invalid_path)
-        self.assertTrue("entry" in str(ctx.exception) or "registry_name" in str(ctx.exception))
+    def normalized(self, path):
+        self.require_validator()
+        return normalize_declaration(self.validator, path)
 
-    def test_duplicate_port_id_rejected(self):
-        doc = {
-            "schema_version": 1,
-            "tool_id": "test.duplicate.port",
-            "display_name": "Duplicate Port",
-            "kind": "cpp_function",
-            "entry": {"registry_name": "test.duplicate.port"},
-            "inputs": [
-                {"id": "images", "name": "图像1", "type": "ImageBatch"},
-                {"id": "images", "name": "图像2", "type": "ImageBatch"}
-            ],
-            "outputs": []
-        }
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, Path("test.yaml"))
-        self.assertIn("Duplicate port id 'images'", str(ctx.exception))
+    def cli(self, tools_dir, bindings=None, output=None, validator="present", extra=None):
+        command = [
+            sys.executable, str(TOOLS / "generate_tool_contracts.py"),
+            "--tools-dir", str(tools_dir),
+            "--bindings", str(bindings or TOOLS / "module_bindings.yaml"),
+            "--output-dir", str(output or Path(tempfile.mkdtemp()) / "generated"),
+            "--index-output", str((output or Path(tempfile.mkdtemp())) / "module_index.yaml"),
+            "--variant", "portable-release",
+        ]
+        if validator == "present":
+            command += ["--validator", str(self.validator)]
+        elif validator is not None:
+            command += ["--validator", str(validator)]
+        if extra:
+            command += extra
+        return subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
+    def test_valid_declaration_is_normalized_by_the_real_validator(self):
+        document = self.normalized(self.fixtures_dir / "valid_tool.yaml")
+        self.assertEqual(document["tool_id"], "test.fixture.valid")
+        self.assertEqual(document["schema_version"], 1)
+        self.assertIn("__status_code", [port["id"] for port in document["outputs"]])
 
-    def test_port_identifier_collision_rejected(self):
-        doc = {
-            "schema_version": 1,
-            "tool_id": "test.ident.collision",
-            "display_name": "Ident Collision",
-            "kind": "cpp_function",
+    def test_missing_entry_is_rejected_by_the_real_validator(self):
+        self.require_validator()
+        with self.assertRaisesRegex(ContractValidationError, "真实校验器拒绝"):
+            normalize_declaration(self.validator, self.fixtures_dir / "missing_entry_tool.yaml")
+
+    def test_duplicate_port_id_is_rejected_by_the_real_validator(self):
+        self.require_validator()
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "duplicate.yaml"
+            path.write_text(
+                "schema_version: 1\n"
+                "tool_id: test.duplicate.port\n"
+                "display_name: Duplicate Port\n"
+                "version: 1.0.0\n"
+                "kind: cpp_function\n"
+                "entry:\n  registry_name: test.duplicate.port\n"
+                "init_params: []\n"
+                "inputs:\n"
+                "  - {id: images, name: 图像1, type: ImageBatch}\n"
+                "  - {id: images, name: 图像2, type: ImageBatch}\n"
+                "outputs: []\n",
+                encoding="utf-8")
+            with self.assertRaisesRegex(ContractValidationError, "真实校验器拒绝"):
+                normalize_declaration(self.validator, path)
+
+    def test_reserved_port_id_is_rejected_by_the_real_validator(self):
+        self.require_validator()
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "reserved.yaml"
+            path.write_text(
+                "schema_version: 1\n"
+                "tool_id: test.reserved.port\n"
+                "display_name: Reserved Port\n"
+                "version: 1.0.0\n"
+                "kind: cpp_function\n"
+                "entry:\n  registry_name: test.reserved.port\n"
+                "init_params: []\n"
+                "inputs:\n  - {id: __private, name: 私有, type: Int}\n"
+                "outputs: []\n",
+                encoding="utf-8")
+            with self.assertRaisesRegex(ContractValidationError, "真实校验器拒绝"):
+                normalize_declaration(self.validator, path)
+
+    def test_port_identifier_collision_is_a_generation_rule(self):
+        document = {
+            "schema_version": 1, "tool_id": "test.ident.collision", "display_name": "Ident Collision",
+            "version": "1.0.0", "kind": "cpp_function",
             "entry": {"registry_name": "test.ident.collision"},
-            "inputs": [
+            "init_params": [], "inputs": [
                 {"id": "foo_bar", "name": "Foo Bar 1", "type": "Int"},
-                {"id": "foo-bar", "name": "Foo Bar 2", "type": "Int"}
-            ],
-            "outputs": []
+                {"id": "foo-bar", "name": "Foo Bar 2", "type": "Int"},
+            ], "outputs": [],
         }
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, Path("test.yaml"))
-        self.assertIn("identifier collision", str(ctx.exception))
+        with self.assertRaisesRegex(ContractValidationError, "冲突"):
+            validate_generation_rules(document, Path("test.yaml"))
 
-    def test_reordered_yaml_semantic_invariance(self):
-        valid_path = self.fixtures_dir / "valid_tool.yaml"
-        reordered_path = self.fixtures_dir / "reordered_tool.yaml"
+    def test_reordered_yaml_has_identical_normalized_header(self):
+        first = self.normalized(self.fixtures_dir / "valid_tool.yaml")
+        second = self.normalized(self.fixtures_dir / "reordered_tool.yaml")
+        self.assertEqual(generate_port_constants_header([first]), generate_port_constants_header([second]))
 
-        doc1 = load_yaml(valid_path)
-        doc2 = load_yaml(reordered_path)
+    def test_system_outputs_are_not_generated_as_business_contracts(self):
+        document = self.normalized(self.fixtures_dir / "valid_tool.yaml")
+        header = generate_port_constants_header([document])
+        self.assertNotIn("__STATUS_CODE", header)
+        self.assertNotIn("__status_code", header)
 
-        val1 = validate_tool_declaration(doc1, valid_path)
-        val2 = validate_tool_declaration(doc2, reordered_path)
+    def test_generated_header_carries_complete_execution_constraints(self):
+        document = self.normalized(ROOT / "assets/tools/builtin/采集/图像采集/图像读取.yaml")
+        header = generate_port_constants_header([document])
+        self.assertIn('visionrt::Utf8("file")', header)
+        self.assertIn("std::vector<visionrt::PortValue>", header)
+        self.assertIn("std::optional<visionrt::PortValue>", header)
+        self.assertIn("std::int64_t{0}", header)
 
-        header1 = generate_port_constants_header([val1])
-        header2 = generate_port_constants_header([val2])
-        self.assertEqual(header1, header2)
+    def test_typespec_and_tool_contract_in_header(self):
+        document = self.normalized(self.fixtures_dir / "valid_tool.yaml")
+        header = generate_port_constants_header([document])
+        self.assertIn("TypeSpec", header)
+        self.assertIn("getToolContract()", header)
+        self.assertIn("visionrt::PortContract", header)
+        self.assertIn("std::int64_t{1}", header)
+        self.assertIn("std::int64_t{100}", header)
+
+    def test_x_and_x_spec_no_identifier_collision(self):
+        document = {
+            "schema_version": 1, "tool_id": "test.collision.spec", "display_name": "Collision Test",
+            "version": "1.0.0", "kind": "cpp_function",
+            "entry": {"registry_name": "test.collision.spec"}, "init_params": [],
+            "inputs": [{"id": "x", "name": "X", "type": "Int"}, {"id": "x_spec", "name": "X Spec", "type": "Int"}],
+            "outputs": [],
+        }
+        header = generate_port_constants_header([document])
+        self.assertIn('inline constexpr const char* X = "x";', header)
+        self.assertIn('inline constexpr const char* X_SPEC = "x_spec";', header)
+        self.assertIn("namespace spec {", header)
+        self.assertIn("inline const visionrt::TypeSpec X =", header)
+
+    def test_normalized_identifier_collision_rejected(self):
+        document = {
+            "schema_version": 1, "tool_id": "test.norm.collision", "display_name": "Norm Collision Test",
+            "version": "1.0.0", "kind": "cpp_function",
+            "entry": {"registry_name": "test.norm.collision"}, "init_params": [],
+            "inputs": [{"id": "foo-bar", "name": "Foo Bar 1", "type": "Int"},
+                       {"id": "foo_bar", "name": "Foo Bar 2", "type": "Int"}],
+            "outputs": [],
+        }
+        with self.assertRaisesRegex(ContractValidationError, "冲突"):
+            generate_port_constants_header([document])
 
     def test_module_index_uses_selected_targets_not_backend_labels(self):
         tools = [
             {
-                "tool_id": "tool.cpu",
-                "definition": "assets/tools/cpu.yaml",
-                "display_name": "CPU Tool",
-                "kind": "cpp_function",
-                "entry": {"registry_name": "tool.cpu"},
-                "inputs": [{"id": "images", "type": "ImageBatch"}],
-                "outputs": [{"id": "images", "type": "ImageBatch"}]
+                "tool_id": "tool.cpu", "_source_path": str(self.fixtures_dir / "valid_tool.yaml"),
+                "display_name": "CPU Tool", "kind": "cpp_function",
+                "entry": {"registry_name": "tool.cpu"}, "init_params": [],
+                "inputs": [{"id": "images", "name": "图像", "type": "ImageBatch"}],
+                "outputs": [{"id": "images", "name": "图像", "type": "ImageBatch"}],
             },
             {
-                "tool_id": "tool.gpu",
-                "definition": "assets/tools/gpu.yaml",
-                "display_name": "GPU Tool",
-                "kind": "cpp_class",
-                "entry": {"registry_name": "tool.gpu"},
-                "inputs": [{"id": "images", "type": "ImageBatch"}],
-                "outputs": [{"id": "rois", "type": "RoiBatch"}]
-            }
+                "tool_id": "tool.gpu", "_source_path": str(self.fixtures_dir / "valid_tool.yaml"),
+                "display_name": "GPU Tool", "kind": "cpp_class",
+                "entry": {"registry_name": "tool.gpu"}, "init_params": [],
+                "inputs": [{"id": "images", "name": "图像", "type": "ImageBatch"}],
+                "outputs": [{"id": "rois", "name": "ROI", "type": "RoiBatch"}],
+            },
         ]
         bindings = {
             "modules": {
                 "visiontools_preprocess": {
                     "variant": "cpu",
-                    "tools": {"tool.cpu": {"class": "CpuTool", "header": "CpuTool.h"}}
+                    "tools": {"tool.cpu": {"class": "CpuTool", "header": "CpuTool.h"}},
                 },
                 "visiontools_infer": {
                     "variant": "gpu",
-                    "tools": {"tool.gpu": {"class": "GpuTool", "header": "GpuTool.h"}}
-                }
+                    "tools": {"tool.gpu": {"class": "GpuTool", "header": "GpuTool.h"}},
+                },
             }
         }
+        gpu_index = build_module_index(tools, bindings, variant="gpu")
+        self.assertEqual(gpu_index["variant"], "gpu")
+        self.assertIn("tool.cpu", gpu_index["tools"])
+        self.assertIn("tool.gpu", gpu_index["tools"])
+        self.assertEqual(gpu_index["tools"]["tool.gpu"]["module"], "visiontools_infer")
 
-        # GPU variant includes both
-        gpu_idx = build_module_index(tools, bindings, variant="gpu")
-        self.assertEqual(gpu_idx["variant"], "gpu")
-        self.assertIn("tool.cpu", gpu_idx["tools"])
-        self.assertIn("tool.gpu", gpu_idx["tools"])
-        self.assertEqual(gpu_idx["tools"]["tool.gpu"]["module"], "visiontools_infer")
+        cpu_index = build_module_index(tools, bindings, variant="minimal-release",
+                                       selected_modules=["visiontools_preprocess"])
+        self.assertEqual(cpu_index["variant"], "minimal-release")
+        self.assertIn("tool.cpu", cpu_index["tools"])
+        self.assertNotIn("tool.gpu", cpu_index["tools"])
 
-        # CPU variant excludes GPU tool
-        cpu_idx = build_module_index(tools, bindings, variant="minimal-release", selected_modules=["visiontools_preprocess"])
-        self.assertEqual(cpu_idx["variant"], "minimal-release")
-        self.assertIn("tool.cpu", cpu_idx["tools"])
-        self.assertNotIn("tool.gpu", cpu_idx["tools"])
-
-    def test_generate_module_factory_inc(self):
-        tools_dict = {
-            "tool.cpu": {
-                "tool_id": "tool.cpu",
-                "entry": {"registry_name": "tool.cpu"}
-            }
-        }
-        mod_info = {
+    def test_generate_module_factory_inc_uses_one_validated_wrapper(self):
+        tools_dict = {"tool.cpu": {"tool_id": "tool.cpu", "entry": {"registry_name": "tool.cpu"}}}
+        module = {
             "namespace": "test::preprocess",
-            "tools": {"tool.cpu": {"class": "CpuTool", "header": "CpuTool.h"}}
+            "tools": {"tool.cpu": {"class": "CpuTool", "header": "CpuTool.h"}},
         }
-        content = generate_module_factory_inc("visiontools_preprocess", tools_dict, mod_info)
+        content = generate_module_factory_inc("visiontools_preprocess", tools_dict, module)
         self.assertIn('#include "CpuTool.h"', content)
         self.assertIn('std::strcmp(registry_name, "tool.cpu") == 0', content)
-        self.assertIn('ValidatedToolInstance', content)
-        self.assertIn('std::make_unique<CpuTool>(s)', content)
-        self.assertIn('s_generatedModuleApi', content)
+        self.assertIn("ValidatedToolInstance", content)
+        self.assertIn("std::make_unique<CpuTool>(s)", content)
+        self.assertIn("s_generatedModuleApi", content)
+        self.assertIn("初始化参数不在声明中", content)
+        self.assertNotIn("return new CpuTool(s);", content)
+
+    def test_generate_module_factory_rejects_missing_definition(self):
+        with self.assertRaisesRegex(ContractValidationError, "未声明"):
+            generate_module_factory_inc("visiontools_preprocess", {},
+                                        {"namespace": "test", "tools": {"tool.missing": {"class": "Missing"}}})
 
     def test_missing_python_file_rejected(self):
-        doc = {
-            "schema_version": 1,
-            "tool_id": "test.py.missing",
-            "display_name": "Python Tool",
-            "kind": "python_function",
+        document = {
+            "schema_version": 1, "tool_id": "test.py.missing", "display_name": "Python Tool",
+            "version": "1.0.0", "kind": "python_function",
             "entry": {"file": "nonexistent_script.py", "symbol": "foo"},
-            "inputs": [],
-            "outputs": []
+            "init_params": [], "inputs": [], "outputs": [],
         }
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, Path("test.yaml"))
-        self.assertIn("does not exist", str(ctx.exception))
+        with self.assertRaisesRegex(ContractValidationError, "入口脚本不存在"):
+            validate_generation_rules(document, Path("test.yaml"))
 
-    def test_typespec_and_tool_contract_in_header(self):
-        valid_path = self.fixtures_dir / "valid_tool.yaml"
-        doc = load_yaml(valid_path)
-        val = validate_tool_declaration(doc, valid_path)
-        header = generate_port_constants_header([val])
-        self.assertIn("TypeSpec", header)
-        self.assertIn("getToolContract()", header)
-        self.assertIn("visionrt::PortContract", header)
-
-    def test_x_and_x_spec_no_identifier_collision(self):
-        doc = {
-            "schema_version": 1,
-            "tool_id": "test.collision.spec",
-            "display_name": "Collision Test",
-            "kind": "cpp_function",
-            "entry": {"registry_name": "test.collision.spec"},
-            "inputs": [{"id": "x", "name": "X", "type": "Int"}, {"id": "x_spec", "name": "X Spec", "type": "Int"}],
-            "outputs": []
-        }
-        header = generate_port_constants_header([doc])
-        self.assertIn('inline constexpr const char* X = "x";', header)
-        self.assertIn('inline constexpr const char* X_SPEC = "x_spec";', header)
-        self.assertIn('namespace spec {', header)
-        self.assertIn('inline const visionrt::TypeSpec X =', header)
-
-    def test_normalized_identifier_collision_rejected(self):
-        doc = {
-            "schema_version": 1,
-            "tool_id": "test.norm.collision",
-            "display_name": "Norm Collision Test",
-            "kind": "cpp_function",
-            "entry": {"registry_name": "test.norm.collision"},
-            "inputs": [{"id": "foo-bar", "name": "Foo Bar 1", "type": "Int"}, {"id": "foo_bar", "name": "Foo Bar 2", "type": "Int"}],
-            "outputs": []
-        }
-        with self.assertRaises(ContractValidationError) as ctx:
-            generate_port_constants_header([doc])
-        self.assertIn("normalizes to colliding C++ identifier", str(ctx.exception))
+    def test_r80_yml_only_declarations(self):
+        self.require_validator()
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "tool.yml"
+            target.write_text((self.fixtures_dir / "valid_tool.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+            declarations = load_and_validate_declarations(Path(temporary), self.validator)
+            self.assertEqual(len(declarations), 1)
+            self.assertEqual(declarations[0]["tool_id"], "test.fixture.valid")
 
     def test_cli_negative_cases(self):
-        import subprocess
-        script = str(tools_dir / "generate_tool_contracts.py")
-        with tempfile.TemporaryDirectory() as td:
-            t = Path(td)
-            mock_sdk = t / "mock_sdk"
-            val_dir = mock_sdk / "visionrt" / "contracts"
-            val_dir.mkdir(parents=True)
-            (val_dir / "Value.h").write_text("enum class Type { Int, Float, Bool, String, ImageBatch, NumericArray, StringArray, RoiBatch };\n"
-                                             "enum class DType { Int32, Int64, Float32, Float64, UInt8, Bool };\n"
-                                             "enum class Layout { Dense, BatchRagged };\n")
-            (val_dir / "Schema.h").write_text("enum class ToolKind { CppFunction, CppClass, PythonFunction, PythonClass };\n")
+        self.require_validator()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "generated"
+            index = output / "module_index.yaml"
+            missing_validator = self.cli(self.fixtures_dir, output=output, validator=None)
+            self.assertNotEqual(missing_validator.returncode, 0)
+            self.assertIn("--validator", missing_validator.stderr)
+            self.assertFalse(index.exists())
 
-            # Missing --sdk-include-dir -> returncode != 0 (E02)
-            p = subprocess.run([sys.executable, script, "--tools-dir", str(self.fixtures_dir),
-                                "--bindings", str(tools_dir / "module_bindings.yaml"), "--output-dir", str(t / "gen"),
-                                "--index-output", str(t / "index.yaml")], capture_output=True, text=True)
-            self.assertNotEqual(p.returncode, 0)
-            self.assertIn("Missing required --sdk-include-dir", p.stderr)
+            missing_bindings = self.cli(self.fixtures_dir, bindings=root / "missing_bindings.yaml",
+                                        output=output, validator="present")
+            self.assertNotEqual(missing_bindings.returncode, 0)
+            self.assertFalse(index.exists())
 
-            # Missing bindings file -> returncode != 0
-            p = subprocess.run([sys.executable, script, "--tools-dir", str(self.fixtures_dir),
-                                "--bindings", str(t / "missing_bindings.yaml"), "--output-dir", str(t / "gen"),
-                                "--index-output", str(t / "index.yaml"), "--sdk-include-dir", str(mock_sdk)], capture_output=True, text=True)
-            self.assertNotEqual(p.returncode, 0)
+            empty = root / "empty_tools"
+            empty.mkdir()
+            empty_result = self.cli(empty, output=output, validator="present")
+            self.assertNotEqual(empty_result.returncode, 0)
+            self.assertFalse(index.exists())
 
-            # Empty tools dir -> returncode != 0
-            empty_dir = t / "empty_tools"
-            empty_dir.mkdir()
-            p = subprocess.run([sys.executable, script, "--tools-dir", str(empty_dir),
-                                "--bindings", str(tools_dir / "module_bindings.yaml"), "--output-dir", str(t / "gen"),
-                                "--index-output", str(t / "index.yaml"), "--sdk-include-dir", str(mock_sdk)], capture_output=True, text=True)
-            self.assertNotEqual(p.returncode, 0)
-
-            # Invalid explicit sdk-include-dir -> returncode != 0 (P01)
-            p = subprocess.run([sys.executable, script, "--tools-dir", str(self.fixtures_dir),
-                                "--bindings", str(tools_dir / "module_bindings.yaml"), "--output-dir", str(t / "gen"),
-                                "--index-output", str(t / "index.yaml"), "--sdk-include-dir", str(t / "absent-sdk")],
-                               capture_output=True, text=True)
-            self.assertNotEqual(p.returncode, 0)
-
-    def test_reserved_port_id_rejected(self):
-        doc = {
-            "schema_version": 1,
-            "tool_id": "test.reserved.port",
-            "display_name": "Reserved Port",
-            "kind": "cpp_function",
-            "entry": {"registry_name": "test.reserved.port"},
-            "inputs": [{"id": "__private", "name": "私有", "type": "Int"}],
-            "outputs": []
-        }
-        with self.assertRaises(ContractValidationError) as ctx:
-            validate_tool_declaration(doc, Path("test.yaml"))
-        self.assertIn("reserved '__' prefix", str(ctx.exception))
+            nonexistent = self.cli(self.fixtures_dir, output=output, validator=root / "missing-validator")
+            self.assertNotEqual(nonexistent.returncode, 0)
+            self.assertIn("真实校验器不存在", nonexistent.stderr)
+            self.assertFalse(index.exists())
 
     def test_cli_formal_validation(self):
-        """VT-S04 / VT-T04: Formal CLI runs real SDK validator and covers valid, invalid types, duplicate keys, unknown fields, missing validator."""
-        import subprocess
-        script = str(tools_dir / "generate_tool_contracts.py")
-        validator_env = os.environ.get("VISIONTOOLS_VALIDATOR", "")
-        validator = Path(validator_env) if validator_env else Path(__file__).resolve().parent.parent / "build" / "bin" / "visionrt_validate_tool.exe"
-        sdk_inc_env = os.environ.get("VISIONTOOLS_SDK_INCLUDE_DIR", "")
-        sdk_inc = Path(sdk_inc_env) if sdk_inc_env else Path(__file__).resolve().parent.parent / "3rdparty" / "VisionRTContracts" / "include"
-        if not validator.is_file() or not sdk_inc.is_dir():
-            self.skipTest(f"VisionRT validator / SDK headers not provided ({validator}, {sdk_inc})")
-
-        with tempfile.TemporaryDirectory() as td:
-            t = Path(td)
-            tools_d = t / "tools"
-            tools_d.mkdir()
-
-            valid_tool = tools_d / "valid.yaml"
+        self.require_validator()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            tools_dir = root / "tools"
+            tools_dir.mkdir()
+            valid_tool = tools_dir / "valid.yaml"
             valid_tool.write_text((self.fixtures_dir / "valid_tool.yaml").read_text(encoding="utf-8"), encoding="utf-8")
-
-            bindings_path = t / "bindings.yaml"
-            bindings_path.write_text(
+            bindings = root / "bindings.yaml"
+            bindings.write_text(
                 "modules:\n"
                 "  visiontools_preprocess:\n"
-                "    variant: 'cpu'\n"
                 "    namespace: 'visiontools::preprocess'\n"
                 "    tools:\n"
                 "      'test.fixture.valid':\n"
                 "        class: 'ValidTool'\n"
                 "        header: 'ValidTool.h'\n",
-                encoding="utf-8"
-            )
-
-            gen_d = t / "generated"
-            idx_out = t / "module_index.yaml"
-
-            cmd = [
-                sys.executable, script,
-                "--tools-dir", str(tools_d),
-                "--bindings", str(bindings_path),
-                "--output-dir", str(gen_d),
-                "--index-output", str(idx_out),
-                "--sdk-include-dir", str(sdk_inc),
-                "--validator", str(validator)
+                encoding="utf-8")
+            generated = root / "generated"
+            index = root / "module_index.yaml"
+            command = [
+                sys.executable, str(TOOLS / "generate_tool_contracts.py"),
+                "--tools-dir", str(tools_dir), "--bindings", str(bindings),
+                "--output-dir", str(generated), "--index-output", str(index),
+                "--variant", "portable-release", "--validator", str(self.validator),
             ]
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            self.assertEqual(res.returncode, 0, f"Valid tool generation failed:\n{res.stderr}")
-            self.assertTrue((gen_d / "PortConstants.h").exists())
-            self.assertTrue(idx_out.exists())
+            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((generated / "PortConstants.h").exists())
+            self.assertTrue(index.exists())
 
-            invalid_tool = tools_d / "invalid_dtype.yaml"
-            invalid_tool.write_text(
+            invalid = tools_dir / "invalid.yaml"
+            invalid.write_text(
                 "schema_version: 1\n"
                 "tool_id: test.invalid.dtype\n"
                 "display_name: Invalid DType\n"
+                "version: 1.0.0\n"
                 "kind: cpp_function\n"
-                "entry:\n"
-                "  registry_name: test.invalid.dtype\n"
+                "entry:\n  registry_name: test.invalid.dtype\n"
+                "init_params: []\n"
                 "inputs:\n"
-                "  - id: arr\n"
-                "    name: 数组\n"
-                "    type: NumericArray\n"
-                "    dtype: unknown_type\n"
-                "    rank: 1\n"
+                "  - {id: arr, name: 数组, type: NumericArray, dtype: unknown_type, rank: 1}\n"
                 "outputs: []\n",
-                encoding="utf-8"
-            )
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            self.assertNotEqual(res.returncode, 0)
-            self.assertIn("visionrt_validate_tool failed", res.stderr)
-            invalid_tool.unlink()
+                encoding="utf-8")
+            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("真实校验器拒绝", result.stderr)
+            invalid.unlink()
 
-            nested_tool = tools_d / "nested.yaml"
-            nested_tool.write_text(
+            unknown = tools_dir / "unknown.yaml"
+            unknown.write_text(
                 "schema_version: 1\n"
                 "tool_id: test.nested.err\n"
                 "display_name: Nested Error\n"
+                "version: 1.0.0\n"
                 "kind: cpp_function\n"
-                "entry:\n"
-                "  registry_name: test.nested.err\n"
+                "entry:\n  registry_name: test.nested.err\n"
+                "init_params: []\n"
                 "inputs: []\n"
                 "outputs:\n"
                 "  - id: img\n"
@@ -360,78 +358,18 @@ class TestToolContractGenerator(unittest.TestCase):
                 "    type: ImageBatch\n"
                 "    display:\n"
                 "      unknown_field: 123\n",
-                encoding="utf-8"
-            )
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            self.assertNotEqual(res.returncode, 0)
-            self.assertIn("visionrt_validate_tool failed", res.stderr)
-            nested_tool.unlink()
+                encoding="utf-8")
+            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("真实校验器拒绝", result.stderr)
+            unknown.unlink()
 
-            dup_tool = tools_d / "dup.yaml"
-            dup_tool.write_text("schema_version: 1\nschema_version: 1\n", encoding="utf-8")
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            self.assertNotEqual(res.returncode, 0)
-            dup_tool.unlink()
+            duplicate = tools_dir / "duplicate.yaml"
+            duplicate.write_text("schema_version: 1\nschema_version: 1\n", encoding="utf-8")
+            result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertNotEqual(result.returncode, 0)
+            duplicate.unlink()
 
-            cmd_no_val = [
-                sys.executable, script,
-                "--tools-dir", str(tools_d),
-                "--bindings", str(bindings_path),
-                "--output-dir", str(gen_d),
-                "--index-output", str(idx_out),
-                "--sdk-include-dir", str(sdk_inc)
-            ]
-            res = subprocess.run(cmd_no_val, capture_output=True, text=True)
-            self.assertNotEqual(res.returncode, 0)
-            self.assertIn("Missing required --validator", res.stderr)
-
-
-    def test_r80_yml_only_declarations(self):
-        from generate_tool_contracts import load_and_validate_declarations
-        valid_path = self.fixtures_dir / "valid_tool.yaml"
-        with tempfile.TemporaryDirectory() as td:
-            t = Path(td)
-            yml_file = t / "tool.yml"
-            yml_file.write_text(valid_path.read_text(encoding="utf-8"), encoding="utf-8")
-            res = load_and_validate_declarations(t)
-            self.assertEqual(len(res), 1)
-            self.assertEqual(res[0]["tool_id"], "test.fixture.valid")
-
-    def test_duplicate_yaml_key_rejected(self):
-        import yaml
-        from generate_tool_contracts import UniqueKeyLoader
-        yaml_content = "tool_id: a\ntool_id: b\n"
-        with self.assertRaises(ValueError) as ctx:
-            yaml.load(yaml_content, Loader=UniqueKeyLoader)
-        self.assertIn("Duplicate key detected", str(ctx.exception))
-
-    def test_n06_nonexistent_validator_rejected(self):
-        """N06: Explicit non-existent validator must exit non-zero without fallbacks."""
-        import subprocess
-        script = str(tools_dir / "generate_tool_contracts.py")
-        with tempfile.TemporaryDirectory() as td:
-            t = Path(td)
-            mock_sdk = t / "mock_sdk"
-            val_dir = mock_sdk / "visionrt" / "contracts"
-            val_dir.mkdir(parents=True)
-            (val_dir / "Value.h").write_text("enum class Type { Int, Float, Bool, String, ImageBatch, NumericArray, StringArray, RoiBatch };\n"
-                                             "enum class DType { Int32, Int64, Float32, Float64, UInt8, Bool };\n"
-                                             "enum class Layout { Dense, BatchRagged };\n")
-            (val_dir / "Schema.h").write_text("enum class ToolKind { CppFunction, CppClass, PythonFunction, PythonClass };\n")
-
-            cmd = [
-                sys.executable, script,
-                "--tools-dir", str(self.fixtures_dir),
-                "--bindings", str(tools_dir / "module_bindings.yaml"),
-                "--output-dir", str(t / "gen"),
-                "--index-output", str(t / "index.yaml"),
-                "--sdk-include-dir", str(mock_sdk),
-                "--validator", str(t / "nonexistent_validator.exe")
-            ]
-            res = subprocess.run(cmd, env={**os.environ, "PATH": ""}, capture_output=True, text=True)
-            self.assertNotEqual(res.returncode, 0)
-            self.assertFalse((t / "index.yaml").exists())
-            self.assertIn("Validator executable not found", res.stderr)
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,18 +5,19 @@
 ## 1. 核心文件说明
 
 - `build.cmd`: 一站式开发与构建脚本，自动探测 MSVC x64 环境，支持增量构建、测试、清理和打包。
-- `dependencies.yaml`: 依赖单一真相源（SSOT），集中记录 OpenCV, InferRT, CUDA, TensorRT, Python, VisionRTToolSDK 的默认基准路径；换机器/部署只需改此文件（CMake 侧经 cmake/ConfigDependencyDefaults.cmake 消费）。
-- `generate_tool_contracts.py`: 契约生成器，解析算子 YAML 生成 C++ 端口常量、TypeSpec 校验与领域模块工厂映射；
-- `package_tools.py`: 工具包安装收集与交付发布脚本，生成供 VisionRT 消费的相对资源清单。
+- `../CMakePresets.json`: `cpu` / `infer` 两个显式构建预设；本机依赖路径放在未跟踪的 `CMakeUserPresets.json`、`-D` 或环境变量中，tracked 配置不含个人路径。
+- `generate_tool_contracts.py`: 契约生成器，消费真实 validator 的规范化声明，生成 C++ 端口常量、完整执行约束与领域模块工厂映射；
+- `package_tools.py`: 工具包安装收集与交付发布脚本，生成供 VisionRT 消费的相对资源清单；安装目录、ZIP 与外置索引作为同一发行组预检并事务提交。
 
 ## 2. 常用开发命令
 
 ```cmd
-:: 默认 Release 构建（含 InferRT）
-tools\build.cmd
+:: CPU 预设（不探测 InferRT 与 CUDA）
+tools\build.cmd cmake --preset cpu
+tools\build.cmd cmake --build build --config Release
 
-:: 以 CPU 模式构建（不探测 InferRT 与 CUDA）
-tools\build.cmd --no-infer
+:: 默认 Release 构建（含 InferRT，需要本机依赖路径）
+tools\build.cmd
 
 :: 编译并执行契约测试
 tools\build.cmd --test
@@ -24,7 +25,7 @@ tools\build.cmd --test
 :: 清理并重新构建
 tools\build.cmd --clean
 
-:: 打包发布产物
+:: 打包发布产物（安装目录、ZIP、外置索引）
 tools\build.cmd --package dist\VisionTools
 
 :: 在 MSVC x64 环境下透传任意命令

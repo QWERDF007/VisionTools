@@ -1,0 +1,37 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "VISIONTOOLS_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "cpu",
+      "displayName": "CPU (no CUDA/InferRT)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VISIONTOOLS_BUILD_INFER": "OFF"
+      }
+    },
+    {
+      "name": "infer",
+      "displayName": "InferRT GPU",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VISIONTOOLS_BUILD_INFER": "ON"
+      }
+    }
+  ]
+}

@@ -10,20 +10,21 @@ VisionRT 的工具库。普通 CMake 构建输出领域 DLL；显式打包输出
 - [生成器](tools/generate_tool_contracts.py)：CMake 按实际选中目标生成合同与中间索引。
 - [打包器](tools/package_tools.py)：消费构建清单与声明；发布前使用 SDK 校验。
 - [共享 SDK 子模块](3rdparty/VisionRTContracts)：与宿主复用相同数据模型及包读取规则。
-- [依赖配置](tools/dependencies.yaml)、[CMake](CMakeLists.txt)：本机路径与实际构建选择。
+- [CMake presets](CMakePresets.json)：`cpu` / `infer` 两个显式预设；本机依赖路径放在未跟踪的 `CMakeUserPresets.json`、`-D` 或环境变量中。
 
 ## Windows 构建与交付
 
-依赖 CMake、MSVC、OpenCV 和带 PyYAML 的 Python；推理目标所需前提见对应 CMake 与依赖配置。
+依赖 CMake、MSVC、OpenCV 和带 PyYAML 的 Python；推理目标所需前提见对应 CMake 与依赖配置。依赖路径通过 `-DOpenCV_DIR=...`、环境变量或 `CMakeUserPresets.json` 提供，仓库内不保存个人机器路径。
 
 ```cmd
 git submodule update --init --recursive
-tools\build.cmd --release --no-infer
+tools\build.cmd cmake --preset cpu
+tools\build.cmd cmake --build build --config Release
 tools\build.cmd --release --no-infer --package dist\VisionTools
 tools\build.cmd ctest --test-dir build --output-on-failure
 ```
 
-`--no-infer` 仅控制当前推理目标是否参与构建，不定义包类型。需要该目标时使用已配置的默认构建；包内容由实际产物决定。打包输出 `dist/VisionTools.zip` 和 `dist/module_index.yaml`，宿主部署脚本以 `--tools-package` 消费 ZIP。
+`--no-infer` 仅控制当前推理目标是否参与构建，不定义包类型。打包输出 `dist/VisionTools` 安装目录、`dist/VisionTools.zip` 与同源的 `dist/VisionTools.module_index.yaml`；安装目录带有本工具包标记，重复打包会先校验归属并保留旧包直到新包提交成功。宿主部署脚本以 `--tools-package` 消费 ZIP。
 
 - [文档索引](docs/README.md)
 - [唯一任务账本](WORKLOG.md)

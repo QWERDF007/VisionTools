@@ -13,12 +13,24 @@
 - **作者命名验收**: [test_distribution.py](../tests/test_distribution.py)；领域 DLL 实际输出名见[图像目标](../src/preprocess/CMakeLists.txt)与[推理目标](../src/infer/CMakeLists.txt)。
 - **单一跨流程接收声明**: [跨流程接收.yaml](../assets/tools/builtin/流程控制/跨流程接收.yaml)；类型引用的公共定义与校验见 SDK [Schema.h](../3rdparty/VisionRTContracts/include/visionrt/contracts/Schema.h)。
 - **模块绑定配置**: [../tools/module_bindings.yaml](../tools/module_bindings.yaml)
-- **依赖路径默认值**: [../tools/dependencies.yaml](../tools/dependencies.yaml)
+- **依赖路径来源**: [CMakePresets.json](../CMakePresets.json) 提供 `cpu`/`infer` 预设；本机路径使用未跟踪的 `CMakeUserPresets.json`、`-D` 或环境变量，见 [ConfigDependencyDefaults.cmake](../cmake/ConfigDependencyDefaults.cmake)。
 - **原生运行库收集**: [CMake 安装组件](../CMakeLists.txt)；打包入口消费该组件的实际安装清单，动态加载的后端资源由同一组件安装。
-- **代码生成与工厂接入**: [../tools/generate_tool_contracts.py](../tools/generate_tool_contracts.py)
-- **分发打包与闭包校验**: [../tools/package_tools.py](../tools/package_tools.py)
+- **代码生成与工厂接入**: [../tools/generate_tool_contracts.py](../tools/generate_tool_contracts.py)；正式构建消费真实 validator 的规范化声明。
+- **分发打包与闭包校验**: [../tools/package_tools.py](../tools/package_tools.py)；发行组包含安装目录、ZIP 与外置索引，提交前统一预检并在失败时恢复旧包。
 - **构建驱动脚本**: [../tools/build.cmd](../tools/build.cmd)
 - **发行链测试**: [../tests/test_distribution.py](../tests/test_distribution.py)；设置 VISIONRT_PYTHON_CONSUMER 为宿主构建的 python_contract.exe、VISIONRT_DEPLOY_SCRIPT 为宿主 package_app.py 时，启用真实跨仓 ZIP 部署与执行验证。
+- **Python 工具目录**: 入口文件所在目录即代码包根；每个工具/相关工具组使用专用目录，包根下 `.py/.pyd/.so` 递归收集，数据资源在声明的 `resources` 中显式列出。示例见[计算图像均值](../assets/tools/custom/Python/示例/计算图像均值/计算图像均值.yaml)与[调用计数器](../assets/tools/custom/Python/示例/调用计数器/调用计数器.yaml)。
+
+## Python 工具目录示例
+
+```text
+assets/tools/custom/Python/示例/计算图像均值/
+  计算图像均值.yaml   # entry.file 相对本目录
+  mean.py             # 包根下代码文件自动收集
+  data/               # 需要时在 resources 显式声明
+```
+
+包根之外的实验脚本不会被发布；相对导入（如 `from .helper import value`）随包根一起交付。
 
 ## 复用决策记录
 

@@ -1,6 +1,6 @@
 include_guard(GLOBAL)
 
-# 测试所需的 DLL 搜索路径（C++ 测试与 Python 测试共用，全部来自各 Config*.cmake 的解析结果，无机器相关硬编码）
+# 测试所需的 DLL/共享库搜索路径（C++ 测试与 Python 测试共用，全部来自各 Config*.cmake 的解析结果，无机器相关硬编码）
 function(visiontools_test_path out_var)
     set(_paths
         "${CMAKE_BINARY_DIR}/src/preprocess"
@@ -19,7 +19,13 @@ function(visiontools_test_path out_var)
     if(DEFINED VISIONTOOLS_PYTHON_HOME AND EXISTS "${VISIONTOOLS_PYTHON_HOME}/Library/bin")
         list(APPEND _paths "${VISIONTOOLS_PYTHON_HOME}/Library/bin")
     endif()
-    string(REPLACE ";" "\\;" _escaped "${_paths};$ENV{PATH}")
+    list(REMOVE_ITEM _paths "")
+    if(WIN32)
+        string(REPLACE ";" "\\;" _escaped "${_paths};$ENV{PATH}")
+    else()
+        string(JOIN ":" _joined ${_paths} "$ENV{PATH}")
+        set(_escaped "${_joined}")
+    endif()
     set(${out_var} "${_escaped}" PARENT_SCOPE)
 endfunction()
 
@@ -41,9 +47,7 @@ function(visiontools_add_test test_name)
         add_test(NAME ${test_name} COMMAND ${test_name} ${ARG_COMMAND_ARGS})
     endif()
 
-    # 在 Windows 上设置运行测试所需的 DLL PATH 环境 (VS-06 / VS-08)
-    if(WIN32)
-        visiontools_test_path(_test_paths)
-        set_tests_properties(${test_name} PROPERTIES ENVIRONMENT "PATH=${_test_paths}")
-    endif()
+    # 在 Windows 上设置运行测试所需的 DLL PATH 环境 (VS-06 / VS-08)；Unix 使用 ':' 分隔
+    visiontools_test_path(_test_paths)
+    set_tests_properties(${test_name} PROPERTIES ENVIRONMENT "PATH=${_test_paths}")
 endfunction()

@@ -132,7 +132,7 @@ shift
 goto :PARSE_ARGS
 
 :START_BUILD
-rem 依赖 PATH 一律来自 CMake 解析结果（tools/dependencies.yaml 为换机器的唯一改动点），此处仅补本工程构建产物目录
+rem 依赖 PATH 一律来自 CMake 解析结果（本机路径经 CMakeUserPresets/-D/环境变量提供），此处仅补本工程构建产物目录
 set "PATH=%BUILD_DIR%\src\preprocess;%BUILD_DIR%\src\infer;%PATH%"
 
 rem Ninja 定位：优先 PATH，其次 Visual Studio 自带（避免机器相关硬编码）
@@ -215,7 +215,10 @@ echo   --build-dir DIR       Specify build directory (default: build)
 echo   help, -h, --help      Show this help message
 echo.
 echo Or run any command inside MSVC x64 environment:
+echo   tools\build.cmd cmake --preset cpu
 echo   tools\build.cmd cmake --build build
 echo   tools\build.cmd ctest --test-dir build --output-on-failure
+echo.
+echo Dependency paths come from -D arguments, environment variables or CMakeUserPresets.json.
 popd
 exit /b 0

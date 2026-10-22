@@ -8,12 +8,12 @@ kind: cpp_class
 entry:
   registry_name: visionrt.flow.receive
 init_params:
-- id: source_flow_name
-  name: 源流程名称
+- id: source_flow_id
+  name: 源流程ID
   type: String
   default: ''
-- id: source_node_name
-  name: 源节点名称
+- id: source_node_seq
+  name: 源节点序号
   type: String
   default: ''
 - id: source_port_id
@@ -30,8 +30,8 @@ outputs:
 - id: value
   name: 接收数据
   type_from:
-    flow: source_flow_name
-    node: source_node_name
+    flow: source_flow_id
+    node: source_node_seq
     port: source_port_id
 - id: source_status_code
   name: 源状态码

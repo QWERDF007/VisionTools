@@ -6,7 +6,6 @@ visiontools_resolve_path(_vt_cuda_root
     VARIABLES CUDAToolkit_ROOT CUDA_PATH CUDA_TOOLKIT_ROOT_DIR
     ENVIRONMENT_VARIABLES CUDA_PATH CUDAToolkit_ROOT CUDA_TOOLKIT_ROOT_DIR
     PATHS ${CMAKE_PREFIX_PATH}
-    DEPENDENCY cuda
 )
 
 if(_vt_cuda_root)

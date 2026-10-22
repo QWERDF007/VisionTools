@@ -4,6 +4,7 @@ project(VisionTools VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # 引入构建系统与编译器配置模块
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -49,11 +50,20 @@ if(VISIONTOOLS_BUILD_INFER)
     list(APPEND VISIONTOOLS_BUILT_MODULES visiontools_infer)
 endif()
 
-set(VISIONTOOLS_SDK_INCLUDE_DIR "${VISIONRT_CONTRACTS_INCLUDE_DIR}")
+if(WIN32)
+    set(_vt_path_separator ";")
+else()
+    set(_vt_path_separator ":")
+endif()
+if(VISIONTOOLS_OPENCV_BIN)
+    set(_vt_path_prefix "${VISIONTOOLS_OPENCV_BIN}${_vt_path_separator}")
+else()
+    set(_vt_path_prefix "")
+endif()
 
 add_custom_command(
     OUTPUT ${VISIONTOOLS_GENERATOR_OUTPUTS}
-    COMMAND ${CMAKE_COMMAND} -E env "PATH=${VISIONTOOLS_OPENCV_BIN};$ENV{PATH}"
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${_vt_path_prefix}$ENV{PATH}"
             ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_tool_contracts.py"
             --tools-dir "${CMAKE_CURRENT_SOURCE_DIR}/assets/tools"
             --bindings "${VISIONTOOLS_MODULE_BINDINGS}"
@@ -61,13 +71,10 @@ add_custom_command(
             --index-output "${VISIONTOOLS_GENERATED_DIR}/module_index.yaml"
             --variant "${VISIONTOOLS_DISTRIBUTION}"
             --modules ${VISIONTOOLS_BUILT_MODULES}
-            --sdk-include-dir "${VISIONTOOLS_SDK_INCLUDE_DIR}"
             --validator "$<TARGET_FILE:VisionRT::visionrt_validate_tool>"
     DEPENDS ${VISIONTOOLS_TOOL_YAMLS} ${VISIONTOOLS_MODULE_BINDINGS} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_tool_contracts.py"
-            "${VISIONTOOLS_SDK_INCLUDE_DIR}/visionrt/contracts/Value.h"
-            "${VISIONTOOLS_SDK_INCLUDE_DIR}/visionrt/contracts/Schema.h"
             VisionRT::visionrt_validate_tool
-    COMMENT "Generating tool contracts, constants, and module factories from YAML declarations..."
+    COMMENT "Generating tool contracts, constants, and module factories from normalized declarations..."
     VERBATIM
 )
 
