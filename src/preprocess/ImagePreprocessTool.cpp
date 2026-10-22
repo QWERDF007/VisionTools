@@ -1,7 +1,6 @@
 #include "ImagePreprocessTool.h"
 
 #include "InputPorts.h"
-#include "PortConstants.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -11,7 +10,7 @@
 namespace visiontools::preprocess {
 namespace {
 
-namespace p = visiontools::ports::visionrt_image_preprocess;
+namespace p = ports::image_preprocess;
 
 void requireU8(const visionrt::OwnedImage &image, std::size_t index)
 {

@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "modules": [
+    "visiontools_preprocess",
+    "visiontools_infer"
+  ],
+  "tools": [
+    {
+      "definition": "assets/tools/builtin/处理/检测/缺陷过滤.json",
+      "module": "visiontools_preprocess"
+    },
+    {
+      "definition": "assets/tools/builtin/流程控制/跨流程接收.json"
+    },
+    {
+      "definition": "assets/tools/builtin/深度学习/目标检测/YOLO目标检测.json",
+      "module": "visiontools_infer"
+    },
+    {
+      "definition": "assets/tools/builtin/采集/图像采集/图像读取.json",
+      "module": "visiontools_preprocess"
+    },
+    {
+      "definition": "assets/tools/builtin/预处理/ROI/投影ROI.json",
+      "module": "visiontools_preprocess"
+    },
+    {
+      "definition": "assets/tools/builtin/预处理/图像处理/图像裁剪.json",
+      "module": "visiontools_preprocess"
+    },
+    {
+      "definition": "assets/tools/builtin/预处理/图像处理/图像预处理.json",
+      "module": "visiontools_preprocess"
+    },
+    {
+      "definition": "assets/tools/builtin/预处理/图像处理/自适应二值化.json",
+      "module": "visiontools_preprocess"
+    },
+    {
+      "definition": "assets/tools/custom/Python/示例/计算图像均值/计算图像均值.json"
+    },
+    {
+      "definition": "assets/tools/custom/Python/示例/调用计数器/调用计数器.json"
+    }
+  ]
+}

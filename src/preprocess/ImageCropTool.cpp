@@ -1,7 +1,6 @@
 #include "ImageCropTool.h"
 
 #include "InputPorts.h"
-#include "PortConstants.h"
 
 #include <opencv2/core.hpp>
 
@@ -16,7 +15,7 @@
 namespace visiontools::preprocess {
 namespace {
 
-namespace p = visiontools::ports::visionrt_image_crop;
+namespace p = ports::image_crop;
 
 bool insidePolygon(std::span<const cv::Point2d> vertices, double x, double y)
 {

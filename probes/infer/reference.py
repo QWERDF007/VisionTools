@@ -1,8 +1,8 @@
-"""Independent .pt/Ultralytics comparison against the real C++ probe YAML (YR-04 / YVT2-04).
+"""Independent .pt/Ultralytics comparison against the real C++ probe JSON (YR-04 / YVT2-04).
 
 Requires locally supplied matching yolov8n.pt, torch, ultralytics, numpy and
 opencv-python. This script never downloads weights or installs dependencies.
-Usage: python reference.py --weights yolov8n.pt --probe probe_report.yaml --report reference_report.yaml
+Usage: python reference.py --weights yolov8n.pt --probe probe_report.json --report reference_report.json
 """
 from __future__ import annotations
 
@@ -10,26 +10,7 @@ import argparse
 import os
 from pathlib import Path
 import sys
-import yaml
-
-class UniqueKeyLoader(yaml.SafeLoader):
-    pass
-
-def _construct_mapping(loader, node, deep=False):
-    loader.flatten_mapping(node)
-    mapping = {}
-    for key_node, value_node in node.value:
-        key = loader.construct_object(key_node, deep=deep)
-        if key in mapping:
-            raise ValueError(f"Duplicate key detected in YAML: {key}")
-        mapping[key] = loader.construct_object(value_node, deep=deep)
-    return mapping
-
-UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping)
-
-def load_yaml(path: Path):
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.load(f, Loader=UniqueKeyLoader)
+import json
 
 def overlap(a, b):
     intersection = max(0.0, min(a[2], b[2]) - max(a[0], b[0])) * max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
@@ -42,7 +23,7 @@ def compare(native, independent):
     for i, left in enumerate(native):
         eligible = []
         for j, right in enumerate(independent):
-            if left["class_id"] != right["class_id"]:
+            if int(left["class_id"]) != int(right["class_id"]):
                 continue
             box = left["box"]
             small = min(box[2] - box[0], box[3] - box[1]) < 16.0
@@ -104,22 +85,22 @@ def main():
     except ImportError as error:
         parser.error(f"Independent reference dependencies unavailable: {error}")
 
-    probe_doc = load_yaml(args.probe)
+    probe_doc = json.loads(args.probe.read_text(encoding="utf-8"))
     if not isinstance(probe_doc, dict):
-        parser.error(f"Probe file {args.probe} must be a valid YAML dictionary")
+        parser.error(f"Probe file {args.probe} must be a valid JSON dictionary")
 
     scope = probe_doc.get("scope")
     if scope != "gpu_release":
-        parser.error(f"Expected scope 'gpu_release' in probe YAML, got '{scope}'")
+        parser.error(f"Expected scope 'gpu_release' in probe JSON, got '{scope}'")
 
     try:
         params = probe_doc.get("parameters")
         if not isinstance(params, dict):
-            raise ValueError("Probe YAML missing required 'parameters' section")
+            raise ValueError("Probe JSON missing required 'parameters' section")
         required_params = ["classes", "height", "width", "confidence", "nms", "max_detections"]
         for rp in required_params:
             if rp not in params:
-                raise ValueError(f"Probe YAML parameters missing required field: '{rp}'")
+                raise ValueError(f"Probe JSON parameters missing required field: '{rp}'")
 
         count = params["classes"]
         if len(model.names) != count:
@@ -128,11 +109,11 @@ def main():
         records = []
         images = probe_doc.get("images")
         if not isinstance(images, list) or not images:
-            raise ValueError("Probe YAML missing or empty 'images' list")
+            raise ValueError("Probe JSON missing or empty 'images' list")
 
         for node in images:
             if not isinstance(node, dict):
-                raise ValueError(f"Malformed image entry in probe YAML: {node}")
+                raise ValueError(f"Malformed image entry in probe JSON: {node}")
             image_path = node.get("path")
             if not image_path:
                 raise ValueError("Image entry missing required 'path'")
@@ -154,7 +135,7 @@ def main():
             w = params["width"]
             conf = params["confidence"]
             nms = params["nms"]
-            max_det = params["max_detections"]
+            max_det = int(params["max_detections"])
 
         predictions = model.predict(
             source=image,
@@ -193,7 +174,7 @@ def main():
             raise ValueError("Probe report has no valid image entries")
 
         result = {
-            "schema": "VisionRT.independent-python.yaml.1",
+            "schema": "VisionRT.independent-python.json.1",
             "weights": str(args.weights.resolve()),
             "probe": str(args.probe.resolve()),
             "device": "cpu",
@@ -209,20 +190,20 @@ def main():
 
         args.report.parent.mkdir(parents=True, exist_ok=True)
         with open(args.report, "w", encoding="utf-8") as f:
-            yaml.dump(result, f, sort_keys=False, allow_unicode=True)
+            json.dump(result, f, ensure_ascii=False, indent=2, allow_nan=False)
 
         print(f"Independent reference report written: {args.report}; passed={result['passed']}")
         return 0 if result["passed"] else 1
     except Exception as e:
         result = {
-            "schema": "VisionRT.independent-python.yaml.1",
+            "schema": "VisionRT.independent-python.json.1",
             "error": str(e),
             "images": records if "records" in locals() else [],
             "passed": False
         }
         args.report.parent.mkdir(parents=True, exist_ok=True)
         with open(args.report, "w", encoding="utf-8") as f:
-            yaml.dump(result, f, sort_keys=False, allow_unicode=True)
+            json.dump(result, f, ensure_ascii=False, indent=2, allow_nan=False)
         print(f"Independent reference execution failed: {e}", file=sys.stderr)
         return 1
 

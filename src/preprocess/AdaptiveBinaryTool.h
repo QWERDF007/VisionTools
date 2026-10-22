@@ -4,6 +4,20 @@
 
 namespace visiontools::preprocess {
 
+namespace ports::adaptive_binary {
+inline constexpr char TOOL_ID[] = "visiontools.preprocess.adaptive_binary";
+
+namespace in {
+inline constexpr char BLOCK_SIZE[]      = "block_size";
+inline constexpr char CONSTANT_OFFSET[] = "constant_offset";
+inline constexpr char IMAGES[]          = "images";
+}
+
+namespace out {
+inline constexpr char IMAGES[] = "images";
+}
+}
+
 class AdaptiveBinaryTool final : public visionrt::IToolInstance
 {
 public:

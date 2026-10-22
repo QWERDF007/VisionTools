@@ -2,7 +2,7 @@
 
 The package group owns three targets: the install directory, the ZIP and the
 external index. All three are pre-checked before anything is written, collected
-into same-volume staging paths, validated with the real SDK validator, and then
+into same-volume staging paths, validated with the real host validator, and then
 committed with a recoverable backup/rename transaction. A failed run never
 deletes a previous usable package.
 """
@@ -19,10 +19,10 @@ import sys
 import uuid
 import zipfile
 
-import yaml
+import json
 
 
-MARKER_NAME = ".visiontools-package.yaml"
+MARKER_NAME = ".visiontools-package.json"
 MARKER_KIND = "visiontools-tools-package"
 MARKER_VERSION = 1
 SOURCE_DIR_NAMES = ("assets", "src", "tools", "tests", "3rdparty", "docs", "cmake", "probes")
@@ -35,32 +35,14 @@ class PackagingError(RuntimeError):
     """An actionable packaging failure with a Chinese message."""
 
 
-class UniqueKeyLoader(yaml.SafeLoader):
-    pass
-
-
-def _construct_mapping(loader, node, deep=False):
-    loader.flatten_mapping(node)
-    mapping = {}
-    for key_node, value_node in node.value:
-        key = loader.construct_object(key_node, deep=deep)
-        if key in mapping:
-            raise PackagingError(f"YAML 存在重复键：{key}")
-        mapping[key] = loader.construct_object(value_node, deep=deep)
-    return mapping
-
-
-UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping)
-
-
-def load_yaml(path: Path):
+def load_json(path: Path):
     with Path(path).open(encoding="utf-8") as stream:
-        return yaml.load(stream, Loader=UniqueKeyLoader)
+        return json.load(stream)
 
 
-def save_yaml(data, path: Path) -> None:
+def save_json(data, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
 
 
 def _relative_path(relative, label: str) -> Path:
@@ -75,6 +57,16 @@ def resolve_inside(root: Path, relative, label: str = "包内引用") -> Path:
     resolved = (Path(root) / reference).resolve()
     if not resolved.is_relative_to(Path(root).resolve()):
         raise PackagingError(f"{label}逃逸根目录：{relative}")
+    return resolved
+
+
+def resolve_declaration_reference(declaration: Path, relative, project_root: Path, label: str) -> Path:
+    path = Path(relative)
+    if not path.parts or path.is_absolute() or path.drive:
+        raise PackagingError(f"{label}必须位于工程根目录内：{relative}")
+    resolved = (declaration.parent / path).resolve()
+    if not resolved.is_relative_to(project_root):
+        raise PackagingError(f"{label}必须位于工程根目录内：{relative}")
     return resolved
 
 
@@ -108,7 +100,7 @@ class PackageTargets:
 def resolve_targets(install_dir: Path, project_root: Path, zip_output: Path | None = None) -> PackageTargets:
     install = Path(install_dir).resolve()
     group = install.name
-    if not group or group in (".", "..") or group.startswith(".") or group.endswith((".zip", ".module_index.yaml")):
+    if not group or group in (".", "..") or group.startswith(".") or group.endswith((".zip", ".module_index.json")):
         raise PackagingError(f"安装目录必须是专用发行组目录：{install}")
     expected_zip = install.parent / f"{group}.zip"
     if zip_output is None:
@@ -117,7 +109,7 @@ def resolve_targets(install_dir: Path, project_root: Path, zip_output: Path | No
         archive = Path(zip_output).resolve()
         if archive.parent != install.parent or archive.name != expected_zip.name:
             raise PackagingError(f"ZIP 必须与安装目录属于同一发行组：{expected_zip}")
-    return PackageTargets(group, install, archive, install.parent / f"{group}.module_index.yaml")
+    return PackageTargets(group, install, archive, install.parent / f"{group}.module_index.json")
 
 
 class CopyPlan:
@@ -175,8 +167,8 @@ def _marker_data(install_dir: Path):
     if not marker.is_file():
         return None
     try:
-        data = load_yaml(marker)
-    except (OSError, yaml.YAMLError, PackagingError) as error:
+        data = load_json(marker)
+    except (OSError, json.JSONDecodeError, PackagingError) as error:
         raise PackagingError(f"包标记无法读取：{marker}：{error}") from error
     if not isinstance(data, dict) or data.get("kind") != MARKER_KIND or data.get("version") != MARKER_VERSION:
         raise PackagingError(f"包标记无效：{marker}")
@@ -227,28 +219,67 @@ def _validate_targets(targets: PackageTargets, project_root: Path, build_dir: Pa
     _validate_artifact_target(targets.index_output, "外置索引", targets, claimed, project_root, build_dir)
 
 
-def _load_build(build_dir: Path, config: str, validator: Path | None = None) -> tuple[dict, dict, Path]:
+def _load_build(build_dir: Path, config: str, project_root: Path,
+                validator: Path | None = None) -> tuple[dict, dict, Path]:
     try:
-        metadata = load_yaml(build_dir / config / "resolved_dependencies.yaml")
-        index = load_yaml(build_dir / "generated/module_index.yaml")
-    except (OSError, yaml.YAMLError, PackagingError) as error:
-        raise PackagingError(f"无法读取构建元数据或索引：{error}") from error
-    if not isinstance(metadata, dict) or not isinstance(index, dict):
-        raise PackagingError("构建元数据与索引必须是映射")
-    if metadata.get("config") != config or metadata.get("variant") != index.get("variant"):
-        raise PackagingError("构建元数据与索引配置不一致")
-    if not index.get("variant") or index.get("schema_version") != 2:
-        raise PackagingError("构建索引格式无效（需要 schema_version 2 与 variant）")
-    if set(metadata.get("modules", {})) != set(index.get("modules", {})):
-        raise PackagingError("构建模块与索引模块不一致")
+        metadata = load_json(build_dir / config / "resolved_dependencies.json")
+        catalog = load_json(project_root / "tools/package_catalog.json")
+    except (OSError, ValueError) as error:
+        raise PackagingError(f"无法读取构建元数据或发行目录表：{error}") from error
+    if not isinstance(metadata, dict) or not isinstance(catalog, dict):
+        raise PackagingError("构建元数据与发行目录表必须是对象")
+    if metadata.get("config") != config or not isinstance(metadata.get("variant"), str) or not metadata["variant"]:
+        raise PackagingError("构建元数据配置不一致或缺少 variant")
+    if catalog.get("schema_version") != 1 or set(catalog) != {"schema_version", "modules", "tools"}:
+        raise PackagingError("发行目录表需要 schema_version 1、modules 与 tools")
+    known_modules = catalog["modules"]
+    if not isinstance(known_modules, list) or any(not isinstance(name, str) or not name for name in known_modules):
+        raise PackagingError("发行目录表 modules 必须是模块名称数组")
+    if len(set(known_modules)) != len(known_modules):
+        raise PackagingError("发行目录表模块重复")
+    modules = metadata.get("modules")
+    if not isinstance(modules, dict) or set(modules) - set(known_modules):
+        raise PackagingError("构建包含未在发行目录表声明的模块")
+    if not isinstance(catalog["tools"], list):
+        raise PackagingError("发行目录表 tools 必须是数组")
+    index = {"schema_version": 1, "variant": metadata["variant"], "modules": {name: {} for name in modules}, "tools": {}}
+    identities = set()
+    for entry in catalog["tools"]:
+        if not isinstance(entry, dict) or set(entry) - {"definition", "module"} or "definition" not in entry:
+            raise PackagingError("发行目录表工具条目只允许 definition 与 module")
+        source = resolve_inside(project_root, entry["definition"], "工具声明")
+        if source.suffix != ".json":
+            raise PackagingError(f"工具声明必须是 JSON：{source}")
+        declaration = load_json(source)
+        if not isinstance(declaration, dict):
+            raise PackagingError(f"工具声明必须是对象：{source}")
+        tool_id = declaration.get("tool_id")
+        if not isinstance(tool_id, str) or not tool_id or tool_id in identities:
+            raise PackagingError(f"工具声明 tool_id 为空或重复：{source}")
+        identities.add(tool_id)
+        module = entry.get("module")
+        kind = declaration.get("kind")
+        if kind == "cpp":
+            if module not in known_modules:
+                raise PackagingError(f"C++ 工具缺少有效模块归属：{tool_id}")
+            if module not in modules:
+                continue
+        elif kind in ("host", "python_function", "python_class"):
+            if module is not None:
+                raise PackagingError(f"非 C++ 工具不能关联原生模块：{tool_id}")
+        else:
+            raise PackagingError(f"工具 kind 无效：{tool_id}")
+        index["tools"][tool_id] = dict(entry)
+    referenced = {entry["module"] for entry in index["tools"].values() if "module" in entry}
+    if set(modules) != referenced:
+        raise PackagingError("构建模块与声明归属不一致")
     validator_value = validator or metadata.get("validator", "")
     if not validator_value:
-        raise PackagingError("构建元数据缺少 SDK 校验器路径")
+        raise PackagingError("构建元数据缺少宿主校验器路径")
     validator_path = Path(validator_value).resolve()
     if not validator_path.is_file():
-        raise PackagingError(f"SDK 校验器不存在：{validator_path}")
+        raise PackagingError(f"宿主校验器不存在：{validator_path}")
     return metadata, index, validator_path
-
 
 def _validate_package_root(package_root: Path, project_root: Path) -> None:
     if not package_root.is_relative_to(project_root):
@@ -277,17 +308,17 @@ def _precheck_payload(metadata: dict, index: dict, project_root: Path) -> None:
         source = resolve_inside(project_root, definition_relative, "工具声明")
         if not source.is_file():
             raise PackagingError(f"工具声明不存在：{source}")
-        declaration = load_yaml(source)
+        declaration = load_json(source)
         if not isinstance(declaration, dict):
             raise PackagingError(f"工具声明必须是映射：{source}")
         if declaration.get("tool_id") != tool_id:
             raise PackagingError(f"工具声明 tool_id 不一致：{source}（索引 {tool_id}）")
         kind = declaration.get("kind", "")
-        entry_data = declaration.get("entry")
-        if not isinstance(entry_data, dict):
-            raise PackagingError(f"工具 {tool_id} 缺少 entry")
+        entry_data = declaration.get("entry", {})
         if kind in ("python_function", "python_class"):
-            script = resolve_inside(source.parent, entry_data.get("file", ""), "Python 入口脚本")
+            if not isinstance(entry_data, dict):
+                raise PackagingError(f"工具 {tool_id} 缺少 entry")
+            script = resolve_declaration_reference(source, entry_data.get("file", ""), project_root, "Python 入口脚本")
             if not script.is_file():
                 raise PackagingError(f"Python 入口脚本不存在：{script}")
             _validate_package_root(script.parent, project_root)
@@ -295,7 +326,7 @@ def _precheck_payload(metadata: dict, index: dict, project_root: Path) -> None:
         if not isinstance(resources, list):
             raise PackagingError(f"工具 {tool_id} 的 resources 必须是列表")
         for resource in resources:
-            resolved = resolve_inside(source.parent, resource, "资源")
+            resolved = resolve_declaration_reference(source, resource, project_root, "资源")
             if not resolved.exists():
                 raise PackagingError(f"资源不存在：{resolved}")
             if not resolved.is_relative_to(project_root):
@@ -328,7 +359,7 @@ def _collect_python_package(plan: CopyPlan, script: Path, project_root: Path) ->
 
 def _collect_resources(plan: CopyPlan, declaration_path: Path, declaration: dict, project_root: Path) -> None:
     for resource in declaration.get("resources", []):
-        source = resolve_inside(declaration_path.parent, resource, "资源")
+        source = resolve_declaration_reference(declaration_path, resource, project_root, "资源")
         if source.is_dir():
             for path in sorted(source.rglob("*")):
                 if not path.is_file():
@@ -371,7 +402,7 @@ def _collect_package(metadata: dict, index: dict, staging_dir: Path, project_roo
                      config: str) -> dict:
     plan = CopyPlan()
     final_index = {
-        "schema_version": 2,
+        "schema_version": 1,
         "variant": index["variant"],
         "modules": {},
         "tools": dict(index.get("tools", {})),
@@ -389,10 +420,10 @@ def _collect_package(metadata: dict, index: dict, staging_dir: Path, project_roo
 
     for tool_id, entry in final_index["tools"].items():
         source = resolve_inside(project_root, entry["definition"], "工具声明")
-        declaration = load_yaml(source)
+        declaration = load_json(source)
         plan.add(source, Path(entry["definition"]))
         if declaration.get("kind") in ("python_function", "python_class"):
-            script = resolve_inside(source.parent, declaration["entry"]["file"], "Python 入口脚本")
+            script = resolve_declaration_reference(source, declaration["entry"]["file"], project_root, "Python 入口脚本")
             _collect_python_package(plan, script, project_root)
         _collect_resources(plan, source, declaration, project_root)
 
@@ -410,6 +441,8 @@ def _collect_package(metadata: dict, index: dict, staging_dir: Path, project_roo
             raise PackagingError(f"模块未进入安装目录：{module_name} -> {relative}")
     module_libraries = set(module_files.values())
     final_index["runtime_files"] = sorted({path for path in installed_files if path not in module_libraries})
+    final_index["modules"] = [{"id": name, **module} for name, module in sorted(final_index["modules"].items())]
+    final_index["tools"] = [{"tool_id": identifier, **entry} for identifier, entry in sorted(final_index["tools"].items())]
     return final_index
 
 
@@ -428,9 +461,9 @@ def _verify_zip(zip_path: Path, staging_dir: Path, index_bytes: bytes) -> None:
             names = bundle.namelist()
             if len(names) != len(set(names)):
                 raise PackagingError(f"ZIP 包含重复条目：{zip_path}")
-            if "module_index.yaml" not in names:
-                raise PackagingError(f"ZIP 缺少 module_index.yaml：{zip_path}")
-            if bundle.read("module_index.yaml") != index_bytes:
+            if "module_index.json" not in names:
+                raise PackagingError(f"ZIP 缺少 module_index.json：{zip_path}")
+            if bundle.read("module_index.json") != index_bytes:
                 raise PackagingError(f"ZIP 内索引与安装索引不一致：{zip_path}")
     except zipfile.BadZipFile as error:
         raise PackagingError(f"ZIP 无法读取：{zip_path}：{error}") from error
@@ -444,7 +477,7 @@ def _verify_zip(zip_path: Path, staging_dir: Path, index_bytes: bytes) -> None:
 
 
 def _write_marker(staging_dir: Path, group: str) -> None:
-    save_yaml({"kind": MARKER_KIND, "version": MARKER_VERSION, "package": group}, staging_dir / MARKER_NAME)
+    save_json({"kind": MARKER_KIND, "version": MARKER_VERSION, "package": group}, staging_dir / MARKER_NAME)
 
 
 def _commit(outputs: list[tuple[Path, Path, str]], token: str) -> None:
@@ -482,7 +515,7 @@ def _commit(outputs: list[tuple[Path, Path, str]], token: str) -> None:
 def verify_package(install_dir: Path, validator: Path) -> bool:
     validator = Path(validator).resolve()
     if not validator.is_file():
-        raise PackagingError(f"SDK 校验器不存在：{validator}")
+        raise PackagingError(f"宿主校验器不存在：{validator}")
     environment = os.environ.copy()
     environment["PATH"] = os.pathsep.join([str(Path(install_dir).resolve() / "bin"), *os.get_exec_path(environment)])
     result = subprocess.run(
@@ -491,7 +524,7 @@ def verify_package(install_dir: Path, validator: Path) -> bool:
         env=environment,
     )
     if result.returncode:
-        print(f"SDK 包校验失败（返回码 {result.returncode}）：{result.stderr or result.stdout}", file=sys.stderr)
+        print(f"宿主包校验失败（返回码 {result.returncode}）：{result.stderr or result.stdout}", file=sys.stderr)
     return result.returncode == 0
 
 
@@ -506,7 +539,7 @@ def package_tools(
     build_dir = Path(build_dir).resolve()
     project_root = Path(project_root or Path(__file__).resolve().parents[1]).resolve()
     targets = resolve_targets(install_dir, project_root, zip_output)
-    metadata, index, build_validator = _load_build(build_dir, config, validator)
+    metadata, index, build_validator = _load_build(build_dir, config, project_root, validator)
     _validate_targets(targets, project_root, build_dir)
     _precheck_payload(metadata, index, project_root)
 
@@ -519,15 +552,15 @@ def package_tools(
         targets.install_dir.parent.mkdir(parents=True, exist_ok=True)
         staging_dir.mkdir()
         final_index = _collect_package(metadata, index, staging_dir, project_root, build_dir, config)
-        save_yaml(final_index, staging_dir / "module_index.yaml")
+        save_json(final_index, staging_dir / "module_index.json")
         _write_marker(staging_dir, targets.group)
         if not verify_package(staging_dir, build_validator):
-            raise PackagingError("SDK 包校验失败")
+            raise PackagingError("宿主包校验失败")
         try:
             _write_zip(staging_dir, staging_zip)
         except OSError as error:
             raise PackagingError(f"写入 ZIP 失败：{error}") from error
-        index_bytes = (staging_dir / "module_index.yaml").read_bytes()
+        index_bytes = (staging_dir / "module_index.json").read_bytes()
         staging_index.write_bytes(index_bytes)
         _verify_zip(staging_zip, staging_dir, index_bytes)
         if staging_index.read_bytes() != index_bytes:
@@ -539,7 +572,7 @@ def package_tools(
         ], token)
     except PackagingError:
         raise
-    except (OSError, KeyError, ValueError, yaml.YAMLError) as error:
+    except (OSError, KeyError, ValueError, json.JSONDecodeError) as error:
         raise PackagingError(f"打包失败：{error}") from error
     finally:
         _remove_path(staging_dir)
@@ -552,12 +585,19 @@ def package_tools(
 
 def verify_runtime(install_dir: Path, consumer_bin: Path) -> bool:
     install_dir = Path(install_dir).resolve()
-    system_root = Path(os.environ.get("SystemRoot", "C:/Windows"))
+    index = load_json(install_dir / "module_index.json")
+    module = next((item for item in index["modules"] if item["id"] == "visiontools_preprocess"), None)
+    if module is None:
+        raise PackagingError("原生运行验证需要 CPU 工具模块")
+    library = resolve_inside(install_dir, module["library"], "模块库")
     environment = os.environ.copy()
-    environment["PATH"] = os.pathsep.join(map(str, [install_dir / "bin", system_root / "System32", system_root]))
-    result = subprocess.run([str(Path(consumer_bin).resolve()), str(install_dir)], env=environment)
+    if os.name == "nt":
+        system_root = Path(os.environ["SystemRoot"])
+        environment["PATH"] = os.pathsep.join(map(str, [install_dir / "bin", system_root / "System32", system_root]))
+    else:
+        environment["LD_LIBRARY_PATH"] = os.pathsep.join([str(install_dir / "bin"), environment.get("LD_LIBRARY_PATH", "")])
+    result = subprocess.run([str(Path(consumer_bin).resolve()), str(library)], env=environment)
     return result.returncode == 0
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -574,7 +614,7 @@ def main() -> int:
     arguments = parser.parse_args()
     try:
         if arguments.verify_only:
-            metadata = load_yaml(arguments.build_dir / arguments.config / "resolved_dependencies.yaml")
+            metadata = load_json(arguments.build_dir / arguments.config / "resolved_dependencies.json")
             validator = arguments.validator or Path(metadata["validator"])
             if not verify_package(arguments.install_dir, validator):
                 return 1
@@ -584,7 +624,7 @@ def main() -> int:
         if arguments.verify_runtime and not verify_runtime(arguments.install_dir, arguments.consumer):
             return 1
         return 0
-    except (OSError, RuntimeError, KeyError, ValueError, yaml.YAMLError) as error:
+    except (OSError, RuntimeError, KeyError, ValueError, json.JSONDecodeError) as error:
         print(f"打包失败：{error}", file=sys.stderr)
         return 1
 

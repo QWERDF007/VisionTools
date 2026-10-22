@@ -5,7 +5,6 @@
 #include "src/preprocess/ReadImageTool.h"
 #include "src/preprocess/RoiProjectionTool.h"
 
-#include "PortConstants.h"
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -48,12 +47,12 @@
 using namespace visionrt;
 using namespace visiontools::preprocess;
 
-namespace ab = visiontools::ports::visiontools_preprocess_adaptive_binary;
-namespace crop_ports = visiontools::ports::visionrt_image_crop;
-namespace filter_ports = visiontools::ports::visionrt_detection_filter;
-namespace preprocess_ports = visiontools::ports::visionrt_image_preprocess;
-namespace projection_ports = visiontools::ports::visionrt_roi_projection;
-namespace read_ports = visiontools::ports::visionrt_image_read;
+namespace ab = visiontools::preprocess::ports::adaptive_binary;
+namespace crop_ports = visiontools::preprocess::ports::image_crop;
+namespace filter_ports = visiontools::preprocess::ports::detection_filter;
+namespace preprocess_ports = visiontools::preprocess::ports::image_preprocess;
+namespace projection_ports = visiontools::preprocess::ports::roi_projection;
+namespace read_ports = visiontools::preprocess::ports::image_read;
 
 static void requireSuccess(const ToolResult &result, const char *context)
 {

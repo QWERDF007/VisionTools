@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "category": "采集",
+  "subcategory": "图像采集",
+  "tool_id": "visionrt.image.read",
+  "display_name": "图像读取",
+  "version": "1.0.0",
+  "kind": "cpp",
+  "init_params": [],
+  "inputs": [
+    {
+      "id": "mode",
+      "name": "读取模式",
+      "type": "String",
+      "default": "file",
+      "editor": "text",
+      "tab": "基本输入",
+      "options": [
+        "file",
+        "directory"
+      ],
+      "required": true
+    },
+    {
+      "id": "path",
+      "name": "文件或目录路径",
+      "type": "String",
+      "default": "",
+      "editor": "path",
+      "path_mode_from": "mode",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "color",
+      "name": "色彩模式",
+      "type": "String",
+      "default": "bgr",
+      "editor": "text",
+      "tab": "基本输入",
+      "options": [
+        "bgr",
+        "gray",
+        "unchanged"
+      ],
+      "required": true
+    },
+    {
+      "id": "limit",
+      "name": "最大数量",
+      "type": "Int",
+      "default": 0,
+      "min": 0,
+      "editor": "number",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "max_batch_bytes",
+      "name": "批次解码字节上限",
+      "type": "Int",
+      "default": 0,
+      "min": 0,
+      "editor": "number",
+      "tab": "基本输入",
+      "required": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "images",
+      "name": "图像批次",
+      "type": "ImageBatch",
+      "display": {
+        "color_order": "BGR"
+      },
+      "required": true
+    },
+    {
+      "id": "paths",
+      "name": "文件路径",
+      "type": "StringArray",
+      "rank": 1,
+      "layout": "dense",
+      "required": true
+    }
+  ]
+}

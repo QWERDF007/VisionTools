@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "category": "预处理",
+  "subcategory": "图像处理",
+  "tool_id": "visionrt.image.crop",
+  "display_name": "图像裁剪",
+  "version": "2.0.0",
+  "kind": "cpp",
+  "init_params": [],
+  "inputs": [
+    {
+      "id": "images",
+      "name": "图像批次",
+      "type": "ImageBatch",
+      "required": true
+    },
+    {
+      "id": "rect",
+      "name": "矩形区域",
+      "type": "Rect",
+      "image_input": "images",
+      "required": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "images",
+      "name": "裁剪图像批次",
+      "type": "ImageBatch",
+      "display": {
+        "color_order": "BGR"
+      },
+      "required": true
+    },
+    {
+      "id": "origins",
+      "name": "原点坐标",
+      "type": "NumericArray",
+      "dtype": "float64",
+      "rank": 2,
+      "layout": "dense",
+      "required": true
+    }
+  ]
+}

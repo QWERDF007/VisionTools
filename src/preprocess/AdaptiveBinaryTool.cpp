@@ -1,7 +1,6 @@
 #include "AdaptiveBinaryTool.h"
 
 #include "InputPorts.h"
-#include "PortConstants.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -11,7 +10,7 @@
 namespace visiontools::preprocess {
 namespace {
 
-namespace p = visiontools::ports::visiontools_preprocess_adaptive_binary;
+namespace p = ports::adaptive_binary;
 
 } // namespace
 

@@ -1,7 +1,6 @@
 #include "ReadImageTool.h"
 
 #include "InputPorts.h"
-#include "PortConstants.h"
 
 #include <opencv2/imgcodecs.hpp>
 
@@ -17,7 +16,7 @@
 namespace visiontools::preprocess {
 namespace {
 
-namespace p = visiontools::ports::visionrt_image_read;
+namespace p = ports::image_read;
 
 std::string utf8Path(const std::filesystem::path &path)
 {

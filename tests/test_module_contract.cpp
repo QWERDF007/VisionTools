@@ -1,4 +1,5 @@
 #include <visionrt/contracts/Module.h>
+#include "TestRegistry.h"
 #include <visionrt/contracts/Tool.h>
 
 #include <algorithm>
@@ -8,6 +9,7 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <set>
 
 #ifdef _WIN32
 #    ifndef NOMINMAX
@@ -54,43 +56,42 @@ int main()
     REQUIRE(api != nullptr, "visiontoolsModuleApi must return non-null pointer");
     REQUIRE(api->abi_major == visionrt::MODULE_ABI_MAJOR, "ABI major must match");
     REQUIRE(api->struct_bytes == sizeof(visionrt::ModuleApi), "struct_bytes must match");
-    REQUIRE(api->create != nullptr, "create pointer must be non-null");
-    REQUIRE(api->destroy != nullptr, "destroy pointer must be non-null");
-
+    REQUIRE(api->register_tools != nullptr, "register_tools must be present");
+    TestRegistry registry;
+    REQUIRE(api->register_tools(registry).code == 0, "Registration must succeed");
+    const std::set<std::string> expected{
+        "visionrt.image.read", "visionrt.roi.projection", "visionrt.image.crop",
+        "visionrt.image.preprocess", "visionrt.detection.filter", "visiontools.preprocess.adaptive_binary"};
+    REQUIRE(registry.factories.size() == expected.size(), "Exactly six CPU factories must be registered");
+    for (const auto &id : expected)
+        REQUIRE(registry.factories.contains(id), "Every stable ID must be registered");
+    REQUIRE(!registry.factories.contains("AdaptiveBinaryTool"), "Legacy class-name alias must not be registered");
+    struct RejectingRegistry final : visionrt::IToolRegistry
+    {
+        int calls = 0;
+        visionrt::ToolStatus add(const visionrt::ToolFactoryDescriptor &) noexcept override
+        {
+            ++calls;
+            return {17, "注册已拒绝"};
+        }
+    } rejected;
+    REQUIRE(api->register_tools(rejected).code == 17 && rejected.calls == 1,
+            "Registration must stop and preserve the first rejected add");
+    const auto &factory = registry.factories.at("visiontools.preprocess.adaptive_binary");
     visionrt::ToolServices services;
-    visionrt::ToolStatus   status;
-
-    // 1. Unknown registry_name -> returns nullptr and status code -3
-    {
-        visionrt::IToolInstance *inst = api->create("non.existent.registry", &services, &status);
-        REQUIRE(inst == nullptr, "Unknown registry must return nullptr");
-        REQUIRE(status.code == -3, "Unknown registry must set status code -3");
-        REQUIRE(!status.message.empty(), "Status message must explain error");
-    }
-
-    // 2. Null registry_name -> returns nullptr and status code -3
-    {
-        visionrt::IToolInstance *inst = api->create(nullptr, &services, &status);
-        REQUIRE(inst == nullptr, "Null registry must return nullptr");
-        REQUIRE(status.code == -3, "Null registry must set status code -3");
-    }
-
-    // 3. Null services pointer -> safely handled without crash
-    {
-        visionrt::IToolInstance *inst = api->create("AdaptiveBinaryTool", nullptr, &status);
-        REQUIRE(inst != nullptr, "Null services must be safely tolerated with default services");
-        api->destroy(inst);
-    }
-
-    // 4. destroy(nullptr) must be safe and no-op (NS-05)
-    {
-        api->destroy(nullptr);
-    }
-
+    visionrt::ToolStatus status;
+    REQUIRE(factory.create(nullptr, &status) == nullptr && status.code == -3,
+            "Missing services must be rejected without creating an instance");
+    factory.destroy(nullptr);
+    auto *uninitialized = factory.create(&services, nullptr);
+    REQUIRE(uninitialized != nullptr, "A null status sink must be supported");
+    REQUIRE(uninitialized->release().code == 0, "An uninitialized instance must release safely");
+    REQUIRE(uninitialized->release().code == 0, "Release must be idempotent");
+    factory.destroy(uninitialized);
     // 5. Lifecycle and Snapshot persistence across execute/release/destroy (VS-05 / NS-05)
     visionrt::OwnedImage snapshotImage;
     {
-        visionrt::IToolInstance *inst = api->create("AdaptiveBinaryTool", &services, &status);
+        visionrt::IToolInstance *inst = factory.create(&services, &status);
         REQUIRE(inst != nullptr, "Known registry must return instance");
 
         cv::Mat          gray(60, 60, CV_8UC1, cv::Scalar(150));
@@ -143,7 +144,7 @@ int main()
                 "Snapshot must remain valid after release");
 
         // Destroy instance
-        api->destroy(inst);
+        factory.destroy(inst);
     }
     // Snapshot must remain valid after instance destruction
     REQUIRE(snapshotImage.rows() == 60 && snapshotImage.readOnlyMat().at<unsigned char>(0, 0) == 255,
@@ -155,7 +156,7 @@ int main()
         auto runWorker = [&](int factor, int size) -> std::vector<cv::Mat>
         {
             visionrt::ToolStatus     s;
-            visionrt::IToolInstance *inst = api->create("AdaptiveBinaryTool", &services, &s);
+            visionrt::IToolInstance *inst = factory.create(&services, &s);
             REQUIRE(inst != nullptr, "Create must succeed");
 
             cv::Mat img(size, size, CV_8UC1);
@@ -183,7 +184,7 @@ int main()
             }
 
             inst->release();
-            api->destroy(inst);
+            factory.destroy(inst);
             return roundOutputs;
         };
 
@@ -217,7 +218,7 @@ int main()
     {
         std::size_t              rssBaseline = getProcessRSS();
         visionrt::ToolStatus     s;
-        visionrt::IToolInstance *inst = api->create("AdaptiveBinaryTool", &services, &s);
+        visionrt::IToolInstance *inst = factory.create(&services, &s);
         REQUIRE(inst != nullptr, "Create for 100 consecutive runs must succeed");
 
         cv::Mat nonUniform(64, 64, CV_8UC1);
@@ -269,7 +270,7 @@ int main()
 
         inst->release();
         std::size_t rssPostRelease = getProcessRSS();
-        api->destroy(inst);
+        factory.destroy(inst);
         std::size_t rssPostDestroy = getProcessRSS();
 
         std::cout << "[METRICS] 100-run: p50=" << p50 << "us, p95=" << p95 << "us" << std::endl;
@@ -318,10 +319,10 @@ int main()
         for (int cycle = 0; cycle < 20; ++cycle)
         {
             visionrt::ToolStatus     s;
-            visionrt::IToolInstance *inst = api->create("AdaptiveBinaryTool", &services, &s);
+            visionrt::IToolInstance *inst = factory.create(&services, &s);
             REQUIRE(inst != nullptr, "Cycle create must succeed");
             inst->release();
-            api->destroy(inst);
+            factory.destroy(inst);
         }
     }
 

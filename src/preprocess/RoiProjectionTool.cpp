@@ -1,7 +1,6 @@
 #include "RoiProjectionTool.h"
 
 #include "InputPorts.h"
-#include "PortConstants.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -13,7 +12,7 @@
 namespace visiontools::preprocess {
 namespace {
 
-namespace p = visiontools::ports::visionrt_roi_projection;
+namespace p = ports::roi_projection;
 
 cv::Mat toGray(const visionrt::OwnedImage &image, std::size_t index)
 {

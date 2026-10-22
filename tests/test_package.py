@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
-import yaml
+import json
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -17,7 +17,7 @@ import package_tools as package
 def validator_path() -> Path:
     configured = os.environ.get("VISIONTOOLS_VALIDATOR")
     if not configured:
-        raise AssertionError("VISIONTOOLS_VALIDATOR must point at the real SDK validator")
+        raise AssertionError("VISIONTOOLS_VALIDATOR must point at the real host validator")
     path = Path(configured)
     if not path.is_file():
         raise AssertionError(f"VISIONTOOLS_VALIDATOR is not a file: {path}")
@@ -32,7 +32,7 @@ class PackageFixture(unittest.TestCase):
         self.build = self.project / "build"
         self.output = self.project / "dist/工具 包"
         self.validator = validator_path()
-        self.declaration = self.project / "assets/tools/custom/Math/Arithmetic/tool.yaml"
+        self.declaration = self.project / "assets/tools/custom/Math/Arithmetic/tool.json"
         self.declaration.parent.mkdir(parents=True)
         self.document = {
             "schema_version": 1, "tool_id": "custom.math", "display_name": "Math",
@@ -48,8 +48,8 @@ class PackageFixture(unittest.TestCase):
             encoding="utf-8")
         (self.declaration.parent / "bias.dat").write_text("42", encoding="utf-8")
         self.index = {
-            "schema_version": 2, "variant": "portable-release", "modules": {},
-            "tools": {"custom.math": {"definition": self.declaration.relative_to(self.project).as_posix()}},
+            "schema_version": 1, "modules": [],
+            "tools": [{"definition": self.declaration.relative_to(self.project).as_posix()}],
         }
         self.manifest = {"variant": "portable-release", "config": "Release", "modules": {}, "runtime_files": []}
 
@@ -58,9 +58,9 @@ class PackageFixture(unittest.TestCase):
         return package.resolve_targets(self.output, self.project)
 
     def publish(self, install_dir=None, zip_output=None):
-        package.save_yaml(self.document, self.declaration)
-        package.save_yaml(self.index, self.build / "generated/module_index.yaml")
-        package.save_yaml(self.manifest, self.build / "Release/resolved_dependencies.yaml")
+        package.save_json(self.document, self.declaration)
+        package.save_json(self.index, self.project / "tools/package_catalog.json")
+        package.save_json(self.manifest, self.build / "Release/resolved_dependencies.json")
         return package.package_tools(self.build, install_dir or self.output, project_root=self.project,
                                      validator=self.validator, zip_output=zip_output)
 
@@ -90,23 +90,23 @@ class TestPackageTransaction(PackageFixture):
         archive = self.publish()
         targets = self.targets
         with zipfile.ZipFile(archive) as bundle:
-            self.assertEqual(bundle.read("module_index.yaml"), targets.index_output.read_bytes())
-            index = yaml.safe_load(bundle.read("module_index.yaml"))
+            self.assertEqual(bundle.read("module_index.json"), targets.index_output.read_bytes())
+            index = json.loads(bundle.read("module_index.json"))
             self.assertEqual(index["variant"], "portable-release")
-            self.assertEqual(index["modules"], {})
-            self.assertEqual(set(index["tools"]), {"custom.math"})
+            self.assertEqual(index["modules"], [])
+            self.assertEqual({tool["tool_id"] for tool in index["tools"]}, {"custom.math"})
         self.assertTrue(package.verify_package(targets.install_dir, self.validator))
 
     def test_install_directory_is_marked_and_marker_is_not_packaged(self):
         archive = self.publish()
         marker = self.output / package.MARKER_NAME
         self.assertTrue(marker.is_file())
-        self.assertEqual(yaml.safe_load(marker.read_text(encoding="utf-8"))["package"], "工具 包")
+        self.assertEqual(json.loads(marker.read_text(encoding="utf-8"))["package"], "工具 包")
         with zipfile.ZipFile(archive) as bundle:
             self.assertNotIn(package.MARKER_NAME, bundle.namelist())
 
     def test_backend_label_does_not_require_vendor_modules(self):
-        self.index["variant"] = self.manifest["variant"] = "gpu"
+        self.manifest["variant"] = "gpu"
         archive = self.publish()
         self.assertTrue(archive.is_file())
         self.assertFalse((self.output / "bin").exists())
@@ -119,10 +119,10 @@ class TestPackageTransaction(PackageFixture):
                 self.assertIn(f"{prefix}/{name}", bundle.namelist())
 
     def test_native_tool_can_ship_declared_data_without_python(self):
-        self.document["kind"] = "cpp_function"
-        self.document["entry"] = {"registry_name": "AdaptiveBinaryTool"}
-        self.index["modules"] = {"visiontools_preprocess": {}}
-        self.index["tools"]["custom.math"]["module"] = "visiontools_preprocess"
+        self.document["kind"] = "cpp"
+        self.document.pop("entry")
+        self.index["modules"] = ["visiontools_preprocess"]
+        self.index["tools"][0]["module"] = "visiontools_preprocess"
         module = self.build / "src/preprocess/vst_image.dll"
         module.parent.mkdir(parents=True)
         module.write_bytes(b"module")
@@ -131,9 +131,8 @@ class TestPackageTransaction(PackageFixture):
         self.assertEqual((self.output / self.declaration.parent.relative_to(self.project) / "bias.dat").read_text(), "42")
 
     def test_platform_only_package_has_no_fake_module(self):
-        self.document["kind"] = "cpp_class"
-        self.document["entry"] = {"registry_name": "platform.math"}
-        self.index["tools"]["custom.math"]["host_binding"] = "visionrt.receiver"
+        self.document["kind"] = "host"
+        self.document["entry"] = {"binding": "visionrt.receiver"}
         archive = self.publish()
         with zipfile.ZipFile(archive) as bundle:
             self.assertFalse(any(name.startswith("bin/") for name in bundle.namelist()))
@@ -180,28 +179,30 @@ class TestPackageTransaction(PackageFixture):
         self.assertEqual(self.staging_entries(), [])
 
     def test_configuration_mismatch_is_rejected(self):
-        self.manifest["variant"] = "different-build"
+        self.manifest["config"] = "Debug"
         with self.assertRaisesRegex(RuntimeError, "配置不一致"):
             self.publish()
 
     def test_module_manifest_mismatch_is_rejected(self):
-        self.index["modules"] = {"missing": {}}
+        self.manifest["modules"] = {"missing": {"source": "missing.dll"}}
         with self.assertRaisesRegex(RuntimeError, "模块"):
             self.publish()
 
-    def test_tool_identity_mismatch_is_rejected(self):
-        self.document["tool_id"] = "different.identity"
+    def test_duplicate_tool_identity_is_rejected(self):
+        second = self.declaration.parent / "second.json"
+        package.save_json(self.document, second)
+        self.index["tools"].append({"definition": second.relative_to(self.project).as_posix()})
         with self.assertRaisesRegex(RuntimeError, "tool_id"):
             self.publish()
 
-    def test_missing_script_is_rejected_by_sdk(self):
+    def test_missing_script_is_rejected(self):
         self.document["entry"]["file"] = "missing.py"
         with self.assertRaisesRegex(RuntimeError, "入口脚本"):
             self.publish()
 
     def test_python_cannot_reference_a_native_module(self):
-        self.index["tools"]["custom.math"]["module"] = "missing"
-        with self.assertRaisesRegex(RuntimeError, "SDK 包校验失败"):
+        self.index["tools"][0]["module"] = "missing"
+        with self.assertRaisesRegex(RuntimeError, "模块"):
             self.publish()
 
     def test_missing_resource_is_rejected(self):
@@ -209,10 +210,17 @@ class TestPackageTransaction(PackageFixture):
         with self.assertRaisesRegex(RuntimeError, "资源不存在"):
             self.publish()
 
-    def test_resource_cannot_escape_its_declaration(self):
-        self.document["resources"] = ["../outside.dat"]
+    def test_resource_cannot_escape_the_project(self):
+        self.document["resources"] = [os.path.relpath(self.project.parent / "outside.dat", self.declaration.parent)]
         with self.assertRaisesRegex(RuntimeError, "根目录内"):
             self.publish()
+
+    def test_shared_resource_can_use_a_parent_within_the_package(self):
+        resource = self.declaration.parent.parent / "shared.dat"
+        resource.write_text("shared", encoding="utf-8")
+        self.document["resources"] = ["../shared.dat"]
+        self.publish()
+        self.assertEqual((self.output / resource.relative_to(self.project)).read_text(), "shared")
 
     def test_runtime_destination_cannot_escape_collection(self):
         source = self.project / "runtime.dat"
@@ -222,8 +230,8 @@ class TestPackageTransaction(PackageFixture):
             self.publish()
         self.assertFalse((self.output.parent / "outside.dat").exists())
 
-    def test_verifier_requires_the_real_sdk_validator(self):
-        with self.assertRaisesRegex(RuntimeError, "SDK 校验器不存在"):
+    def test_verifier_requires_the_real_host_validator(self):
+        with self.assertRaisesRegex(RuntimeError, "宿主校验器不存在"):
             package.verify_package(self.output, self.project / "missing-validator.exe")
 
 
@@ -262,7 +270,7 @@ class TestTargetProtection(PackageFixture):
             self.skipTest(f"symlinks are unavailable: {error}")
         with self.assertRaises(RuntimeError):
             self.publish(install_dir=link)
-        self.assertFalse((self.project / "docs/module_index.yaml").exists())
+        self.assertFalse((self.project / "docs/module_index.json").exists())
 
     def test_existing_unmarked_directory_is_rejected(self):
         unrelated = self.project / "dist/Unrelated"
@@ -287,7 +295,7 @@ class TestTargetProtection(PackageFixture):
         self.publish(install_dir=target)
         self.assertTrue((target / package.MARKER_NAME).is_file())
         self.publish(install_dir=target)
-        self.assertTrue((target / "module_index.yaml").is_file())
+        self.assertTrue((target / "module_index.json").is_file())
 
     def test_external_unrelated_directory_is_rejected(self):
         external = Path(tempfile.mkdtemp())
@@ -331,15 +339,15 @@ class TestFailureRollback(PackageFixture):
 
     def test_missing_module_preserves_previous_package(self):
         self.manifest["modules"] = {"visiontools_preprocess": {"source": str(self.build / "missing.dll")}}
-        self.index["modules"] = {"visiontools_preprocess": {}}
-        self.index["tools"]["custom.math"]["module"] = "visiontools_preprocess"
+        self.index["modules"] = ["visiontools_preprocess"]
+        self.index["tools"][0]["module"] = "visiontools_preprocess"
         with self.assertRaisesRegex(RuntimeError, "模块"):
             self.publish()
         self.assert_previous_package_usable()
 
     def test_validator_failure_preserves_previous_package(self):
         with patch.object(package, "verify_package", return_value=False):
-            with self.assertRaisesRegex(RuntimeError, "SDK 包校验失败"):
+            with self.assertRaisesRegex(RuntimeError, "宿主包校验失败"):
                 self.publish()
         self.assert_previous_package_usable()
 
@@ -386,8 +394,8 @@ class TestFailureRollback(PackageFixture):
     def test_marker_is_not_created_for_a_failed_new_package(self):
         fresh = self.project / "dist/Fresh"
         self.manifest["modules"] = {"visiontools_preprocess": {"source": str(self.build / "missing.dll")}}
-        self.index["modules"] = {"visiontools_preprocess": {}}
-        self.index["tools"]["custom.math"]["module"] = "visiontools_preprocess"
+        self.index["modules"] = ["visiontools_preprocess"]
+        self.index["tools"][0]["module"] = "visiontools_preprocess"
         with self.assertRaises(RuntimeError):
             self.publish(install_dir=fresh)
         self.assertFalse(fresh.exists())
@@ -425,13 +433,13 @@ class TestPythonPackageBoundary(PackageFixture):
             self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in bundle.namelist()))
 
     def test_shared_package_root_is_deduplicated(self):
-        second = self.declaration.parent / "second.yaml"
+        second = self.declaration.parent / "second.json"
         second_document = dict(self.document)
         second_document["tool_id"] = "custom.math.second"
         second_document["display_name"] = "Math Second"
         second_document["entry"] = {"file": "tool.py", "symbol": "run"}
-        package.save_yaml(second_document, second)
-        self.index["tools"]["custom.math.second"] = {"definition": second.relative_to(self.project).as_posix()}
+        package.save_json(second_document, second)
+        self.index["tools"].append({"definition": second.relative_to(self.project).as_posix()})
         archive = self.publish()
         with zipfile.ZipFile(archive) as bundle:
             names = bundle.namelist()

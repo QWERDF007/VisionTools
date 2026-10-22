@@ -1,5 +1,6 @@
 #include "src/infer/YoloModel.h"
 #include "src/infer/YoloPostprocess.h"
+#include "TestRegistry.h"
 
 #include <visionrt/contracts/Module.h>
 #include <visionrt/contracts/Tool.h>
@@ -91,6 +92,22 @@ int main()
     std::cout << "[TEST] Running test_infer_contract..." << std::endl;
     try
     {
+        const auto *api = visiontoolsModuleApi();
+        REQUIRE(api && api->abi_major == visionrt::MODULE_ABI_MAJOR, "Inference module must expose ABI3");
+        REQUIRE(api->struct_bytes >= sizeof(visionrt::ModuleApi) && api->register_tools,
+                "Inference registration callback must be complete");
+        TestRegistry registry;
+        REQUIRE(api->register_tools(registry).code == 0, "Inference registration must succeed");
+        REQUIRE(registry.factories.size() == 1 && registry.factories.contains("visionrt.dl.yolo"),
+                "Inference module must register the stable YOLO ID only");
+        const auto &factory = registry.factories.at("visionrt.dl.yolo");
+        visionrt::ToolServices services;
+        visionrt::ToolStatus status;
+        auto *instance = factory.create(&services, &status);
+        REQUIRE(instance && status.code == 0, "Construction must not load a model");
+        REQUIRE(instance->release().code == 0 && instance->release().code == 0,
+                "Uninitialized inference instance must release idempotently");
+        factory.destroy(instance);
         testPostprocessIoU();
         testPostprocessGeometry();
         testYoloMissingInitParameters();

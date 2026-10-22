@@ -18,23 +18,18 @@ endif()
 if(NOT TARGET CUDA::cudart)
     find_package(CUDAToolkit REQUIRED)
 endif()
-if(NOT TARGET yaml-cpp::yaml-cpp)
-    find_package(yaml-cpp CONFIG REQUIRED)
-endif()
 
 add_executable(visiontools_infer_probe main.cpp)
 target_include_directories(visiontools_infer_probe PRIVATE
     ${OpenCV_INCLUDE_DIRS}
 )
 
-# 公开 probe 动态加载 visiontools_infer，仅依赖公开 SDK、OpenCV、CUDA 与 yaml-cpp (YS-04 / YVT2-04)
+# 公开 probe 动态加载 visiontools_infer，仅依赖公开 SDK、OpenCV 与 CUDA (YS-04 / YVT2-04)
 target_link_libraries(visiontools_infer_probe PRIVATE
     VisionRT::Contracts
     ${OpenCV_LIBS}
     CUDA::cudart
-    yaml-cpp::yaml-cpp
 )
 if(WIN32)
     target_link_libraries(visiontools_infer_probe PRIVATE version)
 endif()
-target_compile_definitions(visiontools_infer_probe PRIVATE VISIONRT_SDK_VERSION="${VisionRTContracts_VERSION}")

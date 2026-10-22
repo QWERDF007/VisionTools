@@ -1,14 +1,8 @@
 #include <cuda_runtime.h>
-#include <visionrt/contracts/Contract.h>
 #include <visionrt/contracts/Module.h>
-#include <visionrt/contracts/SchemaYaml.h>
 #include <visionrt/contracts/Tool.h>
 #include <visionrt/contracts/Value.h>
-#include <yaml-cpp/yaml.h>
 
-#ifndef VISIONRT_SDK_VERSION
-#    define VISIONRT_SDK_VERSION "0.1.0"
-#endif
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -22,6 +16,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <map>
 #ifdef _WIN32
 #    define WIN32_LEAN_AND_MEAN
 #    ifndef NOMINMAX
@@ -75,54 +70,65 @@ inline void freeSharedLib(LibHandle h)
 }
 #endif
 
-using ModuleApiFn = const visionrt::ModuleApi *(*)();
 
-inline const visionrt::ModuleApi *getModuleApi(const std::filesystem::path &modulePath = "")
+using ModuleApiFn = const ModuleApi *(VT_CALL *)() noexcept;
+
+class ProbeModule final : public IToolRegistry
 {
-    static LibHandle                  s_lib = nullptr;
-    static const visionrt::ModuleApi *s_api = nullptr;
-    if (s_api)
-        return s_api;
+public:
+    explicit ProbeModule(const std::filesystem::path &path)
+    {
+        library_ = loadSharedLib(std::filesystem::absolute(path));
+        if (!library_)
+            throw std::runtime_error("无法加载推理模块：" + path.string());
+        try
+        {
+            const auto entry = reinterpret_cast<ModuleApiFn>(getProcAddr(library_, "visiontoolsModuleApi"));
+            if (!entry)
+                throw std::runtime_error("推理模块缺少 visiontoolsModuleApi");
+            const auto *api = entry();
+            if (!api || api->abi_major != MODULE_ABI_MAJOR || api->struct_bytes < sizeof(ModuleApi) || !api->register_tools)
+                throw std::runtime_error("推理模块 ABI3 接口无效");
+            const auto status = api->register_tools(*this);
+            if (!status)
+                throw std::runtime_error(status.message + "：" + status.detail);
+        }
+        catch (...)
+        {
+            freeSharedLib(library_);
+            throw;
+        }
+    }
+    ~ProbeModule() override { freeSharedLib(library_); }
+    ProbeModule(const ProbeModule &) = delete;
+    ProbeModule &operator=(const ProbeModule &) = delete;
 
-    if (modulePath.empty())
+    ToolStatus add(const ToolFactoryDescriptor &descriptor) noexcept override
     {
-        throw std::runtime_error("Module path must be explicitly provided via --module or --package-dir");
+        try
+        {
+            if (!descriptor.tool_id || !*descriptor.tool_id || !descriptor.create || !descriptor.destroy)
+                return {-3, "无效推理工厂"};
+            auto [position, inserted] = factories.emplace(descriptor.tool_id, descriptor);
+            if (!inserted)
+                return {-3, "推理工厂 ID 重复"};
+            position->second.tool_id = position->first.c_str();
+            return {};
+        }
+        catch (const std::exception &error)
+        {
+            return {-3, "推理工厂注册失败", error.what()};
+        }
     }
+    std::map<std::string, ToolFactoryDescriptor, std::less<>> factories;
+private:
+    LibHandle library_ = nullptr;
+};
 
-    if (!std::filesystem::exists(modulePath))
-    {
-        throw std::runtime_error("Module file does not exist: " + modulePath.string());
-    }
-
-    s_lib = loadSharedLib(std::filesystem::absolute(modulePath));
-    if (!s_lib)
-    {
-        throw std::runtime_error("Failed to load module library: " + modulePath.string());
-    }
-
-    auto *fn = reinterpret_cast<ModuleApiFn>(getProcAddr(s_lib, "visiontoolsModuleApi"));
-    if (!fn)
-    {
-        throw std::runtime_error("visiontoolsModuleApi symbol not found in " + modulePath.string());
-    }
-    s_api = fn();
-    if (!s_api)
-    {
-        throw std::runtime_error("visiontoolsModuleApi() returned null");
-    }
-    if (s_api->abi_major != visionrt::MODULE_ABI_MAJOR)
-    {
-        throw std::runtime_error("Module ABI major mismatch");
-    }
-    if (s_api->struct_bytes != sizeof(visionrt::ModuleApi))
-    {
-        throw std::runtime_error("Module struct bytes mismatch");
-    }
-    if (!s_api->create)
-    {
-        throw std::runtime_error("Module create function pointer is null");
-    }
-    return s_api;
+const ToolFactoryDescriptor &getFactory(const std::filesystem::path &path = {})
+{
+    static const ProbeModule module(path);
+    return module.factories.at("visionrt.dl.yolo");
 }
 
 struct DetectionParameters
@@ -199,7 +205,7 @@ Arguments arguments(int argc, char **argv)
     if (result.syntheticOnly)
     {
         if (result.report.empty())
-            result.report = "probe_report.yaml";
+            result.report = "probe_report.json";
         return result;
     }
     if (result.weights.empty() || result.engine.empty() || result.report.empty() || result.images.size() < 2)
@@ -243,7 +249,7 @@ std::string absolute(const std::string &path)
 
 struct ProbeEnvironment
 {
-    std::string sdkVersion         = VISIONRT_SDK_VERSION;
+    std::uint32_t sdkAbiMajor      = MODULE_ABI_MAJOR;
     std::string cudaRuntimeVersion = "unavailable";
     std::string cudaDriverVersion  = "unavailable";
     std::string registeredModels   = "visionrt.dl.yolo";
@@ -308,20 +314,20 @@ Tool create(const std::filesystem::path &modulePath = "")
 {
     const ToolServices services{PathResolver(std::filesystem::current_path())};
     ToolStatus         status;
-    const auto        *api = getModuleApi(modulePath);
-    auto              *raw = api->create("visionrt.dl.yolo", &services, &status);
-    success(status);
-    require(raw != nullptr, "Module factory returned null for visionrt.dl.yolo");
-    return Tool(raw,
+    const auto        &factory = getFactory(modulePath);
+    auto              *raw = factory.create(&services, &status);
+    Tool instance(raw,
                 [](IToolInstance *p)
                 {
                     if (p)
                     {
-                        const auto *a = getModuleApi();
-                        if (a && a->destroy)
-                            a->destroy(p);
+                        try { p->release(); } catch (...) {}
+                        getFactory().destroy(p);
                     }
                 });
+    success(status);
+    require(raw != nullptr, "Module factory returned null for visionrt.dl.yolo");
+    return instance;
 }
 
 Values configuration(const Arguments &args, bool build)
@@ -495,7 +501,7 @@ ComparisonResult compareDetections(const std::vector<PublicDetection> &a, const 
     return result;
 }
 
-void writeYamlReport(const std::filesystem::path &reportPath, const std::string &overallStatus,
+void writeJsonReport(const std::filesystem::path &reportPath, const std::string &overallStatus,
                      const ProbeEnvironment &env, const GpuQueryResult &devices, const std::string &buildStatus,
                      const std::string &buildReason, const std::string &baselineStatus,
                      const std::string &baselineReason, const std::string &memoryStatus,
@@ -503,114 +509,58 @@ void writeYamlReport(const std::filesystem::path &reportPath, const std::string 
                      const std::vector<std::string>                  *imagePaths = nullptr,
                      const std::vector<std::vector<PublicDetection>> *buildDets  = nullptr)
 {
-    YAML::Emitter out;
-    out << YAML::BeginMap;
-    out << YAML::Key << "scope" << YAML::Value << "gpu_release";
-    out << YAML::Key << "overall_status" << YAML::Value << overallStatus;
-
-    out << YAML::Key << "environment" << YAML::Value << YAML::BeginMap;
-    out << YAML::Key << "sdk_version" << YAML::Value << env.sdkVersion;
-    out << YAML::Key << "cuda_runtime_version" << YAML::Value << env.cudaRuntimeVersion;
-    out << YAML::Key << "cuda_driver_version" << YAML::Value << env.cudaDriverVersion;
-    out << YAML::Key << "devices" << YAML::Value << YAML::BeginSeq;
-    for (const auto &dev : devices.devices)
-    {
-        out << YAML::BeginMap;
-        out << YAML::Key << "index" << YAML::Value << dev.index;
-        out << YAML::Key << "name" << YAML::Value << dev.name;
-        out << YAML::EndMap;
-    }
-    out << YAML::EndSeq;
-    out << YAML::EndMap; // environment
-
-    out << YAML::Key << "target_registry" << YAML::Value << "visionrt.dl.yolo";
-
-    if (args)
-    {
-        out << YAML::Key << "parameters" << YAML::Value << YAML::BeginMap;
-        out << YAML::Key << "width" << YAML::Value << args->width;
-        out << YAML::Key << "height" << YAML::Value << args->height;
-        out << YAML::Key << "classes" << YAML::Value << args->classes;
-        out << YAML::Key << "precision" << YAML::Value << args->precision;
-        out << YAML::Key << "confidence" << YAML::Value << args->detection.confidence;
-        out << YAML::Key << "nms" << YAML::Value << args->detection.nms;
-        out << YAML::Key << "max_detections" << YAML::Value << args->detection.maximum;
-        out << YAML::EndMap;
-    }
-
-    out << YAML::Key << "images" << YAML::Value << YAML::BeginSeq;
-    if (imagePaths && buildDets)
-    {
-        for (std::size_t i = 0; i < imagePaths->size(); ++i)
-        {
-            out << YAML::BeginMap;
-            out << YAML::Key << "path" << YAML::Value << (*imagePaths)[i];
-            out << YAML::Key << "detections" << YAML::Value << YAML::BeginSeq;
-            if (i < buildDets->size())
-            {
-                for (const auto &det : (*buildDets)[i])
-                {
-                    out << YAML::BeginMap;
-                    out << YAML::Key << "class_id" << YAML::Value << det.classId;
-                    out << YAML::Key << "score" << YAML::Value << det.score;
-                    out << YAML::Key << "box" << YAML::Value << YAML::Flow << YAML::BeginSeq << det.box[0] << det.box[1]
-                        << det.box[2] << det.box[3] << YAML::EndSeq;
-                    out << YAML::EndMap;
-                }
-            }
-            out << YAML::EndSeq;
-            out << YAML::EndMap;
-        }
-    }
-    out << YAML::EndSeq;
-
-    out << YAML::Key << "checks" << YAML::Value << YAML::BeginMap;
-
-    out << YAML::Key << "model_build_and_reload" << YAML::Value << YAML::BeginMap;
-    out << YAML::Key << "status" << YAML::Value << buildStatus;
-    if (!buildReason.empty())
-        out << YAML::Key << "reason" << YAML::Value << buildReason;
-    out << YAML::EndMap;
-
-    out << YAML::Key << "approved_baseline_comparison" << YAML::Value << YAML::BeginMap;
-    out << YAML::Key << "status" << YAML::Value << baselineStatus;
-    if (!baselineReason.empty())
-        out << YAML::Key << "reason" << YAML::Value << baselineReason;
-    out << YAML::EndMap;
-
-    out << YAML::Key << "memory_lifecycle" << YAML::Value << YAML::BeginMap;
-    out << YAML::Key << "status" << YAML::Value << memoryStatus;
-    if (!memoryReason.empty())
-        out << YAML::Key << "reason" << YAML::Value << memoryReason;
-    out << YAML::EndMap;
-
-    out << YAML::EndMap; // checks
-    out << YAML::EndMap; // root
 
     std::filesystem::create_directories(std::filesystem::absolute(reportPath).parent_path());
-    std::ofstream fout(reportPath);
-    if (!fout.is_open())
-    {
+    cv::FileStorage out(reportPath.string(), cv::FileStorage::WRITE | cv::FileStorage::FORMAT_JSON);
+    if (!out.isOpened())
         throw std::runtime_error("Cannot write report file: " + reportPath.string());
-    }
-    fout << out.c_str() << std::endl;
+    out << "scope" << "gpu_release" << "overall_status" << overallStatus;
+    out << "environment" << "{" << "sdk_abi_major" << static_cast<int>(env.sdkAbiMajor)
+        << "cuda_runtime_version" << env.cudaRuntimeVersion << "cuda_driver_version" << env.cudaDriverVersion
+        << "devices" << "[";
+    for (const auto &device : devices.devices)
+        out << "{" << "index" << device.index << "name" << device.name << "}";
+    out << "]" << "}" << "target_tool_id" << "visionrt.dl.yolo";
+    if (args)
+        out << "parameters" << "{" << "width" << args->width << "height" << args->height
+            << "classes" << args->classes << "precision" << args->precision
+            << "confidence" << args->detection.confidence << "nms" << args->detection.nms
+            << "max_detections" << std::to_string(args->detection.maximum) << "}";
+    out << "images" << "[";
+    if (imagePaths)
+        for (std::size_t image = 0; image < imagePaths->size(); ++image)
+        {
+            out << "{" << "path" << (*imagePaths)[image] << "detections" << "[";
+            if (buildDets && image < buildDets->size())
+                for (const auto &detection : (*buildDets)[image])
+                    out << "{" << "class_id" << std::to_string(detection.classId) << "score" << detection.score
+                        << "box" << "[:" << detection.box[0] << detection.box[1] << detection.box[2] << detection.box[3]
+                        << "]" << "}";
+            out << "]" << "}";
+        }
+    out << "]" << "checks" << "{";
+    out << "model_build_and_reload" << "{" << "status" << buildStatus << "reason" << buildReason << "}";
+    out << "approved_baseline_comparison" << "{" << "status" << baselineStatus << "reason" << baselineReason << "}";
+    out << "memory_lifecycle" << "{" << "status" << memoryStatus << "reason" << memoryReason << "}" << "}";
 }
+
 
 void testSyntheticRoundtrip(const std::filesystem::path &tempReportPath)
 {
     ProbeEnvironment env;
     GpuQueryResult   devices = queryDevices();
-    writeYamlReport(tempReportPath, "not_run", env, devices, "not_run", "未提供真实权重及运行环境", "not_run",
+    writeJsonReport(tempReportPath, "not_run", env, devices, "not_run", "未提供真实权重及运行环境", "not_run",
                     "未提供批准基准与实测输出", "not_run", "未运行");
 
     // Read back and verify structure (YS-04)
-    YAML::Node doc = YAML::LoadFile(tempReportPath.string());
-    require(doc["scope"] && doc["scope"].as<std::string>() == "gpu_release", "Invalid scope");
-    require(doc["overall_status"] && doc["overall_status"].as<std::string>() == "not_run", "Invalid overall_status");
-    require(doc["environment"] && doc["environment"]["sdk_version"], "Invalid environment");
-    require(doc["target_registry"] && doc["target_registry"].as<std::string>() == "visionrt.dl.yolo",
-            "Invalid target_registry");
-    require(doc["checks"] && doc["checks"]["model_build_and_reload"], "Missing checks");
+
+    cv::FileStorage document(tempReportPath.string(), cv::FileStorage::READ | cv::FileStorage::FORMAT_JSON);
+    require(document.isOpened(), "Report JSON must reopen");
+    require(static_cast<std::string>(document["scope"]) == "gpu_release", "Invalid scope");
+    require(static_cast<std::string>(document["overall_status"]) == "not_run", "Invalid overall_status");
+    require(static_cast<int>(document["environment"]["sdk_abi_major"]) == static_cast<int>(MODULE_ABI_MAJOR), "Invalid environment");
+    require(static_cast<std::string>(document["target_tool_id"]) == "visionrt.dl.yolo", "Invalid target_tool_id");
+    require(!document["checks"]["model_build_and_reload"].empty(), "Missing checks");
 
     // Synthetic comparison test
     PublicDetection d1{
@@ -650,7 +600,7 @@ int main(int argc, char **argv)
 
         if (args.syntheticOnly)
         {
-            std::cout << "[INFO] Running synthetic YAML report test..." << std::endl;
+            std::cout << "[INFO] Running synthetic JSON report test..." << std::endl;
             testSyntheticRoundtrip(args.report);
             std::cout << "[SUCCESS] Synthetic probe report written and verified at: " << args.report << std::endl;
             return 0;
@@ -658,19 +608,27 @@ int main(int argc, char **argv)
 
         if (args.modulePath.empty() && !args.packageDir.empty())
         {
-            const auto idxPath = std::filesystem::path(args.packageDir) / "module_index.yaml";
-            if (!std::filesystem::exists(idxPath))
-            {
-                throw std::runtime_error("module_index.yaml not found in package directory: " + args.packageDir);
-            }
-            const auto idx = visionrt::parseModuleIndexFile(idxPath);
-            auto       it  = idx.modules.find("visiontools_infer");
-            if (it == idx.modules.end() || it->second.library.empty())
-            {
-                throw std::runtime_error("visiontools_infer library not declared in " + idxPath.string());
-            }
-            const auto libRel = it->second.library;
-            args.modulePath   = (std::filesystem::path(args.packageDir) / libRel).string();
+
+            const auto package = std::filesystem::weakly_canonical(args.packageDir);
+            const auto indexPath = package / "module_index.json";
+            cv::FileStorage index(indexPath.string(), cv::FileStorage::READ | cv::FileStorage::FORMAT_JSON);
+            if (!index.isOpened() || static_cast<int>(index["schema_version"]) != 1 || !index["modules"].isSeq())
+                throw std::runtime_error("Invalid module_index.json: " + indexPath.string());
+            std::filesystem::path relative;
+            for (const auto &module : index["modules"])
+                if (static_cast<std::string>(module["id"]) == "visiontools_infer")
+                {
+                    if (!relative.empty())
+                        throw std::runtime_error("Duplicate inference module entry");
+                    relative = static_cast<std::string>(module["library"]);
+                }
+            if (relative.empty() || relative.is_absolute())
+                throw std::runtime_error("Inference module must declare a relative library path");
+            const auto library = std::filesystem::weakly_canonical(package / relative);
+            const auto contained = library.lexically_relative(package);
+            if (contained.empty() || *contained.begin() == "..")
+                throw std::runtime_error("Inference module escapes package root");
+            args.modulePath = library.string();
         }
 
         std::filesystem::create_directories(
@@ -761,7 +719,7 @@ int main(int argc, char **argv)
         std::vector<std::string> allImagePaths = args.images;
         allImagePaths.push_back("generated:black:321x197");
 
-        writeYamlReport(args.report, overallStatus, environment, devices, buildStatus, "", "not_run",
+        writeJsonReport(args.report, overallStatus, environment, devices, buildStatus, "", "not_run",
                         "未提供批准基准对比结果", "not_run", "需独立内存采样", &args, &allImagePaths, &buildDetections);
 
         if (!passed)

@@ -6,6 +6,20 @@
 
 namespace visiontools::preprocess {
 
+namespace ports::image_crop {
+inline constexpr char TOOL_ID[] = "visionrt.image.crop";
+
+namespace in {
+inline constexpr char IMAGES[] = "images";
+inline constexpr char RECT[]   = "rect";
+}
+
+namespace out {
+inline constexpr char IMAGES[]  = "images";
+inline constexpr char ORIGINS[] = "origins";
+}
+}
+
 class ImageCropTool final : public visionrt::IToolInstance
 {
 public:

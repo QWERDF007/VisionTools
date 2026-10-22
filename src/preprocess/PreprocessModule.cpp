@@ -1,8 +1,34 @@
-#include "visiontools_preprocess_factory.inc"
+#include "../ToolFactory.h"
+#include "AdaptiveBinaryTool.h"
+#include "DetectionFilterTool.h"
+#include "ImageCropTool.h"
+#include "ImagePreprocessTool.h"
+#include "ReadImageTool.h"
+#include "RoiProjectionTool.h"
 
 #include <visionrt/contracts/Module.h>
 
+namespace visiontools::preprocess { namespace {
+visionrt::ToolStatus VT_CALL registerTools(visionrt::IToolRegistry &registry) noexcept
+{
+    const visionrt::ToolFactoryDescriptor factories[]{
+        {      ports::image_read::TOOL_ID,       visiontools::createTool<ReadImageTool>, visiontools::destroyTool},
+        {  ports::roi_projection::TOOL_ID,   visiontools::createTool<RoiProjectionTool>, visiontools::destroyTool},
+        {      ports::image_crop::TOOL_ID,       visiontools::createTool<ImageCropTool>, visiontools::destroyTool},
+        {ports::image_preprocess::TOOL_ID, visiontools::createTool<ImagePreprocessTool>, visiontools::destroyTool},
+        {ports::detection_filter::TOOL_ID, visiontools::createTool<DetectionFilterTool>, visiontools::destroyTool},
+        { ports::adaptive_binary::TOOL_ID,  visiontools::createTool<AdaptiveBinaryTool>, visiontools::destroyTool},
+    };
+    for (const auto &factory : factories)
+        if (auto status = registry.add(factory); !status)
+            return status;
+    return {};
+}
+}}
+
 extern "C" VT_EXPORT const visionrt::ModuleApi *VT_CALL visiontoolsModuleApi() noexcept
 {
-    return &visiontools::preprocess::s_generatedModuleApi;
+    static const visionrt::ModuleApi api{visionrt::MODULE_ABI_MAJOR, sizeof(visionrt::ModuleApi),
+                                         visiontools::preprocess::registerTools};
+    return &api;
 }

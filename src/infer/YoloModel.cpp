@@ -1,7 +1,6 @@
 #include "YoloModel.h"
 
 #include "InferProtocol.h"
-#include "PortConstants.h"
 
 #include <inferrt/model/Buffers.hpp>
 #include <inferrt/model/ModelFactory.hpp>
@@ -17,7 +16,7 @@
 
 namespace visionrt::infer {
 namespace {
-namespace yolo_ports = visiontools::ports::visionrt_dl_yolo;
+namespace yolo_ports = ports::yolo;
 constexpr std::array                  strides{8, 16, 32};
 constexpr std::array<const char *, 3> outputNames{"output0", "output1", "output2"};
 

@@ -11,7 +11,6 @@ endif()
 
 target_include_directories(visiontools_infer PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${CMAKE_BINARY_DIR}/generated"
 )
 
 target_link_libraries(visiontools_infer PRIVATE

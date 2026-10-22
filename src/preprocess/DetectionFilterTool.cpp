@@ -1,7 +1,6 @@
 #include "DetectionFilterTool.h"
 
 #include "InputPorts.h"
-#include "PortConstants.h"
 
 #include <algorithm>
 #include <cmath>
@@ -11,7 +10,7 @@
 namespace visiontools::preprocess {
 namespace {
 
-namespace p = visiontools::ports::visionrt_detection_filter;
+namespace p = ports::detection_filter;
 
 template<class T>
 visionrt::NumericBuffer makeBuffer(visionrt::DType dtype, std::vector<std::int64_t> shape, const std::vector<T> &values)

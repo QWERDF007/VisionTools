@@ -7,6 +7,23 @@
 
 namespace visiontools::preprocess {
 
+namespace ports::image_read {
+inline constexpr char TOOL_ID[] = "visionrt.image.read";
+
+namespace in {
+inline constexpr char COLOR[]           = "color";
+inline constexpr char LIMIT[]           = "limit";
+inline constexpr char MAX_BATCH_BYTES[] = "max_batch_bytes";
+inline constexpr char MODE[]            = "mode";
+inline constexpr char PATH[]            = "path";
+}
+
+namespace out {
+inline constexpr char IMAGES[] = "images";
+inline constexpr char PATHS[]  = "paths";
+}
+}
+
 class ReadImageTool final : public visionrt::IToolInstance
 {
 public:
