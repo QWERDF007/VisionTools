@@ -21,7 +21,7 @@ void validateGeometry(const LetterboxGeometry &geometry)
         || geometry.inputHeight <= 0 || geometry.resizedWidth <= 0 || geometry.resizedHeight <= 0
         || geometry.padLeft < 0 || geometry.padTop < 0 || geometry.resizedWidth > geometry.inputWidth - geometry.padLeft
         || geometry.resizedHeight > geometry.inputHeight - geometry.padTop)
-        throw std::invalid_argument("Invalid actual letterbox geometry");
+        throw std::invalid_argument("实际 letterbox 几何无效");
 }
 
 Box inverse(const Box &box, const LetterboxGeometry &geometry)
@@ -40,7 +40,7 @@ void validateParameters(const DetectionParameters &parameters)
     if (!std::isfinite(parameters.confidence) || parameters.confidence < 0 || parameters.confidence > 1
         || !std::isfinite(parameters.nms) || parameters.nms < 0 || parameters.nms > 1 || parameters.maximum < 1)
         throw std::invalid_argument(
-            "conf_threshold/nms_threshold must be finite in [0,1]; max_detections must be >= 1");
+            "conf_threshold/nms_threshold 必须为 [0,1] 内有限数值；max_detections 必须 >= 1");
 }
 
 double intersectionOverUnion(const Box &a, const Box &b) noexcept
@@ -70,11 +70,11 @@ std::vector<Detection> postprocess(std::span<const HeadView> heads, const Letter
     for (const auto &head : heads)
     {
         if (head.stride <= 0 || head.gridWidth <= 0 || head.gridHeight <= 0 || head.numClasses <= 0)
-            throw std::invalid_argument("Invalid native YOLO head dimensions");
+            throw std::invalid_argument("原生 YOLO 输出头维度无效");
         const auto grid     = static_cast<std::size_t>(head.gridWidth) * head.gridHeight;
         const auto channels = static_cast<std::size_t>(head.numClasses) + 4;
         if (grid > std::numeric_limits<std::size_t>::max() / channels || head.values.size() != grid * channels)
-            throw std::invalid_argument("Native YOLO head buffer size mismatch");
+            throw std::invalid_argument("原生 YOLO 输出头缓冲区大小不匹配");
         for (std::size_t index = 0; index < grid; ++index)
         {
             std::int64_t bestClass = 0;
@@ -83,7 +83,7 @@ std::vector<Detection> postprocess(std::span<const HeadView> heads, const Letter
             {
                 const auto logit = head.values[(static_cast<std::size_t>(category) + 4) * grid + index];
                 if (!std::isfinite(logit))
-                    throw std::invalid_argument("Non-finite native YOLO class logit");
+                    throw std::invalid_argument("原生 YOLO 类别 logit 非有限");
                 const auto score = sigmoid(logit);
                 if (score > bestScore)
                 {
@@ -96,7 +96,7 @@ std::vector<Detection> postprocess(std::span<const HeadView> heads, const Letter
             {
                 distances[side] = head.values[side * grid + index];
                 if (!std::isfinite(distances[side]) || distances[side] < 0)
-                    throw std::invalid_argument("Invalid integrated DFL distance");
+                    throw std::invalid_argument("原生 YOLO 积分距离无效");
             }
             const double centerX = double(index % head.gridWidth) + 0.5;
             const double centerY = double(index / head.gridWidth) + 0.5;

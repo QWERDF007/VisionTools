@@ -1,9 +1,11 @@
 #include "DetectionFilterTool.h"
 
+#include "InputPorts.h"
 #include "PortConstants.h"
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <vector>
 
 namespace visiontools::preprocess {
@@ -28,7 +30,7 @@ visionrt::ToolStatus DetectionFilterTool::initialize(const visionrt::Values &par
 {
     if (!parameters.empty())
     {
-        return {1, "DetectionFilterTool accepts no init parameters"};
+        return {1, "缺陷过滤不接受初始化参数"};
     }
     return {};
 }
@@ -37,50 +39,37 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
 {
     try
     {
-        auto getReq = [&](const std::string &key) -> const visionrt::PortValue &
-        {
-            auto it = inputs.find(key);
-            if (it == inputs.end() || visionrt::isMissing(it->second))
-            {
-                throw visionrt::ContractError("Missing input: " + key);
-            }
-            return it->second;
-        };
+        const auto *images = std::get_if<visionrt::ImageBatch>(&requireInput(inputs, p::in::IMAGES));
+        if (!images)
+            throw visionrt::ContractError("输入端口 '" + std::string(p::in::IMAGES) + "' 必须是 ImageBatch");
+        const auto *rois = std::get_if<visionrt::RoiBatch>(&requireInput(inputs, p::in::ROIS));
+        if (!rois)
+            throw visionrt::ContractError("输入端口 '" + std::string(p::in::ROIS) + "' 必须是 RoiBatch");
+        const auto *scores = std::get_if<visionrt::NumericArray>(&requireInput(inputs, p::in::SCORES));
+        if (!scores)
+            throw visionrt::ContractError("输入端口 '" + std::string(p::in::SCORES) + "' 必须是 NumericArray");
+        const auto *classes = std::get_if<visionrt::NumericArray>(&requireInput(inputs, p::in::CLASSES));
+        if (!classes)
+            throw visionrt::ContractError("输入端口 '" + std::string(p::in::CLASSES) + "' 必须是 NumericArray");
+        const auto *names = std::get_if<visionrt::StringArray>(&requireInput(inputs, p::in::CLASS_NAMES));
+        if (!names)
+            throw visionrt::ContractError("输入端口 '" + std::string(p::in::CLASS_NAMES) + "' 必须是 StringArray");
+        const auto *allowedArray = std::get_if<visionrt::NumericArray>(&requireInput(inputs, p::in::ALLOWED_CLASSES));
+        if (!allowedArray)
+            throw visionrt::ContractError("输入端口 '" + std::string(p::in::ALLOWED_CLASSES) + "' 必须是 NumericArray");
 
-        const auto *images       = std::get_if<visionrt::ImageBatch>(&getReq(p::in::IMAGES));
-        const auto *rois         = std::get_if<visionrt::RoiBatch>(&getReq(p::in::ROIS));
-        const auto *scores       = std::get_if<visionrt::NumericArray>(&getReq(p::in::SCORES));
-        const auto *classes      = std::get_if<visionrt::NumericArray>(&getReq(p::in::CLASSES));
-        const auto *names        = std::get_if<visionrt::StringArray>(&getReq(p::in::CLASS_NAMES));
-        const auto *allowedArray = std::get_if<visionrt::NumericArray>(&getReq(p::in::ALLOWED_CLASSES));
-
-        if (!images || !rois || !scores || !classes || !names || !allowedArray)
+        if (scores->dtype() != visionrt::DType::Float32 || classes->dtype() != visionrt::DType::Int64
+            || allowedArray->dtype() != visionrt::DType::Int64)
         {
-            throw visionrt::ContractError("Invalid input types for detection filter");
+            throw visionrt::ContractError("检测过滤输入数组的 dtype 无效：scores 需要 float32，classes/allowed_classes 需要 int64");
         }
 
-        const auto &scoreVal = getReq(p::in::MIN_SCORE);
-        const auto *dScore   = std::get_if<double>(&scoreVal);
-        if (!dScore)
-        {
-            throw visionrt::ContractError("Input port 'min_score' must be Float");
-        }
-        const double minimumScore = *dScore;
-        if (!std::isfinite(minimumScore) || minimumScore < 0.0 || minimumScore > 1.0)
-        {
-            throw visionrt::ContractError("min_score out of range [0.0, 1.0]");
-        }
-
-        const auto &areaVal = getReq(p::in::MIN_AREA);
-        const auto *dArea   = std::get_if<double>(&areaVal);
-        if (!dArea)
-        {
-            throw visionrt::ContractError("Input port 'min_area' must be Float");
-        }
-        const double minimumArea = *dArea;
+        const double minimumScore = requireFloatInRange(inputs, p::in::MIN_SCORE, 0.0, 1.0);
+        const double minimumArea = requireFloat(inputs, p::in::MIN_AREA);
         if (!std::isfinite(minimumArea) || minimumArea < 0.0)
         {
-            throw visionrt::ContractError("min_area must be >= 0.0");
+            throw visionrt::ContractError("输入端口 '" + std::string(p::in::MIN_AREA) + "' 的值 "
+                                          + std::to_string(minimumArea) + " 必须为非负有限数值");
         }
 
         std::span<const std::int64_t> allowed;
@@ -93,7 +82,11 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
         if (rois->images().size() != batchSize || scores->buffers().size() != batchSize
             || classes->buffers().size() != batchSize || names->buffers().size() != batchSize)
         {
-            throw visionrt::ContractError("Detection batch lengths differ");
+            throw visionrt::ContractError("检测批次长度不一致：images=" + std::to_string(batchSize)
+                                          + "，rois=" + std::to_string(rois->images().size())
+                                          + "，scores=" + std::to_string(scores->buffers().size())
+                                          + "，classes=" + std::to_string(classes->buffers().size())
+                                          + "，class_names=" + std::to_string(names->buffers().size()));
         }
 
         std::vector<std::vector<visionrt::Roi>> filteredRois;
@@ -109,15 +102,19 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
 
         for (std::size_t b = 0; b < batchSize; ++b)
         {
-            const auto &imageRois    = rois->images()[b];
-            const auto  imageScores  = scores->buffers()[b].values<float>();
+            const auto &imageRois = rois->images()[b];
+            const auto  imageScores = scores->buffers()[b].values<float>();
             const auto  imageClasses = classes->buffers()[b].values<std::int64_t>();
-            const auto  imageNames   = names->buffers()[b].values();
+            const auto  imageNames = names->buffers()[b].values();
 
             if (imageScores.size() != imageRois.size() || imageClasses.size() != imageRois.size()
                 || imageNames.size() != imageRois.size())
             {
-                throw visionrt::ContractError("Detection field lengths differ at b=" + std::to_string(b));
+                throw visionrt::ContractError("批次索引 " + std::to_string(b)
+                                              + " 的检测字段长度不一致：rois=" + std::to_string(imageRois.size())
+                                              + "，scores=" + std::to_string(imageScores.size())
+                                              + "，classes=" + std::to_string(imageClasses.size())
+                                              + "，class_names=" + std::to_string(imageNames.size()));
             }
 
             std::vector<visionrt::Roi> keptRois;
@@ -134,16 +131,16 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
             {
                 if (!std::isfinite(imageScores[n]) || imageClasses[n] < 0)
                 {
-                    throw visionrt::ContractError("Invalid detection score/class at b=" + std::to_string(b)
-                                                  + " n=" + std::to_string(n));
+                    throw visionrt::ContractError("批次索引 " + std::to_string(b) + " 的检测索引 "
+                                                  + std::to_string(n) + " 的得分或类别无效");
                 }
                 if (imageRois[n].kind() != visionrt::RoiKind::Rectangle)
                 {
-                    throw visionrt::ContractError("Detection ROI must be a rectangle at b=" + std::to_string(b)
-                                                  + " n=" + std::to_string(n));
+                    throw visionrt::ContractError("批次索引 " + std::to_string(b) + " 的检测索引 "
+                                                  + std::to_string(n) + " 的 ROI 必须是矩形");
                 }
                 const auto   encoded = imageRois[n].encoded();
-                const double area    = static_cast<double>(encoded[3]) * encoded[4];
+                const double area = static_cast<double>(encoded[3]) * encoded[4];
 
                 const bool classAllowed
                     = allowed.empty() || (std::find(allowed.begin(), allowed.end(), imageClasses[n]) != allowed.end());
@@ -181,21 +178,35 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
                             visionrt::DType::Int64, 1, visionrt::Layout::Dense,
                             {makeBuffer(visionrt::DType::Int64, {static_cast<std::int64_t>(batchSize)}, counts)}));
 
-        return {{}, std::move(outputs)};
+        return {visionrt::executionSuccess(), std::move(outputs)};
     }
-    catch (const std::exception &e)
+    catch (const visionrt::ContractError &error)
     {
-        visionrt::Values outputs;
-        outputs.emplace(p::out::IMAGES, visionrt::Missing{});
-        outputs.emplace(p::out::ROIS, visionrt::Missing{});
-        outputs.emplace(p::out::SCORES, visionrt::Missing{});
-        outputs.emplace(p::out::CLASSES, visionrt::Missing{});
-        outputs.emplace(p::out::CLASS_NAMES, visionrt::Missing{});
-        outputs.emplace(p::out::COUNTS, visionrt::Missing{});
-        return {
-            {1, e.what()},
-            std::move(outputs)
-        };
+        return {{1, error.what()},
+                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}},
+                 {p::out::SCORES, visionrt::Missing{}}, {p::out::CLASSES, visionrt::Missing{}},
+                 {p::out::CLASS_NAMES, visionrt::Missing{}}, {p::out::COUNTS, visionrt::Missing{}}}};
+    }
+    catch (const cv::Exception &error)
+    {
+        return {{1, std::string("缺陷过滤失败；技术详情：") + error.what()},
+                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}},
+                 {p::out::SCORES, visionrt::Missing{}}, {p::out::CLASSES, visionrt::Missing{}},
+                 {p::out::CLASS_NAMES, visionrt::Missing{}}, {p::out::COUNTS, visionrt::Missing{}}}};
+    }
+    catch (const std::exception &error)
+    {
+        return {{1, std::string("缺陷过滤失败；技术详情：") + error.what()},
+                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}},
+                 {p::out::SCORES, visionrt::Missing{}}, {p::out::CLASSES, visionrt::Missing{}},
+                 {p::out::CLASS_NAMES, visionrt::Missing{}}, {p::out::COUNTS, visionrt::Missing{}}}};
+    }
+    catch (...)
+    {
+        return {{-1, "缺陷过滤失败：未知异常"},
+                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}},
+                 {p::out::SCORES, visionrt::Missing{}}, {p::out::CLASSES, visionrt::Missing{}},
+                 {p::out::CLASS_NAMES, visionrt::Missing{}}, {p::out::COUNTS, visionrt::Missing{}}}};
     }
 }
 

@@ -38,9 +38,9 @@ struct Detection
 
 struct DetectionParameters
 {
-    double       confidence = 0.25;
-    double       nms        = 0.45;
-    std::int64_t maximum    = 100;
+    double       confidence;
+    double       nms;
+    std::int64_t maximum;
 };
 
 void                   validateParameters(const DetectionParameters &parameters);

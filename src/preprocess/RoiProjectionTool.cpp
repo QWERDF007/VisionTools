@@ -1,19 +1,27 @@
 #include "RoiProjectionTool.h"
 
+#include "InputPorts.h"
+#include "PortConstants.h"
+
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <vector>
 
 namespace visiontools::preprocess {
 namespace {
 
-cv::Mat toGray(const visionrt::OwnedImage &image)
+namespace p = visiontools::ports::visionrt_roi_projection;
+
+cv::Mat toGray(const visionrt::OwnedImage &image, std::size_t index)
 {
     if (image.empty() || CV_MAT_DEPTH(image.type()) != CV_8U
         || (image.channels() != 1 && image.channels() != 3 && image.channels() != 4))
     {
-        throw visionrt::ContractError("Expected nonempty uint8 gray/BGR/BGRA image");
+        throw visionrt::ContractError("批次索引 " + std::to_string(index)
+                                      + " 的图像必须是非空 uint8 灰度/BGR/BGRA 图像");
     }
     if (image.channels() == 1)
         return image.readOnlyMat();
@@ -33,7 +41,7 @@ visionrt::ToolStatus RoiProjectionTool::initialize(const visionrt::Values &param
 {
     if (!parameters.empty())
     {
-        return {1, "RoiProjectionTool accepts no init parameters"};
+        return {1, "投影ROI不接受初始化参数"};
     }
     return {};
 }
@@ -42,61 +50,52 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
 {
     try
     {
-        auto imgIt = inputs.find("images");
-        if (imgIt == inputs.end() || visionrt::isMissing(imgIt->second))
-        {
-            throw visionrt::ContractError("Missing input: images");
-        }
-        const auto *imgBatch = std::get_if<visionrt::ImageBatch>(&imgIt->second);
+        const auto &imageValue = requireInput(inputs, p::in::IMAGES);
+        const auto *imgBatch = std::get_if<visionrt::ImageBatch>(&imageValue);
         if (!imgBatch)
-            throw visionrt::ContractError("Expected ImageBatch for input: images");
-
-        auto getStr = [&](const std::string &key, const std::string &defVal) -> std::string
         {
-            auto it = inputs.find(key);
-            if (it == inputs.end() || visionrt::isMissing(it->second))
-                return defVal;
-            if (auto *u = std::get_if<visionrt::Utf8>(&it->second))
-                return u->str();
-            throw visionrt::ContractError("Expected string for input: " + key);
-        };
+            throw visionrt::ContractError("输入端口 '" + std::string(p::in::IMAGES) + "' 必须是 ImageBatch");
+        }
 
-        auto getInt = [&](const std::string &key, std::int64_t defVal) -> std::int64_t
-        {
-            auto it = inputs.find(key);
-            if (it == inputs.end() || visionrt::isMissing(it->second))
-                return defVal;
-            if (auto *v = std::get_if<std::int64_t>(&it->second))
-                return *v;
-            throw visionrt::ContractError("Expected integer for input: " + key);
-        };
-
-        const auto axis     = getStr("axis", "x");
-        const auto polarity = getStr("polarity", "bright");
+        const auto axis = requireString(inputs, p::in::AXIS);
+        const auto polarity = requireString(inputs, p::in::POLARITY);
         if (axis != "x" && axis != "y")
-            throw visionrt::ContractError("Invalid projection axis");
+        {
+            throw visionrt::ContractError("输入端口 '" + std::string(p::in::AXIS) + "' 的取值无效：" + axis
+                                          + "（允许 x/y）");
+        }
         if (polarity != "bright" && polarity != "dark")
-            throw visionrt::ContractError("Invalid polarity");
+        {
+            throw visionrt::ContractError("输入端口 '" + std::string(p::in::POLARITY) + "' 的取值无效：" + polarity
+                                          + "（允许 bright/dark）");
+        }
 
-        const bool horizontal = (axis == "x");
-        const bool bright     = (polarity == "bright");
-        const auto threshold  = getInt("threshold", 128);
-        if (threshold < 0 || threshold > 255)
-            throw visionrt::ContractError("Threshold must be in [0, 255]");
+        const bool        horizontal = (axis == "x");
+        const bool        bright = (polarity == "bright");
+        const std::int64_t threshold = requireIntInRange(inputs, p::in::THRESHOLD, 0, 255);
+        const std::int64_t minimumPixels = requireIntInRange(inputs, p::in::MIN_PIXELS, 1,
+                                                             std::numeric_limits<std::int64_t>::max());
+        const int minimumExtent = requireInt32(inputs, p::in::MIN_EXTENT, 1, std::numeric_limits<int>::max());
+        const int gap = requireInt32(inputs, p::in::MERGE_GAP, 0, std::numeric_limits<int>::max());
+        const int padding = requireInt32(inputs, p::in::PADDING, 0, std::numeric_limits<int>::max());
 
-        const auto minimumPixels = getInt("min_pixels", 1);
-        const auto minimumExtent = getInt("min_extent", 1);
-        const auto gap           = getInt("merge_gap", 0);
-        const auto padding       = getInt("padding", 0);
+        if (imgBatch->images().empty())
+        {
+            visionrt::Values outputs;
+            outputs.emplace(p::out::IMAGES, *imgBatch);
+            outputs.emplace(p::out::ROIS, visionrt::RoiBatch{});
+            return {visionrt::executionSuccess(), std::move(outputs)};
+        }
 
         std::vector<std::vector<visionrt::Roi>> output;
         output.reserve(imgBatch->images().size());
 
-        for (const auto &image : imgBatch->images())
+        for (std::size_t index = 0; index < imgBatch->images().size(); ++index)
         {
-            const auto                grayscale = toGray(image);
-            const int                 length    = horizontal ? image.cols() : image.rows();
-            std::vector<std::int64_t> counts(length, 0);
+            const auto &image = imgBatch->images()[index];
+            const auto  grayscale = toGray(image, index);
+            const int   length = horizontal ? image.cols() : image.rows();
+            std::vector<std::int64_t> counts(static_cast<std::size_t>(length), 0);
 
             for (int y = 0; y < image.rows(); ++y)
             {
@@ -111,12 +110,12 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
             }
 
             std::vector<visionrt::Roi> rois;
-            const auto                 append = [&](int start, int end)
+            const auto append = [&](int start, int end)
             {
                 if (end - start < minimumExtent)
                     return;
-                const int left  = static_cast<int>(start - std::min<std::int64_t>(padding, start));
-                const int right = static_cast<int>(end + std::min<std::int64_t>(padding, length - end));
+                const int left = start - std::min(padding, start);
+                const int right = end + std::min(padding, length - end);
                 rois.push_back(
                     horizontal ? visionrt::Roi::rectangle(static_cast<float>(left), 0, static_cast<float>(right - left),
                                                           static_cast<float>(image.rows()), 0)
@@ -125,19 +124,19 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
             };
 
             int start = -1;
-            int end   = -1;
-            for (int index = 0; index < length; ++index)
+            int end = -1;
+            for (int position = 0; position < length; ++position)
             {
-                if (counts[index] < minimumPixels)
+                if (counts[static_cast<std::size_t>(position)] < minimumPixels)
                     continue;
                 if (start < 0)
-                    start = index;
-                else if (index - end > gap)
+                    start = position;
+                else if (position - end > gap)
                 {
                     append(start, end);
-                    start = index;
+                    start = position;
                 }
-                end = index + 1;
+                end = position + 1;
             }
             if (start >= 0)
                 append(start, end);
@@ -145,19 +144,29 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
         }
 
         visionrt::Values outputs;
-        outputs.emplace("images", *imgBatch);
-        outputs.emplace("rois", visionrt::RoiBatch(std::move(output)));
-        return {{}, std::move(outputs)};
+        outputs.emplace(p::out::IMAGES, *imgBatch);
+        outputs.emplace(p::out::ROIS, visionrt::RoiBatch(std::move(output)));
+        return {visionrt::executionSuccess(), std::move(outputs)};
     }
-    catch (const std::exception &e)
+    catch (const visionrt::ContractError &error)
     {
-        visionrt::Values outputs;
-        outputs.emplace("images", visionrt::Missing{});
-        outputs.emplace("rois", visionrt::Missing{});
-        return {
-            {1, e.what()},
-            std::move(outputs)
-        };
+        return {{1, error.what()},
+                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}}}};
+    }
+    catch (const cv::Exception &error)
+    {
+        return {{1, std::string("投影ROI失败；技术详情：") + error.what()},
+                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}}}};
+    }
+    catch (const std::exception &error)
+    {
+        return {{1, std::string("投影ROI失败；技术详情：") + error.what()},
+                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}}}};
+    }
+    catch (...)
+    {
+        return {{-1, "投影ROI失败：未知异常"},
+                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}}}};
     }
 }
 

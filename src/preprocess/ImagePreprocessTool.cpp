@@ -1,5 +1,8 @@
 #include "ImagePreprocessTool.h"
 
+#include "InputPorts.h"
+#include "PortConstants.h"
+
 #include <opencv2/imgproc.hpp>
 
 #include <limits>
@@ -8,18 +11,21 @@
 namespace visiontools::preprocess {
 namespace {
 
-void requireU8(const visionrt::OwnedImage &image)
+namespace p = visiontools::ports::visionrt_image_preprocess;
+
+void requireU8(const visionrt::OwnedImage &image, std::size_t index)
 {
     if (image.empty() || CV_MAT_DEPTH(image.type()) != CV_8U
         || (image.channels() != 1 && image.channels() != 3 && image.channels() != 4))
     {
-        throw visionrt::ContractError("Expected nonempty uint8 gray/BGR/BGRA image");
+        throw visionrt::ContractError("批次索引 " + std::to_string(index)
+                                      + " 的图像必须是非空 uint8 灰度/BGR/BGRA 图像");
     }
 }
 
-cv::Mat toGray(const visionrt::OwnedImage &image)
+cv::Mat toGray(const visionrt::OwnedImage &image, std::size_t index)
 {
-    requireU8(image);
+    requireU8(image, index);
     if (image.channels() == 1)
         return image.readOnlyMat();
     cv::Mat result;
@@ -38,7 +44,7 @@ visionrt::ToolStatus ImagePreprocessTool::initialize(const visionrt::Values &par
 {
     if (!parameters.empty())
     {
-        return {1, "ImagePreprocessTool accepts no init parameters"};
+        return {1, "图像预处理不接受初始化参数"};
     }
     return {};
 }
@@ -47,77 +53,61 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
 {
     try
     {
-        auto imgIt = inputs.find("images");
-        if (imgIt == inputs.end() || visionrt::isMissing(imgIt->second))
-        {
-            throw visionrt::ContractError("Missing input: images");
-        }
-        const auto *images = std::get_if<visionrt::ImageBatch>(&imgIt->second);
+        const auto &imageValue = requireInput(inputs, p::in::IMAGES);
+        const auto *images = std::get_if<visionrt::ImageBatch>(&imageValue);
         if (!images)
-            throw visionrt::ContractError("Expected ImageBatch for input: images");
-
-        auto getStr = [&](const std::string &key, const std::string &defVal) -> std::string
         {
-            auto it = inputs.find(key);
-            if (it == inputs.end() || visionrt::isMissing(it->second))
-                return defVal;
-            if (auto *u = std::get_if<visionrt::Utf8>(&it->second))
-                return u->str();
-            throw visionrt::ContractError("Expected string for input: " + key);
-        };
+            throw visionrt::ContractError("输入端口 '" + std::string(p::in::IMAGES) + "' 必须是 ImageBatch");
+        }
 
-        auto getInt = [&](const std::string &key, std::int64_t defVal) -> std::int64_t
-        {
-            auto it = inputs.find(key);
-            if (it == inputs.end() || visionrt::isMissing(it->second))
-                return defVal;
-            if (auto *v = std::get_if<std::int64_t>(&it->second))
-                return *v;
-            throw visionrt::ContractError("Expected integer for input: " + key);
-        };
-
-        const auto operation = getStr("operation", "identity");
+        const auto operation = requireString(inputs, p::in::OPERATION);
         if (operation != "identity" && operation != "gray" && operation != "gaussian" && operation != "threshold")
         {
-            throw visionrt::ContractError("Invalid preprocessing operation: " + operation);
+            throw visionrt::ContractError("输入端口 '" + std::string(p::in::OPERATION) + "' 的取值无效："
+                                          + operation + "（允许 identity/gray/gaussian/threshold）");
         }
 
-        int          kernel    = 0;
-        std::int64_t threshold = 0;
+        int kernel = 0;
         if (operation == "gaussian")
         {
-            kernel = static_cast<int>(getInt("kernel", 3));
-            if (kernel <= 0 || kernel % 2 == 0)
+            kernel = requireInt32(inputs, p::in::KERNEL, 1, std::numeric_limits<int>::max());
+            if (kernel % 2 == 0)
             {
-                throw visionrt::ContractError("Gaussian kernel must be positive and odd");
-            }
-        }
-        if (operation == "threshold")
-        {
-            threshold = getInt("threshold", 128);
-            if (threshold < 0 || threshold > 255)
-            {
-                throw visionrt::ContractError("Threshold must be in [0, 255]");
+                throw visionrt::ContractError("输入端口 '" + std::string(p::in::KERNEL)
+                                              + "' 必须为奇数（高斯核），实际值：" + std::to_string(kernel));
             }
         }
 
-        for (const auto &image : images->images())
+        std::int64_t threshold = 0;
+        if (operation == "threshold")
         {
-            requireU8(image);
+            threshold = requireIntInRange(inputs, p::in::THRESHOLD, 0, 255);
+        }
+
+        if (images->images().empty())
+        {
+            visionrt::Values outputs;
+            outputs.emplace(p::out::IMAGES, visionrt::ImageBatch{});
+            return {visionrt::executionSuccess(), std::move(outputs)};
+        }
+
+        for (std::size_t index = 0; index < images->images().size(); ++index)
+        {
+            requireU8(images->images()[index], index);
         }
 
         if (operation == "identity")
         {
             visionrt::Values outputs;
-            outputs.emplace("images", *images);
-            return {{}, std::move(outputs)};
+            outputs.emplace(p::out::IMAGES, *images);
+            return {visionrt::executionSuccess(), std::move(outputs)};
         }
 
         std::vector<visionrt::OwnedImage> output;
         output.reserve(images->images().size());
-
-        for (const auto &image : images->images())
+        for (std::size_t index = 0; index < images->images().size(); ++index)
         {
+            const auto &image = images->images()[index];
             cv::Mat processed;
             if (operation == "gaussian")
             {
@@ -126,27 +116,36 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
             }
             else if (operation == "threshold")
             {
-                cv::compare(toGray(image), cv::Scalar(threshold), processed, cv::CMP_GE);
+                cv::compare(toGray(image, index), cv::Scalar(static_cast<double>(threshold)), processed, cv::CMP_GE);
             }
             else
             {
-                processed = image.channels() == 1 ? image.clone() : toGray(image);
+                processed = image.channels() == 1 ? image.clone() : toGray(image, index);
             }
             output.push_back(visionrt::OwnedImage::take(std::move(processed)));
         }
 
         visionrt::Values outputs;
-        outputs.emplace("images", visionrt::ImageBatch(std::move(output)));
-        return {{}, std::move(outputs)};
+        outputs.emplace(p::out::IMAGES, visionrt::ImageBatch(std::move(output)));
+        return {visionrt::executionSuccess(), std::move(outputs)};
     }
-    catch (const std::exception &e)
+    catch (const visionrt::ContractError &error)
     {
-        visionrt::Values outputs;
-        outputs.emplace("images", visionrt::Missing{});
-        return {
-            {1, e.what()},
-            std::move(outputs)
-        };
+        return {{1, error.what()}, {{p::out::IMAGES, visionrt::Missing{}}}};
+    }
+    catch (const cv::Exception &error)
+    {
+        return {{1, std::string("图像预处理失败；技术详情：") + error.what()},
+                {{p::out::IMAGES, visionrt::Missing{}}}};
+    }
+    catch (const std::exception &error)
+    {
+        return {{1, std::string("图像预处理失败；技术详情：") + error.what()},
+                {{p::out::IMAGES, visionrt::Missing{}}}};
+    }
+    catch (...)
+    {
+        return {{-1, "图像预处理失败：未知异常"}, {{p::out::IMAGES, visionrt::Missing{}}}};
     }
 }
 

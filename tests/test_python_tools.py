@@ -24,8 +24,8 @@ def load_module_from_file(file_path: pathlib.Path):
 
 class TestPythonToolContracts(unittest.TestCase):
     def setUp(self):
-        self.mean_py = ROOT / "assets" / "tools" / "custom" / "Python" / "示例" / "mean.py"
-        self.counter_py = ROOT / "assets" / "tools" / "custom" / "Python" / "示例" / "counter.py"
+        self.mean_py = ROOT / "assets" / "tools" / "custom" / "Python" / "示例" / "计算图像均值" / "mean.py"
+        self.counter_py = ROOT / "assets" / "tools" / "custom" / "Python" / "示例" / "调用计数器" / "counter.py"
         self.assertTrue(self.mean_py.exists(), f"mean.py not found at {self.mean_py}")
         self.assertTrue(self.counter_py.exists(), f"counter.py not found at {self.counter_py}")
 
@@ -37,6 +37,7 @@ class TestPythonToolContracts(unittest.TestCase):
 
         res = instance.execute({})
         self.assertNotEqual(res.get("__status_code"), 0)
+        self.assertIn("images", res.get("__status_message"))
         self.assertIsNone(res.get("means"))
 
         rel_res = instance.release()
@@ -49,6 +50,7 @@ class TestPythonToolContracts(unittest.TestCase):
 
         res = instance.execute({"images": []})
         self.assertEqual(res.get("__status_code"), 0)
+        self.assertEqual(res.get("__status_message"), "运行成功")
         means = res.get("means")
         self.assertIsInstance(means, np.ndarray)
         self.assertEqual(means.dtype, np.float64)
@@ -68,6 +70,7 @@ class TestPythonToolContracts(unittest.TestCase):
 
         res = instance.execute({"images": [img1, img2]})
         self.assertEqual(res.get("__status_code"), 0)
+        self.assertEqual(res.get("__status_message"), "运行成功")
         means = res.get("means")
         self.assertIsInstance(means, np.ndarray)
         self.assertEqual(means.dtype, np.float64)
@@ -85,10 +88,12 @@ class TestPythonToolContracts(unittest.TestCase):
 
         r1 = instance.execute({})
         self.assertEqual(r1.get("__status_code"), 0)
+        self.assertEqual(r1.get("__status_message"), "运行成功")
         self.assertEqual(r1.get("count"), 1)
 
         r2 = instance.execute({})
         self.assertEqual(r2.get("__status_code"), 0)
+        self.assertEqual(r2.get("__status_message"), "运行成功")
         self.assertEqual(r2.get("count"), 2)
 
         rel = instance.release()

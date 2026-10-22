@@ -101,6 +101,7 @@ int main()
 
         auto res1 = inst->execute(in1);
         REQUIRE(res1.status.code == 0, "Execute 1 must succeed");
+        REQUIRE(res1.status.message == "运行成功", "Execute 1 success message must be shared");
         const auto *outBatch1 = std::get_if<visionrt::ImageBatch>(&res1.outputs["images"]);
         REQUIRE(outBatch1 != nullptr && !outBatch1->images().empty(), "Execute 1 must return valid image");
         snapshotImage = outBatch1->images()[0];
@@ -120,6 +121,7 @@ int main()
         in2.emplace("constant_offset", 1.0);
         auto res2 = inst->execute(in2);
         REQUIRE(res2.status.code == 0, "Execute 2 must succeed");
+        REQUIRE(res2.status.message == "运行成功", "Execute 2 success message must be shared");
 
         // Verify snapshot from execute 1 is still completely valid and all pixels match
         const auto &snapMat = snapshotImage.readOnlyMat();

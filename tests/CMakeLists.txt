@@ -13,6 +13,7 @@ visiontools_add_test(test_preprocess_contract
         "${CMAKE_SOURCE_DIR}/src/preprocess/DetectionFilterTool.cpp"
         "${CMAKE_SOURCE_DIR}/src/preprocess/AdaptiveBinaryTool.cpp"
     LIBRARIES visiontools_preprocess VisionRT::Contracts ${OpenCV_LIBS}
+    DEFINITIONS VISIONTOOLS_TESTING
 )
 
 visiontools_add_test(test_module_contract
@@ -63,11 +64,9 @@ add_test(
 add_test(NAME test_distribution
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tests/test_distribution.py"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-if(WIN32)
-    visiontools_test_path(_vt_test_paths)
-    set_tests_properties(test_generator PROPERTIES ENVIRONMENT
-        "PATH=${_vt_test_paths};VISIONTOOLS_SDK_INCLUDE_DIR=${VISIONTOOLS_SDK_INCLUDE_DIR};VISIONTOOLS_VALIDATOR=$<TARGET_FILE:VisionRT::visionrt_validate_tool>")
-    set_tests_properties(test_package test_distribution test_python_tools PROPERTIES ENVIRONMENT
-        "PATH=${_vt_test_paths};VISIONTOOLS_VALIDATOR=$<TARGET_FILE:VisionRT::visionrt_validate_tool>")
-endif()
+
+# 所有平台都通过 TARGET_FILE 传递真实 validator；正式发行测试缺它必须失败。
+visiontools_test_path(_vt_test_paths)
+set_tests_properties(test_generator test_package test_distribution test_python_tools PROPERTIES
+    ENVIRONMENT "PATH=${_vt_test_paths};VISIONTOOLS_VALIDATOR=$<TARGET_FILE:VisionRT::visionrt_validate_tool>")
 

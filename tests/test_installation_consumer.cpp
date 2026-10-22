@@ -138,6 +138,8 @@ inline void verifyInitFailureAndCleanup(const visionrt::ModuleApi *api, const ch
     badInit.emplace("bad_param_invalid", std::int64_t(123));
     auto initStatus = errInst->initialize(badInit);
     REQUIRE(initStatus.code == -2, "Unknown init parameter must return status code -2");
+    REQUIRE(initStatus.message.find("初始化参数") != std::string::npos,
+            "Generated wrapper init error must be Chinese");
     REQUIRE(errInst->release().code == 0, "Release after init failure must succeed");
     api->destroy(errInst);
 }
@@ -283,6 +285,8 @@ int main(int argc, char **argv)
         visionrt::IToolInstance *inst = api->create("unknown.tool.registry", &services, &status);
         REQUIRE(inst == nullptr, "Unknown registry must return nullptr");
         REQUIRE(status.code == -3, "Unknown registry must return status code -3");
+        REQUIRE(status.message.find("未知实现注册名") != std::string::npos,
+                "Unknown registry message must be Chinese");
     }
 
     // 2. Null registry -> error
@@ -290,6 +294,8 @@ int main(int argc, char **argv)
         visionrt::IToolInstance *inst = api->create(nullptr, &services, &status);
         REQUIRE(inst == nullptr, "Null registry must return nullptr");
         REQUIRE(status.code == -3, "Null registry must return status code -3");
+        REQUIRE(status.message.find("registry_name") != std::string::npos,
+                "Null registry message must name registry_name");
     }
 
     // 3. Safe null destroy
@@ -319,6 +325,7 @@ int main(int argc, char **argv)
 
         auto res = inst->execute(inputs);
         REQUIRE(res.status.code == 0, "Execution of adaptive_binary must succeed");
+        REQUIRE(res.status.message == "运行成功", "Adaptive binary success message must be shared");
 
         const auto *outBatch = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
         REQUIRE(outBatch != nullptr && !outBatch->images().empty(), "Adaptive binary output must contain images");
@@ -357,6 +364,7 @@ int main(int argc, char **argv)
 
         auto res = inst->execute(inputs);
         REQUIRE_EXECUTION(res.status.code == 0, "Crop tool execution must succeed");
+        REQUIRE_EXECUTION(res.status.message == "运行成功", "Crop success message must be shared");
 
         const auto *outBatch = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
         REQUIRE_EXECUTION(outBatch != nullptr && !outBatch->images().empty(), "Crop output must contain images");
@@ -411,6 +419,7 @@ int main(int argc, char **argv)
 
         auto res = inst->execute(inputs);
         REQUIRE(res.status.code == 0, "Detection filter execution must succeed");
+        REQUIRE(res.status.message == "运行成功", "Detection filter success message must be shared");
 
         const auto *outRois = std::get_if<visionrt::RoiBatch>(&res.outputs["rois"]);
         REQUIRE(outRois != nullptr && outRois->images()[0].size() == 1, "Only score >= 0.5 passes");
@@ -444,9 +453,12 @@ int main(int argc, char **argv)
         inputs.emplace("threshold", std::int64_t(128));
         inputs.emplace("min_pixels", std::int64_t(10));
         inputs.emplace("min_extent", std::int64_t(10));
+        inputs.emplace("merge_gap", std::int64_t(0));
+        inputs.emplace("padding", std::int64_t(0));
 
         auto res = inst->execute(inputs);
         REQUIRE(res.status.code == 0, "Roi projection execution must succeed");
+        REQUIRE(res.status.message == "运行成功", "Roi projection success message must be shared");
 
         const auto *rois = std::get_if<visionrt::RoiBatch>(&res.outputs["rois"]);
         REQUIRE(rois != nullptr && rois->images().size() == 1 && rois->images()[0].size() == 1,
@@ -473,6 +485,7 @@ int main(int argc, char **argv)
 
         auto res = inst->execute(inputs);
         REQUIRE(res.status.code == 0, "Image preprocess execution must succeed");
+        REQUIRE(res.status.message == "运行成功", "Image preprocess success message must be shared");
 
         const auto *out = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
         REQUIRE(out != nullptr && !out->images().empty(), "Output must have ImageBatch");
@@ -507,11 +520,14 @@ int main(int argc, char **argv)
         inputs.emplace("mode", visionrt::Utf8("file"));
         inputs.emplace("path", visionrt::Utf8(utf8Path));
         inputs.emplace("color", visionrt::Utf8("bgr"));
+        inputs.emplace("limit", std::int64_t(0));
+        inputs.emplace("max_batch_bytes", std::int64_t(0));
 
         auto res = inst->execute(inputs);
         std::filesystem::remove(tempPath);
 
         REQUIRE(res.status.code == 0, "Image read execution must succeed");
+        REQUIRE(res.status.message == "运行成功", "Image read success message must be shared");
         const auto &paths = std::get<visionrt::StringArray>(res.outputs.at("paths"));
         REQUIRE(paths.buffers()[0].values()[0].ends_with(utf8Path), "Image path must preserve Unicode UTF-8");
         const auto *batch = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
@@ -521,6 +537,77 @@ int main(int argc, char **argv)
         REQUIRE(inst->release().code == 0, "Image read release must succeed");
         api->destroy(inst);
         actualExecutedTools.insert(reg);
+    }
+
+    // 10. Generated wrapper enforces declaration options and ranges before the operator runs
+    {
+        auto create = [&](const char *registry) {
+            visionrt::IToolInstance *inst = api->create(registry, &services, &status);
+            REQUIRE(inst != nullptr, "Wrapper constraint instance must be created");
+            REQUIRE(inst->initialize({}).code == 0, "Wrapper constraint initialize must succeed");
+            return inst;
+        };
+
+        auto *read = create("visionrt.image.read");
+        visionrt::Values badMode;
+        badMode.emplace("mode", visionrt::Utf8("invalid"));
+        badMode.emplace("path", visionrt::Utf8("unused.png"));
+        badMode.emplace("color", visionrt::Utf8("bgr"));
+        badMode.emplace("limit", std::int64_t(0));
+        badMode.emplace("max_batch_bytes", std::int64_t(0));
+        auto modeResult = read->execute(badMode);
+        REQUIRE(modeResult.status.code == -2, "Invalid option must be rejected by the generated wrapper");
+        REQUIRE(modeResult.status.message.find("mode") != std::string::npos,
+                "Option error must name the port");
+        visionrt::Values badLimit = badMode;
+        badLimit.insert_or_assign("mode", visionrt::Utf8("file"));
+        badLimit.insert_or_assign("limit", std::int64_t(-1));
+        auto limitResult = read->execute(badLimit);
+        REQUIRE(limitResult.status.code == -2, "Range violation must be rejected by the generated wrapper");
+        REQUIRE(limitResult.status.message.find("limit") != std::string::npos,
+                "Range error must name the port");
+        read->release();
+        api->destroy(read);
+
+        auto *preprocess = create("visionrt.image.preprocess");
+        visionrt::Values badThreshold;
+        badThreshold.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(cv::Mat(8, 8, CV_8UC1, cv::Scalar(1)))}));
+        badThreshold.emplace("operation", visionrt::Utf8("threshold"));
+        badThreshold.emplace("threshold", std::int64_t(300));
+        auto thresholdResult = preprocess->execute(badThreshold);
+        REQUIRE(thresholdResult.status.code == -2, "Out-of-range threshold must be rejected by the generated wrapper");
+        REQUIRE(thresholdResult.status.message.find("threshold") != std::string::npos,
+                "Threshold range error must name the port");
+        preprocess->release();
+        api->destroy(preprocess);
+
+        auto *projection = create("visionrt.roi.projection");
+        visionrt::Values badProjection;
+        badProjection.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(cv::Mat(8, 8, CV_8UC1, cv::Scalar(1)))}));
+        badProjection.emplace("axis", visionrt::Utf8("x"));
+        badProjection.emplace("polarity", visionrt::Utf8("bright"));
+        badProjection.emplace("threshold", std::int64_t(128));
+        badProjection.emplace("min_pixels", std::int64_t(0));
+        badProjection.emplace("min_extent", std::int64_t(1));
+        badProjection.emplace("merge_gap", std::int64_t(0));
+        badProjection.emplace("padding", std::int64_t(0));
+        auto projectionResult = projection->execute(badProjection);
+        REQUIRE(projectionResult.status.code == -2,
+                "Out-of-range min_pixels must be rejected by the generated wrapper");
+        projection->release();
+        api->destroy(projection);
+
+        auto *adaptive = create("AdaptiveBinaryTool");
+        visionrt::Values evenKernel;
+        evenKernel.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(cv::Mat(8, 8, CV_8UC1, cv::Scalar(1)))}));
+        evenKernel.emplace("block_size", std::int64_t(4));
+        evenKernel.emplace("constant_offset", 2.0);
+        auto evenResult = adaptive->execute(evenKernel);
+        REQUIRE(evenResult.status.code == 1, "Operator-owned odd-kernel rule must still run after wrapper validation");
+        REQUIRE(evenResult.status.message.find("奇数") != std::string::npos,
+                "Operator-owned math error must be Chinese");
+        adaptive->release();
+        api->destroy(adaptive);
     }
 
     // Verify tool coverage: expected == actual

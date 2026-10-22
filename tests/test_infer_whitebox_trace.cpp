@@ -96,6 +96,7 @@ void testWhiteboxYoloInitializedTrace()
         }
         initParams.emplace("load_mode", visionrt::Utf8("engine"));
         initParams.emplace("model_path", visionrt::Utf8(engineEnv));
+        initParams.emplace("engine_output_path", visionrt::Utf8(""));
     }
     else if (wtsEnv)
     {
@@ -109,6 +110,7 @@ void testWhiteboxYoloInitializedTrace()
         initParams.emplace("engine_output_path", visionrt::Utf8("temp_whitebox.engine"));
     }
     initParams.emplace("precision", visionrt::Utf8("fp32"));
+    initParams.emplace("labels_path", visionrt::Utf8(""));
     initParams.emplace("gpu_index", static_cast<std::int64_t>(0));
     initParams.emplace("input_width", static_cast<std::int64_t>(640));
     initParams.emplace("input_height", static_cast<std::int64_t>(640));

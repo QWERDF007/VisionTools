@@ -42,6 +42,13 @@ inputs:
   min: 0
   editor: number
   tab: 基本输入
+- id: max_batch_bytes
+  name: 批次解码字节上限
+  type: Int
+  default: 0
+  min: 0
+  editor: number
+  tab: 基本输入
 outputs:
 - id: images
   name: 图像批次

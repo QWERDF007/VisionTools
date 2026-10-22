@@ -332,6 +332,7 @@ Values configuration(const Arguments &args, bool build)
         {        "model_path", Utf8(absolute(build ? args.weights : args.engine))},
         {"engine_output_path",                        Utf8(absolute(args.engine))},
         {         "precision",                               Utf8(args.precision)},
+        {       "labels_path",                                          Utf8("")},
         {         "gpu_index",                          std::int64_t(args.device)},
         {       "input_width",                           std::int64_t(args.width)},
         {      "input_height",                          std::int64_t(args.height)},

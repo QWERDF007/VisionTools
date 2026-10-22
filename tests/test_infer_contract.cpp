@@ -1,3 +1,4 @@
+#include "src/infer/YoloModel.h"
 #include "src/infer/YoloPostprocess.h"
 
 #include <visionrt/contracts/Module.h>
@@ -57,6 +58,34 @@ void testPostprocessGeometry()
     std::cout << "[PASS] testPostprocessGeometry passed." << std::endl;
 }
 
+void testYoloMissingInitParameters()
+{
+    std::cout << "[TEST] Running testYoloMissingInitParameters..." << std::endl;
+    visionrt::ToolServices services;
+    YoloTool               tool(services);
+
+    auto empty = tool.initialize({});
+    REQUIRE(empty.code == 1, "Missing init parameters must fail before any GPU work");
+    REQUIRE(empty.message.find("缺少参数") != std::string::npos, "Missing init error must be Chinese");
+    REQUIRE(empty.message.find("model_name") != std::string::npos, "Missing init error must name the port");
+
+    visionrt::Values partial;
+    partial.emplace("model_name", visionrt::Utf8("yolov8n"));
+    partial.emplace("load_mode", visionrt::Utf8("engine"));
+    partial.emplace("model_path", visionrt::Utf8("missing.engine"));
+    partial.emplace("engine_output_path", visionrt::Utf8(""));
+    partial.emplace("precision", visionrt::Utf8("fp16"));
+    partial.emplace("gpu_index", std::int64_t(0));
+    partial.emplace("input_width", std::int64_t(640));
+    partial.emplace("input_height", std::int64_t(640));
+    partial.emplace("num_classes", std::int64_t(80));
+    auto missingLabels = tool.initialize(partial);
+    REQUIRE(missingLabels.code == 1, "Missing labels_path must fail before GPU work");
+    REQUIRE(missingLabels.message.find("labels_path") != std::string::npos,
+            "Missing labels_path must be named");
+    std::cout << "[PASS] testYoloMissingInitParameters passed." << std::endl;
+}
+
 int main()
 {
     std::cout << "[TEST] Running test_infer_contract..." << std::endl;
@@ -64,6 +93,7 @@ int main()
     {
         testPostprocessIoU();
         testPostprocessGeometry();
+        testYoloMissingInitParameters();
         std::cout << "\n[ALL TESTS PASSED] All infer contract tests passed successfully.\n" << std::endl;
         return 0;
     }
