@@ -6,6 +6,6 @@ class CounterTool:
         return {'__status_code': 0, '__status_message': ''}
     def execute(self, inputs):
         self.count += 1
-        return {'__status_code': 0, '__status_message': '', 'count': self.count}
+        return {'__status_code': 0, '__status_message': '运行成功', 'count': self.count}
     def release(self):
         return {'__status_code': 0, '__status_message': ''}
