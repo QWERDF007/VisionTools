@@ -186,19 +186,17 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
                  {p::out::SCORES, visionrt::Missing{}}, {p::out::CLASSES, visionrt::Missing{}},
                  {p::out::CLASS_NAMES, visionrt::Missing{}}, {p::out::COUNTS, visionrt::Missing{}}}};
     }
-    catch (const cv::Exception &error)
-    {
-        return {{1, std::string("缺陷过滤失败；技术详情：") + error.what()},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}},
-                 {p::out::SCORES, visionrt::Missing{}}, {p::out::CLASSES, visionrt::Missing{}},
-                 {p::out::CLASS_NAMES, visionrt::Missing{}}, {p::out::COUNTS, visionrt::Missing{}}}};
-    }
     catch (const std::exception &error)
     {
-        return {{1, std::string("缺陷过滤失败；技术详情：") + error.what()},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}},
-                 {p::out::SCORES, visionrt::Missing{}}, {p::out::CLASSES, visionrt::Missing{}},
-                 {p::out::CLASS_NAMES, visionrt::Missing{}}, {p::out::COUNTS, visionrt::Missing{}}}};
+        return {
+            {1, "缺陷过滤失败", error.what()},
+            {{p::out::IMAGES, visionrt::Missing{}},
+             {p::out::ROIS, visionrt::Missing{}},
+             {p::out::SCORES, visionrt::Missing{}},
+             {p::out::CLASSES, visionrt::Missing{}},
+             {p::out::CLASS_NAMES, visionrt::Missing{}},
+             {p::out::COUNTS, visionrt::Missing{}}}
+        };
     }
     catch (...)
     {

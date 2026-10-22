@@ -6,6 +6,7 @@
 - [构建与安装](../CMakeLists.txt)、[依赖解析](../cmake/ConfigDependencyDefaults.cmake)、[预设](../CMakePresets.json)
 - [作者 JSON 校验、发行事务与路径保护](../tools/package_tools.py)、[事务验证](../tests/test_package.py)
 - [真实模块注册验证](../tests/test_module_contract.cpp)、[动态消费](../tests/test_installation_consumer.cpp)、[算法数值](../tests/test_preprocess_contract.cpp)
+- [状态与原始异常详情](../3rdparty/VisionRTContracts/include/visionrt/contracts/Tool.h)、[图像解码边界](../src/preprocess/ReadImageTool.cpp)
 - [声明与分发验证](../tests/test_distribution.py)、[Python 示例](../assets/tools/custom/Python)
 
 ## 新增工具

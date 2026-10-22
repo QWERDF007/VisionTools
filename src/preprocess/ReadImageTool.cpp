@@ -207,7 +207,11 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
             }
             catch (const cv::Exception &error)
             {
-                throw visionrt::ContractError("无法解码图像：" + utf8Path(file) + "；技术详情：" + error.what());
+                return {
+                    {1, "图像解码失败：文件 " + utf8Path(file) + "（批次索引 " + std::to_string(index) + "）",
+                     error.what()},
+                    {{p::out::IMAGES, visionrt::Missing{}}, {p::out::PATHS, visionrt::Missing{}}}
+                };
             }
             if (decoded.empty())
             {
@@ -245,15 +249,12 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         return {{1, error.what()},
                 {{p::out::IMAGES, visionrt::Missing{}}, {p::out::PATHS, visionrt::Missing{}}}};
     }
-    catch (const cv::Exception &error)
-    {
-        return {{1, std::string("图像读取失败；技术详情：") + error.what()},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::PATHS, visionrt::Missing{}}}};
-    }
     catch (const std::exception &error)
     {
-        return {{1, std::string("图像读取失败；技术详情：") + error.what()},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::PATHS, visionrt::Missing{}}}};
+        return {
+            {1, "图像读取失败", error.what()},
+            {{p::out::IMAGES, visionrt::Missing{}}, {p::out::PATHS, visionrt::Missing{}}}
+        };
     }
     catch (...)
     {

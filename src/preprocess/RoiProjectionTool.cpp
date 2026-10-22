@@ -152,15 +152,12 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
         return {{1, error.what()},
                 {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}}}};
     }
-    catch (const cv::Exception &error)
-    {
-        return {{1, std::string("投影ROI失败；技术详情：") + error.what()},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}}}};
-    }
     catch (const std::exception &error)
     {
-        return {{1, std::string("投影ROI失败；技术详情：") + error.what()},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}}}};
+        return {
+            {1, "投影ROI失败", error.what()},
+            {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}}}
+        };
     }
     catch (...)
     {

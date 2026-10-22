@@ -159,7 +159,7 @@ struct YoloTool::State
         {
             try
             {
-                return {-4, std::string("YOLO 释放失败：") + cudaGetErrorString(first)};
+                return {-4, "YOLO 释放失败", cudaGetErrorString(first)};
             }
             catch (...)
             {
@@ -213,12 +213,12 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         int  deviceCount  = 0;
         auto deviceStatus = cudaGetDeviceCount(&deviceCount);
         if (deviceStatus != cudaSuccess)
-            return {-3, std::string("YOLO CUDA 不可用：") + cudaGetErrorString(deviceStatus)};
+            return {-3, "YOLO CUDA 不可用", cudaGetErrorString(deviceStatus)};
         if (deviceCount == 0 || state->device >= deviceCount)
             return {-3, "YOLO CUDA 设备不可用：gpu_index=" + std::to_string(state->device)};
         deviceStatus = cudaSetDevice(state->device);
         if (deviceStatus != cudaSuccess)
-            return {-3, std::string("YOLO CUDA 设备不可用：") + cudaGetErrorString(deviceStatus)};
+            return {-3, "YOLO CUDA 设备不可用", cudaGetErrorString(deviceStatus)};
         if (!irt::model::isSupportedModel(modelName))
             return {-3, "InferRT 未注册 yolov8n"};
         auto config = std::make_unique<irt::model::IModelConfig>();
@@ -292,7 +292,7 @@ ToolStatus YoloTool::initialize(const Values &parameters)
     }
     catch (const std::exception &error)
     {
-        return {1, std::string("YOLO 初始化失败；技术详情：") + error.what()};
+        return {1, "YOLO 初始化失败", error.what()};
     }
     catch (...)
     {
@@ -440,7 +440,7 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             cudaStreamSynchronize(state_->stream);
         if (traces)
             traces->clear();
-        return missingResult({1, std::string("YOLO 执行失败；技术详情：") + error.what()});
+        return missingResult({1, "YOLO 执行失败", error.what()});
     }
     catch (...)
     {

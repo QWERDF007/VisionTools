@@ -89,15 +89,12 @@ visionrt::ToolResult AdaptiveBinaryTool::execute(const visionrt::Values &inputs)
     {
         return {{1, error.what()}, {{p::out::IMAGES, visionrt::Missing{}}}};
     }
-    catch (const cv::Exception &error)
-    {
-        return {{1, std::string("自适应二值化失败；技术详情：") + error.what()},
-                {{p::out::IMAGES, visionrt::Missing{}}}};
-    }
     catch (const std::exception &error)
     {
-        return {{1, std::string("自适应二值化失败；技术详情：") + error.what()},
-                {{p::out::IMAGES, visionrt::Missing{}}}};
+        return {
+            {1, "自适应二值化失败", error.what()},
+            {{p::out::IMAGES, visionrt::Missing{}}}
+        };
     }
     catch (...)
     {
