@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "category": "预处理",
   "subcategory": "图像处理",
   "tool_id": "visionrt.image.preprocess",
@@ -11,7 +11,7 @@
     {
       "id": "images",
       "name": "图像批次",
-      "type": "ImageBatch",
+      "type": "Image",
       "required": true
     },
     {
@@ -56,7 +56,7 @@
     {
       "id": "images",
       "name": "处理后图像",
-      "type": "ImageBatch",
+      "type": "Image",
       "display": {
         "same_geometry_as_input": "images",
         "color_order": "BGR"

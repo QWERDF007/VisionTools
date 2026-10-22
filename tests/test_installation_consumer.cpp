@@ -160,7 +160,7 @@ int main(int argc, char **argv)
     visionrt::ToolStatus status;
     std::set<std::string> actualExecutedTools;
     // 4. Test tool: adaptive_binary
-    visionrt::OwnedImage snapshotImage;
+    cv::Mat                snapshotImage;
     {
         const char *reg = "visiontools.preprocess.adaptive_binary";
         visionrt::IToolInstance *inst = registry.factories.at(reg).create(&services, &status);
@@ -176,7 +176,7 @@ int main(int argc, char **argv)
             }
         }
         visionrt::Values inputs;
-        inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(gray)}));
+        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(gray).clone()}));
         inputs.emplace("block_size", std::int64_t(5));
         inputs.emplace("constant_offset", 2.0);
 
@@ -184,13 +184,13 @@ int main(int argc, char **argv)
         REQUIRE(res.status.code == 0, "Execution of adaptive_binary must succeed");
         REQUIRE(res.status.message == "运行成功", "Adaptive binary success message must be shared");
 
-        const auto *outBatch = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
-        REQUIRE(outBatch != nullptr && !outBatch->images().empty(), "Adaptive binary output must contain images");
-        snapshotImage = outBatch->images()[0];
+        const auto *outBatch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+        REQUIRE(outBatch != nullptr && !outBatch->get().empty(), "Adaptive binary output must contain images");
+        snapshotImage = outBatch->get()[0];
 
         // Contract error test: wrong type for block_size
         auto badInputs = inputs;
-        badInputs.insert_or_assign("block_size", visionrt::Utf8("not_an_int"));
+        badInputs.insert_or_assign("block_size", std::string("not_an_int"));
         auto badRes = inst->execute(badInputs);
         REQUIRE(badRes.status.code == 1 && badRes.status.message.find("block_size") != std::string::npos,
                 "Invalid block_size must return the operator-owned business error");
@@ -201,8 +201,8 @@ int main(int argc, char **argv)
         actualExecutedTools.insert(reg);
     }
     // Snapshot persistence after release and destroy
-    REQUIRE(snapshotImage.rows() == 32, "Snapshot image must remain valid after instance destroy");
-    snapshotImage = visionrt::OwnedImage();
+    REQUIRE(snapshotImage.rows == 32, "Snapshot image must remain valid after instance destroy");
+    snapshotImage = cv::Mat();
 
     // 5. Test tool: crop
     {
@@ -212,23 +212,23 @@ int main(int argc, char **argv)
         REQUIRE(inst->initialize({}).code == 0, "Initialize crop must succeed");
 
         cv::Mat              colorImg(64, 64, CV_8UC3, cv::Scalar(10, 20, 30));
-        visionrt::OwnedImage inImg = visionrt::OwnedImage::copyOf(colorImg);
+        cv::Mat              inImg = (colorImg).clone();
         visionrt::Values     inputs;
-        inputs.emplace("images", visionrt::ImageBatch({inImg}));
-        auto roi = visionrt::Roi::rectangle(10.0F, 10.0F, 20.0F, 20.0F, 0.0F);
-        inputs.emplace("rect", roi);
+        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{inImg}));
+        auto roi = std::vector<double>{2, 10.0, 10.0, 20.0, 20.0, 0.0};
+        inputs.emplace("rect", visionrt::DataRef<visionrt::ROI>(visionrt::ROI{{roi}}));
 
         auto res = inst->execute(inputs);
         REQUIRE_EXECUTION(res.status.code == 0, "Crop tool execution must succeed");
         REQUIRE_EXECUTION(res.status.message == "运行成功", "Crop success message must be shared");
 
-        const auto *outBatch = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
-        REQUIRE_EXECUTION(outBatch != nullptr && !outBatch->images().empty(), "Crop output must contain images");
-        const auto &cropped = outBatch->images()[0];
-        REQUIRE_EXECUTION(cropped.rows() == 20 && cropped.cols() == 20, "Cropped size must match ROI (20x20)");
-        REQUIRE_EXECUTION(cropped.rowStride() == inImg.rowStride(),
+        const auto *outBatch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+        REQUIRE_EXECUTION(outBatch != nullptr && !outBatch->get().empty(), "Crop output must contain images");
+        const auto &cropped = outBatch->get()[0];
+        REQUIRE_EXECUTION(cropped.rows == 20 && cropped.cols == 20, "Cropped size must match ROI (20x20)");
+        REQUIRE_EXECUTION(cropped.step[0] == inImg.step[0],
                           "Cropped image rowStride must match source rowStride for zero-copy view");
-        REQUIRE_EXECUTION(cropped.readOnlyMat().datastart == inImg.readOnlyMat().datastart,
+        REQUIRE_EXECUTION(cropped.datastart == inImg.datastart,
                           "Cropped image must share datastart pointer (zero-copy view)");
 
         REQUIRE_EXECUTION(inst->release().code == 0, "Crop release must succeed");
@@ -244,31 +244,21 @@ int main(int argc, char **argv)
         REQUIRE(inst->initialize({}).code == 0, "Initialize detection.filter must succeed");
 
         cv::Mat                   img(100, 100, CV_8UC1, cv::Scalar(0));
-        auto                      roi     = visionrt::Roi::rectangle(10.0F, 10.0F, 20.0F, 20.0F, 0.0F);
+        auto                      roi     = std::vector<double>{2, 10.0, 10.0, 20.0, 20.0, 0.0};
         std::vector<float>        scores  = {0.85F, 0.35F};
         std::vector<std::int64_t> classes = {1, 2};
         std::vector<std::string>  names   = {"cat", "dog"};
         std::vector<std::int64_t> allowed = {1, 2};
 
         visionrt::Values inputs;
-        inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(img)}));
-        inputs.emplace("rois", visionrt::RoiBatch({
+        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
+        inputs.emplace("rois", visionrt::DataRef<visionrt::ROI>(visionrt::ROI{
                                    {roi, roi}
         }));
-        inputs.emplace("scores",
-                       visionrt::NumericArray(visionrt::DType::Float32, 2, visionrt::Layout::BatchRagged,
-                                              {visionrt::NumericBuffer::copy(visionrt::DType::Float32, {2},
-                                                                             std::as_bytes(std::span(scores)))}));
-        inputs.emplace("classes",
-                       visionrt::NumericArray(visionrt::DType::Int64, 2, visionrt::Layout::BatchRagged,
-                                              {visionrt::NumericBuffer::copy(visionrt::DType::Int64, {2},
-                                                                             std::as_bytes(std::span(classes)))}));
-        inputs.emplace("class_names",
-                       visionrt::StringArray(2, visionrt::Layout::BatchRagged, {visionrt::StringBuffer({2}, names)}));
-        inputs.emplace("allowed_classes",
-                       visionrt::NumericArray(visionrt::DType::Int64, 1, visionrt::Layout::Dense,
-                                              {visionrt::NumericBuffer::copy(visionrt::DType::Int64, {2},
-                                                                             std::as_bytes(std::span(allowed)))}));
+        inputs.emplace("scores", visionrt::Array(std::vector<std::vector<float>>{scores}));
+        inputs.emplace("classes", visionrt::Array(std::vector<std::vector<std::int64_t>>{classes}));
+        inputs.emplace("class_names", visionrt::Array(std::vector<std::vector<std::string>>{names}));
+        inputs.emplace("allowed_classes", visionrt::Array(std::move(allowed)));
         inputs.emplace("min_score", 0.5);
         inputs.emplace("min_area", 0.0);
 
@@ -276,12 +266,12 @@ int main(int argc, char **argv)
         REQUIRE(res.status.code == 0, "Detection filter execution must succeed");
         REQUIRE(res.status.message == "运行成功", "Detection filter success message must be shared");
 
-        const auto *outRois = std::get_if<visionrt::RoiBatch>(&res.outputs["rois"]);
-        REQUIRE(outRois != nullptr && outRois->images()[0].size() == 1, "Only score >= 0.5 passes");
+        const auto *outRois = std::get_if<visionrt::DataRef<visionrt::ROI>>(&res.outputs["rois"]);
+        REQUIRE(outRois != nullptr && outRois->get()[0].size() == 1, "Only score >= 0.5 passes");
 
         // Contract error test
         auto badInputs = inputs;
-        badInputs.insert_or_assign("min_score", visionrt::Utf8("not_a_float"));
+        badInputs.insert_or_assign("min_score", std::string("not_a_float"));
         auto badRes = inst->execute(badInputs);
         REQUIRE(badRes.status.code == 1 && badRes.status.message.find("min_score") != std::string::npos,
                 "Invalid min_score must return the operator-owned business error");
@@ -302,9 +292,9 @@ int main(int argc, char **argv)
         img(cv::Rect(30, 30, 40, 40)).setTo(cv::Scalar(255));
 
         visionrt::Values inputs;
-        inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(img)}));
-        inputs.emplace("axis", visionrt::Utf8("x"));
-        inputs.emplace("polarity", visionrt::Utf8("bright"));
+        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
+        inputs.emplace("axis", std::string("x"));
+        inputs.emplace("polarity", std::string("bright"));
         inputs.emplace("threshold", std::int64_t(128));
         inputs.emplace("min_pixels", std::int64_t(10));
         inputs.emplace("min_extent", std::int64_t(10));
@@ -315,9 +305,8 @@ int main(int argc, char **argv)
         REQUIRE(res.status.code == 0, "Roi projection execution must succeed");
         REQUIRE(res.status.message == "运行成功", "Roi projection success message must be shared");
 
-        const auto *rois = std::get_if<visionrt::RoiBatch>(&res.outputs["rois"]);
-        REQUIRE(rois != nullptr && rois->images().size() == 1 && rois->images()[0].size() == 1,
-                "Expected 1 projected ROI");
+        const auto *rois = std::get_if<visionrt::DataRef<visionrt::ROI>>(&res.outputs["rois"]);
+        REQUIRE(rois != nullptr && rois->get().size() == 1 && rois->get()[0].size() == 1, "Expected 1 projected ROI");
 
         REQUIRE(inst->release().code == 0, "Roi projection release must succeed");
         registry.factories.at(reg).destroy(inst);
@@ -333,17 +322,17 @@ int main(int argc, char **argv)
 
         cv::Mat          img(50, 50, CV_8UC1, cv::Scalar(150));
         visionrt::Values inputs;
-        inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(img)}));
-        inputs.emplace("operation", visionrt::Utf8("threshold"));
+        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
+        inputs.emplace("operation", std::string("threshold"));
         inputs.emplace("threshold", std::int64_t(100));
 
         auto res = inst->execute(inputs);
         REQUIRE(res.status.code == 0, "Image preprocess execution must succeed");
         REQUIRE(res.status.message == "运行成功", "Image preprocess success message must be shared");
 
-        const auto *out = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
-        REQUIRE(out != nullptr && !out->images().empty(), "Output must have ImageBatch");
-        REQUIRE(out->images()[0].readOnlyMat().at<unsigned char>(0, 0) == 255, "150 >= 100 -> 255");
+        const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+        REQUIRE(out != nullptr && !out->get().empty(), "Output must have ImageBatch");
+        REQUIRE(out->get()[0].at<unsigned char>(0, 0) == 255, "150 >= 100 -> 255");
 
         REQUIRE(inst->release().code == 0, "Image preprocess release must succeed");
         registry.factories.at(reg).destroy(inst);
@@ -370,9 +359,9 @@ int main(int argc, char **argv)
         }
 
         visionrt::Values inputs;
-        inputs.emplace("mode", visionrt::Utf8("file"));
-        inputs.emplace("path", visionrt::Utf8(utf8Path));
-        inputs.emplace("color", visionrt::Utf8("bgr"));
+        inputs.emplace("mode", std::string("file"));
+        inputs.emplace("path", std::string(utf8Path));
+        inputs.emplace("color", std::string("bgr"));
         inputs.emplace("limit", std::int64_t(0));
         inputs.emplace("max_batch_bytes", std::int64_t(0));
 
@@ -381,11 +370,11 @@ int main(int argc, char **argv)
 
         REQUIRE(res.status.code == 0, "Image read execution must succeed");
         REQUIRE(res.status.message == "运行成功", "Image read success message must be shared");
-        const auto &paths = std::get<visionrt::StringArray>(res.outputs.at("paths"));
-        REQUIRE(paths.buffers()[0].values()[0].ends_with(utf8Path), "Image path must preserve Unicode UTF-8");
-        const auto *batch = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
-        REQUIRE(batch && batch->images().size() == 1, "Must read 1 image");
-        REQUIRE(batch->images()[0].cols() == 24 && batch->images()[0].rows() == 24, "Image dims must match 24x24");
+        const auto &paths = std::get<visionrt::Array>(res.outputs.at("paths")).get<std::vector<std::string>>();
+        REQUIRE(paths[0].ends_with(utf8Path), "Image path must preserve Unicode UTF-8");
+        const auto *batch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+        REQUIRE(batch && batch->get().size() == 1, "Must read 1 image");
+        REQUIRE(batch->get()[0].cols == 24 && batch->get()[0].rows == 24, "Image dims must match 24x24");
 
         REQUIRE(inst->release().code == 0, "Image read release must succeed");
         registry.factories.at(reg).destroy(inst);

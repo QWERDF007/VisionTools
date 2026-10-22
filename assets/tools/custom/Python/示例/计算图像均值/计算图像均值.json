@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "category": "Python",
   "subcategory": "示例",
   "tool_id": "custom.image.mean",
@@ -7,6 +7,7 @@
   "version": "1.0.0",
   "kind": "python_class",
   "entry": {
+    "package": "examples/image_mean",
     "file": "mean.py",
     "symbol": "ToolInstance"
   },
@@ -15,7 +16,7 @@
     {
       "id": "images",
       "name": "输入图像批次",
-      "type": "ImageBatch",
+      "type": "Image",
       "required": true
     }
   ],
@@ -23,10 +24,9 @@
     {
       "id": "means",
       "name": "图像均值",
-      "type": "NumericArray",
+      "type": "Array",
       "dtype": "float64",
       "rank": 1,
-      "layout": "dense",
       "required": true
     }
   ]

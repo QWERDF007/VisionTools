@@ -28,8 +28,10 @@ class DistributionContract(unittest.TestCase):
     def test_all_author_declarations_pass_the_host_json_reader(self):
         validator = require_validator()
         declarations = sorted((ROOT / "assets/tools").rglob("*.json"))
-        self.assertEqual(len(declarations), 10)
-        self.assertEqual(list((ROOT / "assets/tools").rglob("*.yaml")), [])
+        catalog = package_tools.load_json(ROOT / "tools/package_catalog.json")
+        self.assertEqual({path.relative_to(ROOT).as_posix() for path in declarations},
+                         {entry["definition"] for entry in catalog["tools"]})
+        self.assertTrue(all(path.suffix == ".json" for path in (ROOT / "assets").rglob("*") if path.is_file()))
         for path in declarations:
             with self.subTest(path=path):
                 package_tools.load_json(path)
@@ -58,21 +60,23 @@ class DistributionContract(unittest.TestCase):
             definition = project / "assets/tools/custom/math/arithmetic/add.json"
             definition.parent.mkdir(parents=True)
             document = {
-                "schema_version": 1, "tool_id": "test.add", "display_name": "Add",
+                "schema_version": 2, "tool_id": "test.add", "display_name": "Add",
                 "version": "1.0.0", "kind": "python_function",
-                "entry": {"file": "add.py", "symbol": "run"},
+                "entry": {"package": "math/arithmetic", "file": "add.py", "symbol": "run"},
                 "init_params": [], "inputs": [],
                 "outputs": [{"id": "value", "name": "Value", "type": "Int"}],
                 "resources": ["bias.dat"],
             }
             definition.write_text(json.dumps(document), encoding="utf-8")
-            (definition.parent / "add.py").write_text(
+            code = project / "python/custom/math/arithmetic"
+            code.mkdir(parents=True)
+            (code / "add.py").write_text(
                 'from .helper import value\nfrom pathlib import Path\n'
                 'def run(inputs): return {"__status_code": 0, "__status_message": "运行成功", '
                 '"value": value + int(Path(__file__).with_name("bias.dat").read_text())}\n',
                 encoding="utf-8")
-            (definition.parent / "helper.py").write_text("value = 37\n", encoding="utf-8")
-            (definition.parent / "bias.dat").write_text("5", encoding="utf-8")
+            (code / "helper.py").write_text("value = 37\n", encoding="utf-8")
+            (code / "bias.dat").write_text("5", encoding="utf-8")
             build = project / "build"
             build.mkdir()
             (build / "Release").mkdir()
@@ -92,10 +96,13 @@ class DistributionContract(unittest.TestCase):
                 self.assertEqual({tool["tool_id"] for tool in installed["tools"]}, {"test.add"})
             result = subprocess.run([str(validator), "--package", str(output)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
+            for source_root in (project / "assets", project / "python"):
+                self.assertTrue(source_root.resolve().is_relative_to(project))
+                shutil.rmtree(source_root)
             with tempfile.TemporaryDirectory() as extracted:
                 with zipfile.ZipFile(archive) as bundle:
                     bundle.extractall(extracted)
-                package_root = Path(extracted) / "assets/tools/custom/math/arithmetic"
+                package_root = Path(extracted) / "python/custom/math/arithmetic"
                 (package_root / "__init__.py").write_text("", encoding="utf-8")
                 probe = subprocess.run([
                     sys.executable, "-B", "-c",
@@ -114,7 +121,6 @@ class DistributionContract(unittest.TestCase):
             consumer = os.environ.get("VISIONRT_PYTHON_CONSUMER")
             if consumer:
                 deploy_script = Path(os.environ["VISIONRT_DEPLOY_SCRIPT"])
-                shutil.rmtree(project / "assets")
                 installation = project / "installed"
                 deployed = subprocess.run([
                     sys.executable, "-B", "-c",

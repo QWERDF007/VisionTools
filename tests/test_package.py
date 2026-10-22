@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 import shutil
@@ -8,82 +9,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
-import json
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
-import package_tools as package
-
-
-def validator_path() -> Path:
-    configured = os.environ.get("VISIONTOOLS_VALIDATOR")
-    if not configured:
-        raise AssertionError("VISIONTOOLS_VALIDATOR must point at the real host validator")
-    path = Path(configured)
-    if not path.is_file():
-        raise AssertionError(f"VISIONTOOLS_VALIDATOR is not a file: {path}")
-    return path
-
-
-class PackageFixture(unittest.TestCase):
-    def setUp(self):
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.project = Path(temporary.name)
-        self.build = self.project / "build"
-        self.output = self.project / "dist/工具 包"
-        self.validator = validator_path()
-        self.declaration = self.project / "assets/tools/custom/Math/Arithmetic/tool.json"
-        self.declaration.parent.mkdir(parents=True)
-        self.document = {
-            "schema_version": 1, "tool_id": "custom.math", "display_name": "Math",
-            "category": "Mathematics", "subcategory": "Arithmetic", "version": "1.0.0",
-            "kind": "python_function", "entry": {"file": "tool.py", "symbol": "run"},
-            "resources": ["bias.dat"], "init_params": [], "inputs": [],
-            "outputs": [{"id": "value", "name": "Value", "type": "Int"}],
-        }
-        (self.declaration.parent / "tool.py").write_text(
-            'from .helper import calculate\ndef run(inputs): return {"value": calculate()}\n', encoding="utf-8")
-        (self.declaration.parent / "helper.py").write_text(
-            'from pathlib import Path\ndef calculate(): return int(Path(__file__).with_name("bias.dat").read_text())\n',
-            encoding="utf-8")
-        (self.declaration.parent / "bias.dat").write_text("42", encoding="utf-8")
-        self.index = {
-            "schema_version": 1, "modules": [],
-            "tools": [{"definition": self.declaration.relative_to(self.project).as_posix()}],
-        }
-        self.manifest = {"variant": "portable-release", "config": "Release", "modules": {}, "runtime_files": []}
-
-    @property
-    def targets(self):
-        return package.resolve_targets(self.output, self.project)
-
-    def publish(self, install_dir=None, zip_output=None):
-        package.save_json(self.document, self.declaration)
-        package.save_json(self.index, self.project / "tools/package_catalog.json")
-        package.save_json(self.manifest, self.build / "Release/resolved_dependencies.json")
-        return package.package_tools(self.build, install_dir or self.output, project_root=self.project,
-                                     validator=self.validator, zip_output=zip_output)
-
-    def state(self):
-        targets = self.targets
-        files = {}
-        if targets.install_dir.is_dir():
-            for path in sorted(targets.install_dir.rglob("*")):
-                if path.is_file():
-                    files[path.relative_to(targets.install_dir).as_posix()] = path.read_bytes()
-        return {
-            "install": files,
-            "zip": targets.zip_output.read_bytes() if targets.zip_output.is_file() else None,
-            "index": targets.index_output.read_bytes() if targets.index_output.is_file() else None,
-        }
-
-    def assert_state(self, expected):
-        self.assertEqual(self.state(), expected)
-
-    def staging_entries(self):
-        return [path for path in self.output.parent.iterdir()
-                if ".staging-" in path.name or ".backup-" in path.name]
+from package_support import PackageFixture, ROOT, package
 
 
 class TestPackageTransaction(PackageFixture):
@@ -95,7 +21,7 @@ class TestPackageTransaction(PackageFixture):
             source.replace('"tool_id": "custom.math"', '"tool_id": "ignored", "tool_id": "custom.math"'),
             source.replace('"type": "Int"', '"type": "Float", "type": "Int"'),
             source.replace('"type": "Int"', '"type": "Float", "t\\u0079pe": "Int"'),
-            source.replace('"schema_version": 1', '"schema_version": NaN'),
+            source.replace('"schema_version": 2', '"schema_version": NaN'),
         )
         for document in invalid:
             with self.subTest(document=document):
@@ -109,7 +35,7 @@ class TestPackageTransaction(PackageFixture):
 
     def test_verification_lints_packaged_declarations_and_index(self):
         self.publish()
-        declaration = self.output / self.declaration.relative_to(self.project)
+        declaration = self.output / self.declaration.relative_to(self.project / "assets")
         index = self.output / "module_index.json"
         command = [sys.executable, str(ROOT / "tools/package_tools.py"), "--verify-only",
                    "--build-dir", str(self.build), "--install-dir", str(self.output),
@@ -152,15 +78,24 @@ class TestPackageTransaction(PackageFixture):
         self.assertFalse((self.output / "bin").exists())
 
     def test_python_code_package_root_and_declared_data_are_collected(self):
+        (self.code / "entry").mkdir()
+        (self.code / "tool.py").rename(self.code / "entry/tool.py")
+        self.document["entry"]["file"] = "entry/tool.py"
         archive = self.publish()
         with zipfile.ZipFile(archive) as bundle:
-            prefix = self.declaration.parent.relative_to(self.project).as_posix()
-            for name in ("tool.py", "helper.py", "bias.dat"):
+            prefix = "python/custom/examples/math"
+            for name in ("entry/tool.py", "helper.py", "bias.dat"):
                 self.assertIn(f"{prefix}/{name}", bundle.namelist())
+            self.assertIn("tools/custom/Math/Arithmetic/tool.json", bundle.namelist())
+            self.assertFalse(any(name.startswith("assets/") for name in bundle.namelist()))
 
     def test_native_tool_can_ship_declared_data_without_python(self):
         self.document["kind"] = "cpp"
         self.document.pop("entry")
+        resource = self.project / "resources/native/bias.dat"
+        resource.parent.mkdir(parents=True)
+        resource.write_text("42", encoding="utf-8")
+        self.document["resources"] = [os.path.relpath(resource, self.declaration.parent)]
         self.index["modules"] = ["visiontools_preprocess"]
         self.index["tools"][0]["module"] = "visiontools_preprocess"
         module = self.build / "src/preprocess/vst_image.dll"
@@ -168,20 +103,24 @@ class TestPackageTransaction(PackageFixture):
         module.write_bytes(b"module")
         self.manifest["modules"] = {"visiontools_preprocess": {"source": str(module)}}
         self.publish()
-        self.assertEqual((self.output / self.declaration.parent.relative_to(self.project) / "bias.dat").read_text(), "42")
+        self.assertEqual((self.output / "resources/native/bias.dat").read_text(), "42")
+        installed = self.output / self.declaration.relative_to(self.project / "assets")
+        resource_path = package.load_json(installed)["resources"][0]
+        self.assertEqual((installed.parent / resource_path).resolve(), self.output / "resources/native/bias.dat")
 
     def test_platform_only_package_has_no_fake_module(self):
         self.document["kind"] = "host"
         self.document["entry"] = {"binding": "visionrt.receiver"}
+        self.document["resources"] = []
         archive = self.publish()
         with zipfile.ZipFile(archive) as bundle:
             self.assertFalse(any(name.startswith("bin/") for name in bundle.namelist()))
 
     def test_caches_examples_and_unrelated_data_are_not_published(self):
-        cache = self.declaration.parent / "__pycache__/tool.cpython-39.pyc"
+        cache = self.code / "__pycache__/tool.cpython-39.pyc"
         cache.parent.mkdir()
         cache.write_bytes(b"obsolete")
-        (self.declaration.parent / "unrelated.log").write_text("development log")
+        (self.code / "unrelated.log").write_text("development log")
         examples = self.project / "examples/private.dat"
         examples.parent.mkdir()
         examples.write_bytes(b"not a runtime resource")
@@ -251,14 +190,15 @@ class TestPackageTransaction(PackageFixture):
             self.publish()
 
     def test_resource_cannot_escape_the_project(self):
-        self.document["resources"] = [os.path.relpath(self.project.parent / "outside.dat", self.declaration.parent)]
+        self.document["resources"] = [os.path.relpath(self.project.parent / "outside.dat", self.code)]
         with self.assertRaisesRegex(RuntimeError, "根目录内"):
             self.publish()
 
     def test_shared_resource_can_use_a_parent_within_the_package(self):
-        resource = self.declaration.parent.parent / "shared.dat"
+        resource = self.code / "shared.dat"
         resource.write_text("shared", encoding="utf-8")
-        self.document["resources"] = ["../shared.dat"]
+        (self.code / "data").mkdir()
+        self.document["resources"] = ["data/../shared.dat"]
         self.publish()
         self.assertEqual((self.output / resource.relative_to(self.project)).read_text(), "shared")
 
@@ -279,13 +219,13 @@ class TestTargetProtection(PackageFixture):
     def test_protected_install_targets_are_rejected_without_writes(self):
         sentinel = self.project / "keep.txt"
         sentinel.write_text("keep", encoding="utf-8")
-        for name in ("docs", "cmake", "build", "src", "assets", "tools", "tests", "3rdparty", "dist"):
+        for name in ("docs", "cmake", "build", "src", "assets", "python", "tools", "tests", "3rdparty", "dist"):
             target = self.project / name
             target.mkdir(parents=True, exist_ok=True)
             marker = target / "sentinel.txt"
             marker.write_text(name, encoding="utf-8")
         for target in (self.project, self.project / "docs", self.project / "cmake", self.project / "build",
-                       self.project / "src", self.project / "assets", self.project / "tools",
+                       self.project / "src", self.project / "assets", self.project / "python", self.project / "tools",
                        self.project / "tests", self.project / "3rdparty", self.project / "dist"):
             with self.subTest(target=target):
                 with self.assertRaises(RuntimeError):
@@ -303,11 +243,7 @@ class TestTargetProtection(PackageFixture):
 
     def test_symlink_to_source_is_rejected(self):
         link = self.project / "dist/source-link"
-        link.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            os.symlink(self.project / "docs", link, target_is_directory=True)
-        except OSError as error:
-            self.skipTest(f"symlinks are unavailable: {error}")
+        self.link_directory(self.project / "docs", link)
         with self.assertRaises(RuntimeError):
             self.publish(install_dir=link)
         self.assertFalse((self.project / "docs/module_index.json").exists())
@@ -443,12 +379,12 @@ class TestFailureRollback(PackageFixture):
 
 class TestPythonPackageBoundary(PackageFixture):
     def test_code_package_root_collects_nested_modules_only(self):
-        package_root = self.declaration.parent
+        package_root = self.code
         (package_root / "sub").mkdir()
         (package_root / "sub/util.py").write_text("value = 1\n", encoding="utf-8")
         (package_root / "sub/data.bin").write_bytes(b"data")
         (package_root / "notes.md").write_text("notes", encoding="utf-8")
-        sibling = self.project / "assets/tools/custom/Math/Other"
+        sibling = self.project / "python/custom/examples/other"
         sibling.mkdir()
         (sibling / "experiment.py").write_text("print('not shipped')\n", encoding="utf-8")
         archive = self.publish()
@@ -460,7 +396,7 @@ class TestPythonPackageBoundary(PackageFixture):
             self.assertFalse(any(name.endswith("sub/data.bin") for name in names))
 
     def test_declared_resource_directory_is_collected_without_caches(self):
-        data = self.declaration.parent / "data"
+        data = self.code / "data"
         (data / "nested").mkdir(parents=True)
         (data / "nested/value.txt").write_text("value", encoding="utf-8")
         (data / "__pycache__").mkdir()
@@ -468,7 +404,7 @@ class TestPythonPackageBoundary(PackageFixture):
         self.document["resources"] = ["bias.dat", "data"]
         archive = self.publish()
         with zipfile.ZipFile(archive) as bundle:
-            prefix = self.declaration.parent.relative_to(self.project).as_posix()
+            prefix = self.code.relative_to(self.project).as_posix()
             self.assertIn(f"{prefix}/data/nested/value.txt", bundle.namelist())
             self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in bundle.namelist()))
 
@@ -477,7 +413,7 @@ class TestPythonPackageBoundary(PackageFixture):
         second_document = dict(self.document)
         second_document["tool_id"] = "custom.math.second"
         second_document["display_name"] = "Math Second"
-        second_document["entry"] = {"file": "tool.py", "symbol": "run"}
+        second_document["entry"] = dict(self.document["entry"])
         package.save_json(second_document, second)
         self.index["tools"].append({"definition": second.relative_to(self.project).as_posix()})
         archive = self.publish()

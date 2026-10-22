@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "category": "预处理",
   "subcategory": "图像处理",
   "tool_id": "visiontools.preprocess.adaptive_binary",
@@ -11,7 +11,7 @@
     {
       "id": "images",
       "name": "输入图像",
-      "type": "ImageBatch",
+      "type": "Image",
       "required": true
     },
     {
@@ -30,7 +30,7 @@
       "name": "偏移常量",
       "type": "Float",
       "editor": "number",
-      "default": 5.0,
+      "default": 5,
       "decimals": 3,
       "required": true
     }
@@ -39,7 +39,7 @@
     {
       "id": "images",
       "name": "二值图像",
-      "type": "ImageBatch",
+      "type": "Image",
       "display": {
         "color_order": "Gray",
         "same_geometry_as_input": "images"

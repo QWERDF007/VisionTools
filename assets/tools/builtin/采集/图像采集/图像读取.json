@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "category": "采集",
   "subcategory": "图像采集",
   "tool_id": "visionrt.image.read",
@@ -70,7 +70,7 @@
     {
       "id": "images",
       "name": "图像批次",
-      "type": "ImageBatch",
+      "type": "Image",
       "display": {
         "color_order": "BGR"
       },
@@ -79,10 +79,10 @@
     {
       "id": "paths",
       "name": "文件路径",
-      "type": "StringArray",
+      "type": "Array",
       "rank": 1,
-      "layout": "dense",
-      "required": true
+      "required": true,
+      "dtype": "string"
     }
   ]
 }

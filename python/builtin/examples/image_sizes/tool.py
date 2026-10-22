@@ -1,0 +1,6 @@
+def execute(inputs):
+    return {
+        "__status_code": 0,
+        "__status_message": "运行成功",
+        "sizes": [[int(image.shape[0]), int(image.shape[1])] for image in inputs["images"]],
+    }

@@ -12,7 +12,7 @@ namespace {
 
 namespace p = ports::image_preprocess;
 
-void requireU8(const visionrt::OwnedImage &image, std::size_t index)
+void requireU8(const cv::Mat &image, std::size_t index)
 {
     if (image.empty() || CV_MAT_DEPTH(image.type()) != CV_8U
         || (image.channels() != 1 && image.channels() != 3 && image.channels() != 4))
@@ -22,13 +22,13 @@ void requireU8(const visionrt::OwnedImage &image, std::size_t index)
     }
 }
 
-cv::Mat toGray(const visionrt::OwnedImage &image, std::size_t index)
+cv::Mat toGray(const cv::Mat &image, std::size_t index)
 {
     requireU8(image, index);
     if (image.channels() == 1)
-        return image.readOnlyMat();
+        return image;
     cv::Mat result;
-    cv::cvtColor(image.readOnlyMat(), result, image.channels() == 3 ? cv::COLOR_BGR2GRAY : cv::COLOR_BGRA2GRAY);
+    cv::cvtColor(image, result, image.channels() == 3 ? cv::COLOR_BGR2GRAY : cv::COLOR_BGRA2GRAY);
     return result;
 }
 
@@ -52,12 +52,8 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
 {
     try
     {
-        const auto &imageValue = requireInput(inputs, p::in::IMAGES);
-        const auto *images = std::get_if<visionrt::ImageBatch>(&imageValue);
-        if (!images)
-        {
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::IMAGES) + "' 必须是 ImageBatch");
-        }
+        const auto &images
+            = requireTypedInput<visionrt::DataRef<visionrt::Image>>(inputs, p::in::IMAGES, {visionrt::Type::Image});
 
         const auto operation = requireString(inputs, p::in::OPERATION);
         if (operation != "identity" && operation != "gray" && operation != "gaussian" && operation != "threshold")
@@ -83,35 +79,34 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
             threshold = requireIntInRange(inputs, p::in::THRESHOLD, 0, 255);
         }
 
-        if (images->images().empty())
+        if (images.get().empty())
         {
             visionrt::Values outputs;
-            outputs.emplace(p::out::IMAGES, visionrt::ImageBatch{});
+            outputs.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(visionrt::Image{}));
             return {visionrt::executionSuccess(), std::move(outputs)};
         }
 
-        for (std::size_t index = 0; index < images->images().size(); ++index)
+        for (std::size_t index = 0; index < images.get().size(); ++index)
         {
-            requireU8(images->images()[index], index);
+            requireU8(images.get()[index], index);
         }
 
         if (operation == "identity")
         {
             visionrt::Values outputs;
-            outputs.emplace(p::out::IMAGES, *images);
+            outputs.emplace(p::out::IMAGES, images);
             return {visionrt::executionSuccess(), std::move(outputs)};
         }
 
-        std::vector<visionrt::OwnedImage> output;
-        output.reserve(images->images().size());
-        for (std::size_t index = 0; index < images->images().size(); ++index)
+        visionrt::Image output;
+        output.reserve(images.get().size());
+        for (std::size_t index = 0; index < images.get().size(); ++index)
         {
-            const auto &image = images->images()[index];
+            const auto &image = images.get()[index];
             cv::Mat processed;
             if (operation == "gaussian")
             {
-                cv::GaussianBlur(image.readOnlyMat(), processed, cv::Size(kernel, kernel), 0, 0,
-                                 cv::BORDER_REFLECT_101);
+                cv::GaussianBlur(image, processed, cv::Size(kernel, kernel), 0, 0, cv::BORDER_REFLECT_101);
             }
             else if (operation == "threshold")
             {
@@ -121,11 +116,11 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
             {
                 processed = image.channels() == 1 ? image.clone() : toGray(image, index);
             }
-            output.push_back(visionrt::OwnedImage::take(std::move(processed)));
+            output.push_back(std::move(processed));
         }
 
         visionrt::Values outputs;
-        outputs.emplace(p::out::IMAGES, visionrt::ImageBatch(std::move(output)));
+        outputs.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(std::move(output)));
         return {visionrt::executionSuccess(), std::move(outputs)};
     }
     catch (const visionrt::ContractError &error)

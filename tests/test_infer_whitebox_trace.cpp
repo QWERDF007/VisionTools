@@ -59,7 +59,7 @@ void testWhiteboxYoloUninitializedErrorPath()
     // 2. Verify executeWithTrace interface fails on uninitialized tool
     std::vector<ImageTrace> traces;
     visionrt::Values        inputs;
-    inputs.emplace("images", visionrt::ImageBatch{});
+    inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{}));
     inputs.emplace("conf_threshold", 0.25);
     inputs.emplace("nms_threshold", 0.45);
     auto res = tool.executeWithTrace(inputs, traces);
@@ -86,7 +86,7 @@ void testWhiteboxYoloInitializedTrace()
     YoloTool                     tool(services);
 
     visionrt::Values initParams;
-    initParams.emplace("model_name", visionrt::Utf8("yolov8n"));
+    initParams.emplace("model_name", std::string("yolov8n"));
     if (engineEnv)
     {
         if (!std::filesystem::exists(engineEnv))
@@ -94,9 +94,9 @@ void testWhiteboxYoloInitializedTrace()
             std::cerr << "  [ERROR] Specified VISIONTOOLS_TEST_YOLO_ENGINE does not exist: " << engineEnv << std::endl;
             std::exit(1);
         }
-        initParams.emplace("load_mode", visionrt::Utf8("engine"));
-        initParams.emplace("model_path", visionrt::Utf8(engineEnv));
-        initParams.emplace("engine_output_path", visionrt::Utf8(""));
+        initParams.emplace("load_mode", std::string("engine"));
+        initParams.emplace("model_path", std::string(engineEnv));
+        initParams.emplace("engine_output_path", std::string(""));
     }
     else if (wtsEnv)
     {
@@ -105,12 +105,12 @@ void testWhiteboxYoloInitializedTrace()
             std::cerr << "  [ERROR] Specified VISIONTOOLS_TEST_YOLO_WTS does not exist: " << wtsEnv << std::endl;
             std::exit(1);
         }
-        initParams.emplace("load_mode", visionrt::Utf8("build_wts"));
-        initParams.emplace("model_path", visionrt::Utf8(wtsEnv));
-        initParams.emplace("engine_output_path", visionrt::Utf8("temp_whitebox.engine"));
+        initParams.emplace("load_mode", std::string("build_wts"));
+        initParams.emplace("model_path", std::string(wtsEnv));
+        initParams.emplace("engine_output_path", std::string("temp_whitebox.engine"));
     }
-    initParams.emplace("precision", visionrt::Utf8("fp32"));
-    initParams.emplace("labels_path", visionrt::Utf8(""));
+    initParams.emplace("precision", std::string("fp32"));
+    initParams.emplace("labels_path", std::string(""));
     initParams.emplace("gpu_index", static_cast<std::int64_t>(0));
     initParams.emplace("input_width", static_cast<std::int64_t>(640));
     initParams.emplace("input_height", static_cast<std::int64_t>(640));
@@ -124,9 +124,9 @@ void testWhiteboxYoloInitializedTrace()
 
     // Execute with trace on non-empty synthetic image
     cv::Mat                           testMat(640, 640, CV_8UC3, cv::Scalar(128, 128, 128));
-    std::vector<visionrt::OwnedImage> imgs;
-    imgs.push_back(visionrt::OwnedImage::copyOf(testMat));
-    visionrt::ImageBatch batch(std::move(imgs));
+    visionrt::Image                   imgs;
+    imgs.push_back(testMat.clone());
+    visionrt::DataRef<visionrt::Image> batch(std::move(imgs));
 
     std::vector<ImageTrace> traces;
     visionrt::Values        inputs;

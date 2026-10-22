@@ -71,11 +71,11 @@ void testYoloMissingInitParameters()
     REQUIRE(empty.message.find("model_name") != std::string::npos, "Missing init error must name the port");
 
     visionrt::Values partial;
-    partial.emplace("model_name", visionrt::Utf8("yolov8n"));
-    partial.emplace("load_mode", visionrt::Utf8("engine"));
-    partial.emplace("model_path", visionrt::Utf8("missing.engine"));
-    partial.emplace("engine_output_path", visionrt::Utf8(""));
-    partial.emplace("precision", visionrt::Utf8("fp16"));
+    partial.emplace("model_name", std::string("yolov8n"));
+    partial.emplace("load_mode", std::string("engine"));
+    partial.emplace("model_path", std::string("missing.engine"));
+    partial.emplace("engine_output_path", std::string(""));
+    partial.emplace("precision", std::string("fp16"));
     partial.emplace("gpu_index", std::int64_t(0));
     partial.emplace("input_width", std::int64_t(640));
     partial.emplace("input_height", std::int64_t(640));
@@ -93,7 +93,7 @@ int main()
     try
     {
         const auto *api = visiontoolsModuleApi();
-        REQUIRE(api && api->abi_major == visionrt::MODULE_ABI_MAJOR, "Inference module must expose ABI3");
+        REQUIRE(api && api->abi_major == visionrt::MODULE_ABI_MAJOR, "Inference module must expose ABI4");
         REQUIRE(api->struct_bytes >= sizeof(visionrt::ModuleApi) && api->register_tools,
                 "Inference registration callback must be complete");
         TestRegistry registry;

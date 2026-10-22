@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "category": "深度学习",
   "subcategory": "目标检测",
   "tool_id": "visionrt.dl.yolo",
@@ -96,7 +96,7 @@
     {
       "id": "images",
       "name": "图像批次",
-      "type": "ImageBatch",
+      "type": "Image",
       "required": true
     },
     {
@@ -104,8 +104,8 @@
       "name": "置信度阈值",
       "type": "Float",
       "default": 0.25,
-      "min": 0.0,
-      "max": 1.0,
+      "min": 0,
+      "max": 1,
       "step": 0.05,
       "tab": "检测",
       "required": true
@@ -115,8 +115,8 @@
       "name": "NMS阈值",
       "type": "Float",
       "default": 0.45,
-      "min": 0.0,
-      "max": 1.0,
+      "min": 0,
+      "max": 1,
       "step": 0.05,
       "tab": "检测",
       "required": true
@@ -135,7 +135,7 @@
     {
       "id": "images",
       "name": "输出图像",
-      "type": "ImageBatch",
+      "type": "Image",
       "display": {
         "same_geometry_as_input": "images",
         "color_order": "BGR"
@@ -145,35 +145,33 @@
     {
       "id": "rois",
       "name": "目标ROI",
-      "type": "RoiBatch",
+      "type": "ROI",
       "image_port": "images",
       "required": true
     },
     {
       "id": "scores",
       "name": "目标得分",
-      "type": "NumericArray",
+      "type": "Array",
       "dtype": "float32",
       "rank": 2,
-      "layout": "batch_ragged",
       "required": true
     },
     {
       "id": "classes",
       "name": "目标类别",
-      "type": "NumericArray",
+      "type": "Array",
       "dtype": "int64",
       "rank": 2,
-      "layout": "batch_ragged",
       "required": true
     },
     {
       "id": "class_names",
       "name": "目标类别名",
-      "type": "StringArray",
+      "type": "Array",
       "rank": 2,
-      "layout": "batch_ragged",
-      "required": true
+      "required": true,
+      "dtype": "string"
     }
   ]
 }

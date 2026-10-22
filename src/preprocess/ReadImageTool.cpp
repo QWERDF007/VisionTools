@@ -147,7 +147,7 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
                                           + "（允许 file/directory）");
         }
 
-        std::vector<visionrt::OwnedImage> images;
+        visionrt::Image          images;
         std::vector<std::string> pathStrings;
         images.reserve(files.size());
         pathStrings.reserve(files.size());
@@ -232,16 +232,13 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
                 accumulated += imageBytes;
             }
 
-            images.push_back(visionrt::OwnedImage::take(std::move(decoded)));
+            images.push_back(std::move(decoded));
             pathStrings.push_back(utf8Path(file));
         }
 
-        const auto count = static_cast<std::int64_t>(pathStrings.size());
         visionrt::Values outputs;
-        outputs.emplace(p::out::IMAGES, visionrt::ImageBatch(std::move(images)));
-        outputs.emplace(p::out::PATHS,
-                        visionrt::StringArray(1, visionrt::Layout::Dense,
-                                              {visionrt::StringBuffer({count}, std::move(pathStrings))}));
+        outputs.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(std::move(images)));
+        outputs.emplace(p::out::PATHS, visionrt::Array(std::move(pathStrings)));
         return {visionrt::executionSuccess(), std::move(outputs)};
     }
     catch (const visionrt::ContractError &error)

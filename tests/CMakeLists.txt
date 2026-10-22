@@ -2,9 +2,25 @@ include_directories(
     "${CMAKE_SOURCE_DIR}"
 )
 
+visiontools_add_test(test_writable_tools_contract
+    SOURCES test_writable_tools_contract.cpp
+    LIBRARIES visiontools_preprocess VisionRT::Contracts ${OpenCV_LIBS}
+)
+if(MSVC)
+    target_compile_options(test_writable_tools_contract PRIVATE /UNDEBUG)
+else()
+    target_compile_options(test_writable_tools_contract PRIVATE -UNDEBUG)
+endif()
+
 visiontools_add_test(test_preprocess_contract
     SOURCES
         test_preprocess_contract.cpp
+        preprocess/adaptive_binary.cpp
+        preprocess/roi_projection.cpp
+        preprocess/image_crop.cpp
+        preprocess/detection_filter.cpp
+        preprocess/image_preprocess.cpp
+        preprocess/read_image.cpp
         "${CMAKE_SOURCE_DIR}/src/preprocess/ReadImageTool.cpp"
         "${CMAKE_SOURCE_DIR}/src/preprocess/RoiProjectionTool.cpp"
         "${CMAKE_SOURCE_DIR}/src/preprocess/ImageCropTool.cpp"
@@ -41,12 +57,12 @@ if(VISIONTOOLS_BUILD_INFER AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_infer_co
 endif()
 
 if(VISIONTOOLS_BUILD_PYTHON)
-    foreach(_test IN ITEMS package python_tools distribution)
+    foreach(_test IN ITEMS package package_payload python_tools distribution)
         add_test(NAME test_${_test}
             COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tests/test_${_test}.py"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()
     visiontools_test_path(_vt_test_paths)
-    set_tests_properties(test_package test_distribution test_python_tools PROPERTIES
-        ENVIRONMENT "PATH=${_vt_test_paths};VISIONTOOLS_VALIDATOR=${VISIONTOOLS_VALIDATOR}")
+    set_tests_properties(test_package test_package_payload test_distribution test_python_tools PROPERTIES
+        ENVIRONMENT "PATH=${_vt_test_paths};VISIONTOOLS_VALIDATOR=${VISIONTOOLS_VALIDATOR};PYTHONDONTWRITEBYTECODE=1")
 endif()

@@ -6,6 +6,9 @@
   ],
   "tools": [
     {
+      "definition": "assets/tools/builtin/Python/示例/图像尺寸.json"
+    },
+    {
       "definition": "assets/tools/builtin/处理/检测/缺陷过滤.json",
       "module": "visiontools_preprocess"
     },

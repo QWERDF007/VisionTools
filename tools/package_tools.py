@@ -21,71 +21,13 @@ import zipfile
 
 import json
 
+from package_payload import CopyPlan, PackagingError, ToolPayload, load_json, relative_path, resolve_inside, save_json
+
 
 MARKER_NAME = ".visiontools-package.json"
 MARKER_KIND = "visiontools-tools-package"
 MARKER_VERSION = 1
-SOURCE_DIR_NAMES = ("assets", "src", "tools", "tests", "3rdparty", "docs", "cmake", "probes")
-CODE_SUFFIXES = (".py", ".pyd", ".so")
-CACHE_PARTS = {"__pycache__"}
-CACHE_SUFFIXES = {".pyc"}
-
-
-class PackagingError(RuntimeError):
-    """An actionable packaging failure with a Chinese message."""
-
-
-def _unique_members(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"重复成员：{key}")
-        result[key] = value
-    return result
-
-
-def _reject_nonfinite(token: str):
-    raise ValueError(f"非有限 JSON 数值：{token}")
-
-
-def load_json(path: Path):
-    try:
-        with Path(path).open(encoding="utf-8") as stream:
-            return json.load(stream, object_pairs_hook=_unique_members, parse_constant=_reject_nonfinite)
-    except ValueError as error:
-        raise PackagingError(f"JSON 文件无效：{path}：{error}") from error
-
-
-def save_json(data, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
-
-
-def _relative_path(relative, label: str) -> Path:
-    path = Path(relative)
-    if not path.parts or path.is_absolute() or path.drive or ".." in path.parts:
-        raise PackagingError(f"{label}必须位于包根目录内：{relative}")
-    return path
-
-
-def resolve_inside(root: Path, relative, label: str = "包内引用") -> Path:
-    reference = _relative_path(relative, label)
-    resolved = (Path(root) / reference).resolve()
-    if not resolved.is_relative_to(Path(root).resolve()):
-        raise PackagingError(f"{label}逃逸根目录：{relative}")
-    return resolved
-
-
-def resolve_declaration_reference(declaration: Path, relative, project_root: Path, label: str) -> Path:
-    path = Path(relative)
-    if not path.parts or path.is_absolute() or path.drive:
-        raise PackagingError(f"{label}必须位于工程根目录内：{relative}")
-    resolved = (declaration.parent / path).resolve()
-    if not resolved.is_relative_to(project_root):
-        raise PackagingError(f"{label}必须位于工程根目录内：{relative}")
-    return resolved
-
-
+SOURCE_DIR_NAMES = ("assets", "python", "src", "tools", "tests", "3rdparty", "docs", "cmake", "probes")
 def _remove_path(path: Path) -> None:
     try:
         if path.is_symlink() or path.is_file():
@@ -126,42 +68,6 @@ def resolve_targets(install_dir: Path, project_root: Path, zip_output: Path | No
         if archive.parent != install.parent or archive.name != expected_zip.name:
             raise PackagingError(f"ZIP 必须与安装目录属于同一发行组：{expected_zip}")
     return PackageTargets(group, install, archive, install.parent / f"{group}.module_index.json")
-
-
-class CopyPlan:
-    """Path-preserving copy plan that deduplicates shared package roots."""
-
-    def __init__(self) -> None:
-        self._items: dict[str, Path] = {}
-
-    def add(self, source: Path, destination: Path) -> None:
-        source = Path(source).resolve()
-        relative = _relative_path(destination, "包内目标")
-        key = relative.as_posix()
-        existing = self._items.get(key)
-        if existing is None:
-            self._items[key] = source
-            return
-        if existing == source:
-            return
-        try:
-            same_bytes = existing.read_bytes() == source.read_bytes()
-        except OSError as error:
-            raise PackagingError(f"无法比较包内目标冲突：{key}：{error}") from error
-        if not same_bytes:
-            raise PackagingError(f"包内目标路径冲突：{key} 来自不同来源 {existing} 与 {source}")
-
-    def items(self) -> list[tuple[Path, Path]]:
-        return [(Path(key), source) for key, source in sorted(self._items.items())]
-
-    def copy_to(self, root: Path) -> None:
-        for relative, source in self.items():
-            target = resolve_inside(root, relative, "包内目标")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                shutil.copy2(source, target)
-            except OSError as error:
-                raise PackagingError(f"复制包文件失败：{source} -> {target}：{error}") from error
 
 
 def _source_roots(project_root: Path, build_dir: Path) -> list[Path]:
@@ -236,7 +142,7 @@ def _validate_targets(targets: PackageTargets, project_root: Path, build_dir: Pa
 
 
 def _load_build(build_dir: Path, config: str, project_root: Path,
-                validator: Path | None = None) -> tuple[dict, dict, Path]:
+                validator: Path | None = None) -> tuple[dict, dict, Path, dict[str, ToolPayload]]:
     try:
         metadata = load_json(build_dir / config / "resolved_dependencies.json")
         catalog = load_json(project_root / "tools/package_catalog.json")
@@ -260,15 +166,12 @@ def _load_build(build_dir: Path, config: str, project_root: Path,
         raise PackagingError("发行目录表 tools 必须是数组")
     index = {"schema_version": 1, "variant": metadata["variant"], "modules": {name: {} for name in modules}, "tools": {}}
     identities = set()
+    payloads: dict[str, ToolPayload] = {}
     for entry in catalog["tools"]:
         if not isinstance(entry, dict) or set(entry) - {"definition", "module"} or "definition" not in entry:
             raise PackagingError("发行目录表工具条目只允许 definition 与 module")
-        source = resolve_inside(project_root, entry["definition"], "工具声明")
-        if source.suffix != ".json":
-            raise PackagingError(f"工具声明必须是 JSON：{source}")
-        declaration = load_json(source)
-        if not isinstance(declaration, dict):
-            raise PackagingError(f"工具声明必须是对象：{source}")
+        payload = ToolPayload.read(project_root, entry["definition"])
+        source, declaration = payload.source, payload.document
         tool_id = declaration.get("tool_id")
         if not isinstance(tool_id, str) or not tool_id or tool_id in identities:
             raise PackagingError(f"工具声明 tool_id 为空或重复：{source}")
@@ -286,6 +189,7 @@ def _load_build(build_dir: Path, config: str, project_root: Path,
         else:
             raise PackagingError(f"工具 kind 无效：{tool_id}")
         index["tools"][tool_id] = dict(entry)
+        payloads[tool_id] = payload
     referenced = {entry["module"] for entry in index["tools"].values() if "module" in entry}
     if set(modules) != referenced:
         raise PackagingError("构建模块与声明归属不一致")
@@ -295,58 +199,19 @@ def _load_build(build_dir: Path, config: str, project_root: Path,
     validator_path = Path(validator_value).resolve()
     if not validator_path.is_file():
         raise PackagingError(f"宿主校验器不存在：{validator_path}")
-    return metadata, index, validator_path
+    return metadata, index, validator_path, payloads
 
-def _validate_package_root(package_root: Path, project_root: Path) -> None:
-    if not package_root.is_relative_to(project_root):
-        raise PackagingError(f"Python 代码包根必须位于工程内：{package_root}")
-    for root in [project_root, *(project_root / name for name in SOURCE_DIR_NAMES)]:
-        if root == package_root or root.is_relative_to(package_root):
-            raise PackagingError(f"Python 代码包根过大，包含工程源码：{package_root}")
-
-
-def _precheck_payload(metadata: dict, index: dict, project_root: Path) -> None:
+def _precheck_payload(metadata: dict, payloads: dict[str, ToolPayload]) -> None:
     for module_name, module in metadata.get("modules", {}).items():
         if not isinstance(module, dict) or not module.get("source"):
             raise PackagingError(f"模块 {module_name} 缺少 source")
         source = Path(module["source"]).resolve()
         if not source.is_file():
             raise PackagingError(f"模块不存在：{source}")
-        _relative_path(f"bin/{source.name}", "模块目标")
+        relative_path(f"bin/{source.name}", "模块目标")
 
-    tools = index.get("tools", {})
-    if not isinstance(tools, dict):
-        raise PackagingError("索引 tools 必须是映射")
-    for tool_id, entry in tools.items():
-        if not isinstance(entry, dict) or not entry.get("definition"):
-            raise PackagingError(f"工具 {tool_id} 缺少 definition")
-        definition_relative = _relative_path(entry["definition"], "工具声明")
-        source = resolve_inside(project_root, definition_relative, "工具声明")
-        if not source.is_file():
-            raise PackagingError(f"工具声明不存在：{source}")
-        declaration = load_json(source)
-        if not isinstance(declaration, dict):
-            raise PackagingError(f"工具声明必须是映射：{source}")
-        if declaration.get("tool_id") != tool_id:
-            raise PackagingError(f"工具声明 tool_id 不一致：{source}（索引 {tool_id}）")
-        kind = declaration.get("kind", "")
-        entry_data = declaration.get("entry", {})
-        if kind in ("python_function", "python_class"):
-            if not isinstance(entry_data, dict):
-                raise PackagingError(f"工具 {tool_id} 缺少 entry")
-            script = resolve_declaration_reference(source, entry_data.get("file", ""), project_root, "Python 入口脚本")
-            if not script.is_file():
-                raise PackagingError(f"Python 入口脚本不存在：{script}")
-            _validate_package_root(script.parent, project_root)
-        resources = declaration.get("resources", [])
-        if not isinstance(resources, list):
-            raise PackagingError(f"工具 {tool_id} 的 resources 必须是列表")
-        for resource in resources:
-            resolved = resolve_declaration_reference(source, resource, project_root, "资源")
-            if not resolved.exists():
-                raise PackagingError(f"资源不存在：{resolved}")
-            if not resolved.is_relative_to(project_root):
-                raise PackagingError(f"资源必须位于工程根目录内：{resolved}")
+    for payload in payloads.values():
+        payload.validate()
 
     runtime_install = metadata.get("runtime_install")
     if runtime_install is not None:
@@ -357,36 +222,7 @@ def _precheck_payload(metadata: dict, index: dict, project_root: Path) -> None:
             raise PackagingError("运行时文件配置无效")
         if not Path(runtime["source"]).resolve().is_file():
             raise PackagingError(f"运行时文件不存在：{runtime['source']}")
-        _relative_path(runtime["destination"], "运行时文件目标")
-
-
-def _collect_python_package(plan: CopyPlan, script: Path, project_root: Path) -> None:
-    package_root = script.parent
-    _validate_package_root(package_root, project_root)
-    for path in sorted(package_root.rglob("*")):
-        if not path.is_file():
-            continue
-        if any(part in CACHE_PARTS for part in path.parts) or path.suffix in CACHE_SUFFIXES:
-            continue
-        if path.suffix not in CODE_SUFFIXES and path != script:
-            continue
-        plan.add(path, path.relative_to(project_root))
-
-
-def _collect_resources(plan: CopyPlan, declaration_path: Path, declaration: dict, project_root: Path) -> None:
-    for resource in declaration.get("resources", []):
-        source = resolve_declaration_reference(declaration_path, resource, project_root, "资源")
-        if source.is_dir():
-            for path in sorted(source.rglob("*")):
-                if not path.is_file():
-                    continue
-                if any(part in CACHE_PARTS for part in path.parts) or path.suffix in CACHE_SUFFIXES:
-                    continue
-                plan.add(path, path.relative_to(project_root))
-        elif source.is_file():
-            plan.add(source, source.relative_to(project_root))
-        else:
-            raise PackagingError(f"资源不存在：{source}")
+        relative_path(runtime["destination"], "运行时文件目标")
 
 
 def _run_runtime_install(staging_dir: Path, build_dir: Path, config: str, runtime_install: dict) -> list[str]:
@@ -414,14 +250,14 @@ def _run_runtime_install(staging_dir: Path, build_dir: Path, config: str, runtim
     return installed_files
 
 
-def _collect_package(metadata: dict, index: dict, staging_dir: Path, project_root: Path, build_dir: Path,
-                     config: str) -> dict:
+def _collect_package(metadata: dict, index: dict, payloads: dict[str, ToolPayload], staging_dir: Path,
+                     build_dir: Path, config: str) -> dict:
     plan = CopyPlan()
     final_index = {
         "schema_version": 1,
         "variant": index["variant"],
         "modules": {},
-        "tools": dict(index.get("tools", {})),
+        "tools": {identifier: dict(entry) for identifier, entry in index["tools"].items()},
         "runtime_files": [],
     }
     module_files = {}
@@ -435,13 +271,9 @@ def _collect_package(metadata: dict, index: dict, staging_dir: Path, project_roo
             plan.add(source, Path(relative))
 
     for tool_id, entry in final_index["tools"].items():
-        source = resolve_inside(project_root, entry["definition"], "工具声明")
-        declaration = load_json(source)
-        plan.add(source, Path(entry["definition"]))
-        if declaration.get("kind") in ("python_function", "python_class"):
-            script = resolve_declaration_reference(source, declaration["entry"]["file"], project_root, "Python 入口脚本")
-            _collect_python_package(plan, script, project_root)
-        _collect_resources(plan, source, declaration, project_root)
+        payload = payloads[tool_id]
+        payload.add_to(plan)
+        entry["definition"] = payload.destination.as_posix()
 
     for runtime in metadata.get("runtime_files", []):
         source = Path(runtime["source"]).resolve()
@@ -560,9 +392,9 @@ def package_tools(
     build_dir = Path(build_dir).resolve()
     project_root = Path(project_root or Path(__file__).resolve().parents[1]).resolve()
     targets = resolve_targets(install_dir, project_root, zip_output)
-    metadata, index, build_validator = _load_build(build_dir, config, project_root, validator)
+    metadata, index, build_validator, payloads = _load_build(build_dir, config, project_root, validator)
     _validate_targets(targets, project_root, build_dir)
-    _precheck_payload(metadata, index, project_root)
+    _precheck_payload(metadata, payloads)
 
     token = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
     staging_dir = targets.install_dir.parent / f".{targets.install_dir.name}.staging-{token}"
@@ -572,7 +404,7 @@ def package_tools(
     try:
         targets.install_dir.parent.mkdir(parents=True, exist_ok=True)
         staging_dir.mkdir()
-        final_index = _collect_package(metadata, index, staging_dir, project_root, build_dir, config)
+        final_index = _collect_package(metadata, index, payloads, staging_dir, build_dir, config)
         save_json(final_index, staging_dir / "module_index.json")
         _write_marker(staging_dir, targets.group)
         if not verify_package(staging_dir, build_validator):

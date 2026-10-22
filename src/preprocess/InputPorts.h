@@ -20,6 +20,26 @@ inline const visionrt::PortValue &requireInput(const visionrt::Values &inputs, s
     return found->second;
 }
 
+template<class T>
+const T &requireTypedInput(const visionrt::Values &inputs, std::string_view id, const visionrt::TypeSpec &type)
+{
+    const auto &value = requireInput(inputs, id);
+    try
+    {
+        visionrt::validateValue(type, value);
+    }
+    catch (const visionrt::ContractError &error)
+    {
+        std::string expected = visionrt::typeName(type.type);
+        if (type.dtype)
+            expected += "(dtype=" + std::string(visionrt::dtypeName(*type.dtype))
+                      + ", rank=" + std::to_string(type.rank) + ")";
+        throw visionrt::ContractError("输入端口 '" + std::string(id) + "' 必须是 " + expected + " 的有效值："
+                                      + error.what());
+    }
+    return std::get<T>(value);
+}
+
 inline std::int64_t requireInt(const visionrt::Values &inputs, std::string_view id)
 {
     const auto &value = requireInput(inputs, id);
@@ -39,8 +59,11 @@ inline double requireFloat(const visionrt::Values &inputs, std::string_view id)
 inline std::string requireString(const visionrt::Values &inputs, std::string_view id)
 {
     const auto &value = requireInput(inputs, id);
-    if (const auto *text = std::get_if<visionrt::Utf8>(&value))
-        return text->str();
+    if (const auto *text = std::get_if<std::string>(&value))
+    {
+        visionrt::validateUtf8(*text);
+        return *text;
+    }
     throw visionrt::ContractError("输入端口 '" + std::string(id) + "' 必须是字符串");
 }
 
