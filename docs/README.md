@@ -4,7 +4,7 @@
 - [CPU 注册](../src/preprocess/PreprocessModule.cpp)、[推理注册](../src/infer/InferModule.cpp)、[模块内构造与销毁](../src/ToolFactory.h)
 - [作者声明](../assets/tools)、[发行目录表](../tools/package_catalog.json)
 - [构建与安装](../CMakeLists.txt)、[依赖解析](../cmake/ConfigDependencyDefaults.cmake)、[预设](../CMakePresets.json)
-- [发行事务与路径保护](../tools/package_tools.py)、[事务验证](../tests/test_package.py)
+- [作者 JSON 校验、发行事务与路径保护](../tools/package_tools.py)、[事务验证](../tests/test_package.py)
 - [真实模块注册验证](../tests/test_module_contract.cpp)、[动态消费](../tests/test_installation_consumer.cpp)、[算法数值](../tests/test_preprocess_contract.cpp)
 - [声明与分发验证](../tests/test_distribution.py)、[Python 示例](../assets/tools/custom/Python)
 

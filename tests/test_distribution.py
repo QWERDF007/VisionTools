@@ -32,6 +32,7 @@ class DistributionContract(unittest.TestCase):
         self.assertEqual(list((ROOT / "assets/tools").rglob("*.yaml")), [])
         for path in declarations:
             with self.subTest(path=path):
+                package_tools.load_json(path)
                 result = subprocess.run([str(validator), "--emit-normalized-json", str(path)],
                                         capture_output=True, text=True, encoding="utf-8", errors="replace")
                 self.assertEqual(result.returncode, 0, result.stderr)

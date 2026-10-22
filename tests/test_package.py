@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -86,6 +87,45 @@ class PackageFixture(unittest.TestCase):
 
 
 class TestPackageTransaction(PackageFixture):
+    def test_author_json_lint_preserves_the_previous_package(self):
+        self.publish()
+        previous = self.state()
+        source = self.declaration.read_text(encoding="utf-8")
+        invalid = (
+            source.replace('"tool_id": "custom.math"', '"tool_id": "ignored", "tool_id": "custom.math"'),
+            source.replace('"type": "Int"', '"type": "Float", "type": "Int"'),
+            source.replace('"type": "Int"', '"type": "Float", "t\\u0079pe": "Int"'),
+            source.replace('"schema_version": 1', '"schema_version": NaN'),
+        )
+        for document in invalid:
+            with self.subTest(document=document):
+                self.assertNotEqual(document, source)
+                self.declaration.write_text(document, encoding="utf-8")
+                with self.assertRaisesRegex(package.PackagingError, r"tool\.json.*(重复成员|非有限)"):
+                    package.package_tools(self.build, self.output, project_root=self.project,
+                                          validator=self.validator)
+                self.assert_state(previous)
+                self.assertEqual(self.staging_entries(), [])
+
+    def test_verification_lints_packaged_declarations_and_index(self):
+        self.publish()
+        declaration = self.output / self.declaration.relative_to(self.project)
+        index = self.output / "module_index.json"
+        command = [sys.executable, str(ROOT / "tools/package_tools.py"), "--verify-only",
+                   "--build-dir", str(self.build), "--install-dir", str(self.output),
+                   "--validator", str(self.validator)]
+        for path, member in ((declaration, "kind"), (index, "variant")):
+            original = path.read_text(encoding="utf-8")
+            path.write_text('{"' + member + '": "ignored", ' + original[1:], encoding="utf-8")
+            with self.subTest(path=path):
+                result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("重复成员", result.stderr)
+                self.assertIn(path.name, result.stderr)
+            path.write_text(original, encoding="utf-8")
+        result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_zip_and_external_index_are_one_source(self):
         archive = self.publish()
         targets = self.targets

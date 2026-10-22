@@ -35,9 +35,25 @@ class PackagingError(RuntimeError):
     """An actionable packaging failure with a Chinese message."""
 
 
+def _unique_members(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"重复成员：{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite(token: str):
+    raise ValueError(f"非有限 JSON 数值：{token}")
+
+
 def load_json(path: Path):
-    with Path(path).open(encoding="utf-8") as stream:
-        return json.load(stream)
+    try:
+        with Path(path).open(encoding="utf-8") as stream:
+            return json.load(stream, object_pairs_hook=_unique_members, parse_constant=_reject_nonfinite)
+    except ValueError as error:
+        raise PackagingError(f"JSON 文件无效：{path}：{error}") from error
 
 
 def save_json(data, path: Path) -> None:
@@ -525,7 +541,12 @@ def verify_package(install_dir: Path, validator: Path) -> bool:
     )
     if result.returncode:
         print(f"宿主包校验失败（返回码 {result.returncode}）：{result.stderr or result.stdout}", file=sys.stderr)
-    return result.returncode == 0
+        return False
+    root = Path(install_dir).resolve()
+    index = load_json(root / "module_index.json")
+    for tool in index["tools"]:
+        load_json(root / tool["definition"])
+    return True
 
 
 def package_tools(
