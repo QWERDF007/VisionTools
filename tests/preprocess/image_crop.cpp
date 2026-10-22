@@ -1,6 +1,9 @@
 #include "src/preprocess/ImageCropTool.h"
 #include "TestSupport.h"
 
+#include <initializer_list>
+#include <string_view>
+
 using namespace visionrt;
 using namespace visiontools::preprocess;
 using namespace visiontools::tests;
@@ -9,53 +12,19 @@ namespace crop_ports = visiontools::preprocess::ports::image_crop;
 
 namespace {
 
-bool insidePolygon(std::span<const cv::Point2d> vertices, double x, double y)
+cv::Mat pixelCenterGold(const cv::Mat &image, cv::Point origin, std::initializer_list<std::string_view> rows)
 {
-    bool inside = false;
-    for (std::size_t i = 0, previous = vertices.size() - 1; i < vertices.size(); previous = i++)
+    cv::Mat expected
+        = cv::Mat::zeros(static_cast<int>(rows.size()), static_cast<int>(rows.begin()->size()), image.type());
+    int row = 0;
+    for (const auto cells : rows)
     {
-        const auto  &a         = vertices[previous];
-        const auto  &b         = vertices[i];
-        const double cross     = (x - a.x) * (b.y - a.y) - (y - a.y) * (b.x - a.x);
-        const double tolerance = 32 * std::numeric_limits<double>::epsilon()
-                               * std::max(1.0, std::abs((x - a.x) * (b.y - a.y)) + std::abs((y - a.y) * (b.x - a.x)));
-        if (std::abs(cross) <= tolerance && x >= std::min(a.x, b.x) && x <= std::max(a.x, b.x)
-            && y >= std::min(a.y, b.y) && y <= std::max(a.y, b.y))
-            return true;
-        if ((a.y > y) != (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x)
-            inside = !inside;
-    }
-    return inside;
-}
-
-cv::Mat referenceCrop(const cv::Mat &image, const std::vector<double> &rectangle)
-{
-    const auto corners  = visionrt::rectangleCorners(rectangle);
-    double     minimumX = corners[0].x, maximumX = corners[0].x;
-    double     minimumY = corners[0].y, maximumY = corners[0].y;
-    for (const auto &corner : corners)
-    {
-        minimumX = std::min(minimumX, corner.x);
-        minimumY = std::min(minimumY, corner.y);
-        maximumX = std::max(maximumX, corner.x);
-        maximumY = std::max(maximumY, corner.y);
-    }
-    const auto snap = [](double value)
-    {
-        const double nearest = std::round(value);
-        return std::abs(value - nearest) <= 32 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(value))
-                 ? nearest
-                 : value;
-    };
-    const int left     = static_cast<int>(std::clamp(std::floor(snap(minimumX)), 0.0, static_cast<double>(image.cols)));
-    const int top      = static_cast<int>(std::clamp(std::floor(snap(minimumY)), 0.0, static_cast<double>(image.rows)));
-    const int right    = static_cast<int>(std::clamp(std::ceil(snap(maximumX)), 0.0, static_cast<double>(image.cols)));
-    const int bottom   = static_cast<int>(std::clamp(std::ceil(snap(maximumY)), 0.0, static_cast<double>(image.rows)));
-    cv::Mat   expected = cv::Mat::zeros(bottom - top, right - left, image.type());
-    for (int row = 0; row < expected.rows; ++row)
+        REQUIRE(cells.size() == static_cast<std::size_t>(expected.cols), "Golden mask rows must be rectangular");
         for (int column = 0; column < expected.cols; ++column)
-            if (insidePolygon(corners, left + column + 0.5, top + row + 0.5))
-                expected.at<unsigned char>(row, column) = image.at<unsigned char>(top + row, left + column);
+            if (cells[column] == '#')
+                expected.at<unsigned char>(row, column) = image.at<unsigned char>(origin.y + row, origin.x + column);
+        ++row;
+    }
     return expected;
 }
 
@@ -201,28 +170,61 @@ void testImageCropTool()
         auto result = tool.execute(inputs);
         requireSuccess(result, "Rotated crop must succeed");
         const auto &cropped  = std::get<DataRef<Image>>(result.outputs.at(crop_ports::out::IMAGES)).get()[0];
-        const auto  expected = referenceCrop(image, rectangle);
+        const auto  expected = pixelCenterGold(image, {0, 1},
+                                               {
+                                                  ".....#...........",
+                                                  ".....###.........",
+                                                  "....#####........",
+                                                  "....#######......",
+                                                  "...##########....",
+                                                  "..#############..",
+                                                  "..##############.",
+                                                  ".###############.",
+                                                  ".##############..",
+                                                  "...###########...",
+                                                  ".....#########...",
+                                                  ".......######....",
+                                                  "........#####....",
+                                                  "..........##.....",
+                                                  ".................",
+                                              });
         REQUIRE(cropped.rows == expected.rows && cropped.cols == expected.cols, "Rotated bounds must match gold");
         REQUIRE(cv::countNonZero(cropped != expected) == 0, "Rotated crop must match pixel-center gold");
         const auto coordinates
             = std::get<Array>(result.outputs.at(crop_ports::out::ORIGINS)).get<std::vector<std::vector<double>>>()[0];
-        const auto corners  = visionrt::rectangleCorners(rectangle);
-        double     minimumX = corners[0].x, minimumY = corners[0].y;
-        for (const auto &corner : corners)
-        {
-            minimumX = std::min(minimumX, corner.x);
-            minimumY = std::min(minimumY, corner.y);
-        }
-        const auto snap = [](double value)
-        {
-            const double nearest = std::round(value);
-            return std::abs(value - nearest)
-                        <= 32 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(value))
-                     ? nearest
-                     : value;
+        REQUIRE(coordinates == std::vector<double>({0., 1.}), "Rotated origin must match the pixel-center gold");
+    }
+
+    {
+        const auto image = gradient(6, 6);
+        Values     inputs{
+                {crop_ports::in::IMAGES,                     DataRef<Image>(Image{image})},
+                {  crop_ports::in::RECT, DataRef<ROI>(ROI{{{2., -1., -1., 4., 4., 45.}}})},
         };
-        REQUIRE(coordinates[0] == std::floor(snap(minimumX)) && coordinates[1] == std::floor(snap(minimumY)),
-                "Rotated origin must be the snapped top-left");
+        const auto result = tool.execute(inputs);
+        requireSuccess(result, "Rotated rectangle clipped by two image edges must succeed");
+        const auto &cropped  = std::get<DataRef<Image>>(result.outputs.at(crop_ports::out::IMAGES)).get().at(0);
+        const auto  expected = pixelCenterGold(image, {0, 0}, {"###.", "###.", "##..", "...."});
+        REQUIRE(cropped.size() == expected.size() && cv::countNonZero(cropped != expected) == 0,
+                "Clipped rotated pixels must match independent gold");
+        REQUIRE((std::get<Array>(result.outputs.at(crop_ports::out::ORIGINS)).get<NestedVector<double, 2>>()
+                    == NestedVector<double, 2>{{0., 0.}}), "Clipped rotated origin must match gold");
+    }
+    {
+        const auto   image = gradient(6, 6);
+        const double half  = std::sqrt(2.0);
+        Values       inputs{
+                  {crop_ports::in::IMAGES,                                               DataRef<Image>(Image{image})},
+                  {  crop_ports::in::RECT, DataRef<ROI>(ROI{{{2., 2. - half, 2. - half, 2. * half, 2. * half, 45.}}})},
+        };
+        const auto result = tool.execute(inputs);
+        requireSuccess(result, "Pixel centers on rotated edges must be included");
+        const auto &cropped  = std::get<DataRef<Image>>(result.outputs.at(crop_ports::out::IMAGES)).get().at(0);
+        const auto  expected = pixelCenterGold(image, {0, 0}, {".##.", "####", "####", ".##."});
+        REQUIRE(cropped.size() == expected.size() && cv::countNonZero(cropped != expected) == 0,
+                "Rotated boundary centers must match independent gold");
+        REQUIRE((std::get<Array>(result.outputs.at(crop_ports::out::ORIGINS)).get<NestedVector<double, 2>>()
+                    == NestedVector<double, 2>{{0., 0.}}), "Rotated boundary origin must match gold");
     }
 
     // 7. Mask reuse within one execute, no cache across executes
@@ -252,7 +254,15 @@ void testImageCropTool()
         requireSuccess(result, "8-image rotated crop must succeed");
         REQUIRE(testing::maskBuildCount == 1, "Same bounds must build exactly one mask for 8 images");
         const auto &batch       = std::get<DataRef<Image>>(result.outputs.at(crop_ports::out::IMAGES)).get();
-        const auto  expected    = referenceCrop(gradient(40, 40), rectangle);
+        const auto  expected    = pixelCenterGold(
+            gradient(40, 40), {8, 8},
+            {
+                "....#..............", "....#####..........", "....########.......", "...#############...",
+                "...################", "...###############.", "...###############.", "..################.",
+                "..################.", "..###############..", ".################..", ".################..",
+                ".###############...", ".###############...", "################...", "...#############...",
+                ".......########....", "..........#####....", "..............#....",
+            });
         std::size_t outputBytes = 0;
         for (const auto &image : batch)
         {
@@ -272,6 +282,11 @@ void testImageCropTool()
             = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started32).count();
         requireSuccess(result, "32-image rotated crop must succeed");
         REQUIRE(testing::maskBuildCount == 1, "Same bounds must build exactly one mask for 32 images");
+        const auto &largeBatch = std::get<DataRef<Image>>(result.outputs.at(crop_ports::out::IMAGES)).get();
+        REQUIRE(largeBatch.size() == 32, "Reused-mask output batch size must be preserved");
+        for (const auto &image : largeBatch)
+            REQUIRE(image.size() == expected.size() && cv::countNonZero(image != expected) == 0,
+                    "Every 32-image reused-mask output must match independent gold");
         std::cout << "[METRICS] 32-image rotated crop: " << elapsed32 << " ms, masks=" << testing::maskBuildCount
                   << std::endl;
 
