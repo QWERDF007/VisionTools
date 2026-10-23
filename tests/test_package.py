@@ -92,10 +92,10 @@ class TestPackageTransaction(PackageFixture):
     def test_native_tool_can_ship_declared_data_without_python(self):
         self.document["kind"] = "cpp"
         self.document.pop("entry")
-        resource = self.project / "resources/native/bias.dat"
+        resource = self.declaration.parent / "resources/native/bias.dat"
         resource.parent.mkdir(parents=True)
         resource.write_text("42", encoding="utf-8")
-        self.document["resources"] = [os.path.relpath(resource, self.declaration.parent)]
+        self.document["resources"] = ["resources/native/bias.dat"]
         self.index["modules"] = ["visiontools_preprocess"]
         self.index["tools"][0]["module"] = "visiontools_preprocess"
         module = self.build / "src/preprocess/vst_image.dll"
@@ -103,10 +103,10 @@ class TestPackageTransaction(PackageFixture):
         module.write_bytes(b"module")
         self.manifest["modules"] = {"visiontools_preprocess": {"source": str(module)}}
         self.publish()
-        self.assertEqual((self.output / "resources/native/bias.dat").read_text(), "42")
+        self.assertEqual((self.output / "tools/custom/Math/Arithmetic/resources/native/bias.dat").read_text(), "42")
         installed = self.output / self.declaration.relative_to(self.project / "assets")
         resource_path = package.load_json(installed)["resources"][0]
-        self.assertEqual((installed.parent / resource_path).resolve(), self.output / "resources/native/bias.dat")
+        self.assertEqual((installed.parent / resource_path).resolve(), self.output / "tools/custom/Math/Arithmetic/resources/native/bias.dat")
 
     def test_platform_only_package_has_no_fake_module(self):
         self.document["kind"] = "host"

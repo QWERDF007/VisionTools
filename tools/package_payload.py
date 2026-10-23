@@ -187,7 +187,7 @@ class ToolPayload:
             boundary = base
         else:
             base, destination = self.source.parent, self.destination.parent
-            boundary = self.project_root
+            boundary = base
         result = []
         for resource in resources:
             if not isinstance(resource, str) or not resource:
@@ -200,11 +200,7 @@ class ToolPayload:
                 raise PackagingError(f"资源必须位于所选包根目录内：{resource}")
             if not logical.exists():
                 raise PackagingError(f"资源不存在：{logical}")
-            if self.is_python:
-                target = destination / logical.relative_to(base)
-            else:
-                project_relative = logical.relative_to(self.project_root)
-                target = Path(*project_relative.parts[1:]) if project_relative.parts[0] == "assets" else project_relative
+            target = destination / logical.relative_to(base)
             result.append((logical, target, boundary))
         return result
 
