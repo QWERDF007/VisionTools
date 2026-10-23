@@ -44,6 +44,9 @@
     },
     {
       "definition": "assets/tools/custom/Python/示例/调用计数器/调用计数器.json"
+    },
+    {
+      "definition": "assets/tools/custom/Python/示例/ROI几何/ROI几何.json"
     }
   ]
 }

@@ -19,10 +19,13 @@ class TestPythonToolContracts(unittest.TestCase):
     def setUp(self):
         mean = json.loads((ROOT / "assets/tools/custom/Python/示例/计算图像均值/计算图像均值.json").read_text(encoding="utf-8"))["entry"]
         counter = json.loads((ROOT / "assets/tools/custom/Python/示例/调用计数器/调用计数器.json").read_text(encoding="utf-8"))["entry"]
+        roi = json.loads((ROOT / "assets/tools/custom/Python/示例/ROI几何/ROI几何.json").read_text(encoding="utf-8"))["entry"]
         self.mean_py = ROOT / "python/custom" / mean["package"] / mean["file"]
         self.counter_py = ROOT / "python/custom" / counter["package"] / counter["file"]
+        self.roi_py = ROOT / "python/custom" / roi["package"] / roi["file"]
         self.assertTrue(self.mean_py.exists(), f"mean.py not found at {self.mean_py}")
         self.assertTrue(self.counter_py.exists(), f"counter.py not found at {self.counter_py}")
+        self.assertTrue(self.roi_py.exists(), f"ROI tool.py not found at {self.roi_py}")
 
     def test_mean_missing_input(self):
         mod = load_module_from_file(self.mean_py)
@@ -166,6 +169,22 @@ class TestPythonToolContracts(unittest.TestCase):
 
         rel = instance.release()
         self.assertEqual(rel.get("__status_code"), 0)
+
+    def test_roi_geometry_returns_three_layer_native_lists(self):
+        declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/ROI几何/ROI几何.json").read_text(encoding="utf-8"))
+        execute = getattr(load_module_from_file(self.roi_py), declaration["entry"]["symbol"])
+        images = [np.zeros((4, 5), dtype=np.uint8), np.zeros((3, 7, 3), dtype=np.uint8)]
+        result = execute({"images": images})
+        self.assertEqual(result["__status_code"], 0)
+        self.assertEqual(result["__status_message"], "运行成功")
+        self.assertEqual(result["rois"], [
+            [[2.0, 0.0, 0.0, 5.0, 4.0, 0.0]],
+            [[2.0, 0.0, 0.0, 7.0, 3.0, 0.0]],
+        ])
+        self.assertTrue(all(type(value) is float for group in result["rois"] for record in group for value in record))
+        self.assertEqual(execute({"images": []})["rois"], [])
+        self.assertEqual(execute({"images": [np.zeros((0, 5), dtype=np.uint8)]})["__status_code"], 1)
+        self.assertIsNone(execute({"images": [np.zeros((0, 5), dtype=np.uint8)]})["rois"])
 
     def test_builtin_function_uses_its_json_entry_and_returns_native_lists(self):
         declaration = json.loads((ROOT / "assets/tools/builtin/Python/示例/图像尺寸.json").read_text(encoding="utf-8"))

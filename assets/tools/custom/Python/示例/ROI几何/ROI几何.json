@@ -1,0 +1,31 @@
+{
+  "schema_version": 2,
+  "category": "Python",
+  "subcategory": "示例",
+  "tool_id": "custom.python.roi",
+  "display_name": "ROI几何",
+  "version": "1.0.0",
+  "kind": "python_function",
+  "entry": {
+    "package": "examples/roi_geometry",
+    "file": "tool.py",
+    "symbol": "execute"
+  },
+  "init_params": [],
+  "inputs": [
+    {
+      "id": "images",
+      "name": "输入图像批次",
+      "type": "Image",
+      "required": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "rois",
+      "name": "逐图ROI",
+      "type": "ROI",
+      "required": true
+    }
+  ]
+}
