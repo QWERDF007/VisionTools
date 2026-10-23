@@ -47,6 +47,9 @@
     },
     {
       "definition": "assets/tools/custom/Python/示例/ROI几何/ROI几何.json"
+    },
+    {
+      "definition": "assets/tools/custom/Python/示例/图像加一/图像加一.json"
     }
   ]
 }

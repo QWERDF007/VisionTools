@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "category": "Python",
+  "subcategory": "示例",
+  "tool_id": "custom.python.image_add",
+  "display_name": "图像加一",
+  "version": "1.0.0",
+  "kind": "python_function",
+  "entry": {
+    "package": "examples/image_add",
+    "file": "tool.py",
+    "symbol": "execute"
+  },
+  "init_params": [],
+  "inputs": [
+    {
+      "id": "images",
+      "name": "输入图像批次",
+      "type": "Image",
+      "required": true
+    },
+    {
+      "id": "mode",
+      "name": "处理方式",
+      "type": "String",
+      "default": "copy",
+      "options": ["copy", "inplace"],
+      "required": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "images",
+      "name": "输出图像批次",
+      "type": "Image",
+      "required": true
+    }
+  ]
+}

@@ -20,12 +20,15 @@ class TestPythonToolContracts(unittest.TestCase):
         mean = json.loads((ROOT / "assets/tools/custom/Python/示例/计算图像均值/计算图像均值.json").read_text(encoding="utf-8"))["entry"]
         counter = json.loads((ROOT / "assets/tools/custom/Python/示例/调用计数器/调用计数器.json").read_text(encoding="utf-8"))["entry"]
         roi = json.loads((ROOT / "assets/tools/custom/Python/示例/ROI几何/ROI几何.json").read_text(encoding="utf-8"))["entry"]
+        add = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一/图像加一.json").read_text(encoding="utf-8"))["entry"]
         self.mean_py = ROOT / "python/custom" / mean["package"] / mean["file"]
         self.counter_py = ROOT / "python/custom" / counter["package"] / counter["file"]
         self.roi_py = ROOT / "python/custom" / roi["package"] / roi["file"]
+        self.image_add_py = ROOT / "python/custom" / add["package"] / add["file"]
         self.assertTrue(self.mean_py.exists(), f"mean.py not found at {self.mean_py}")
         self.assertTrue(self.counter_py.exists(), f"counter.py not found at {self.counter_py}")
         self.assertTrue(self.roi_py.exists(), f"ROI tool.py not found at {self.roi_py}")
+        self.assertTrue(self.image_add_py.exists(), f"image add tool.py not found at {self.image_add_py}")
 
     def test_mean_missing_input(self):
         mod = load_module_from_file(self.mean_py)
@@ -185,6 +188,26 @@ class TestPythonToolContracts(unittest.TestCase):
         self.assertEqual(execute({"images": []})["rois"], [])
         self.assertEqual(execute({"images": [np.zeros((0, 5), dtype=np.uint8)]})["__status_code"], 1)
         self.assertIsNone(execute({"images": [np.zeros((0, 5), dtype=np.uint8)]})["rois"])
+
+    def test_image_add_distinguishes_copy_and_inplace(self):
+        declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一/图像加一.json").read_text(encoding="utf-8"))
+        execute = getattr(load_module_from_file(self.image_add_py), declaration["entry"]["symbol"])
+        source = np.full((2, 3), 10, dtype=np.uint8)
+        copied = execute({"images": [source], "mode": "copy"})
+        self.assertEqual(copied["__status_code"], 0)
+        self.assertTrue(np.array_equal(source, np.full((2, 3), 10, dtype=np.uint8)))
+        self.assertTrue(np.array_equal(copied["images"][0], np.full((2, 3), 11, dtype=np.uint8)))
+
+        original = np.full((2, 3), 20, dtype=np.uint8)
+        inplace = execute({"images": [original], "mode": "inplace"})
+        self.assertEqual(inplace["__status_code"], 0)
+        self.assertTrue(np.array_equal(original, np.full((2, 3), 21, dtype=np.uint8)))
+        self.assertIs(inplace["images"][0], original)
+
+        self.assertEqual(execute({"images": [], "mode": "copy"})["images"], [])
+        invalid = execute({"images": [source], "mode": "other"})
+        self.assertEqual(invalid["__status_code"], 1)
+        self.assertIsNone(invalid["images"])
 
     def test_builtin_function_uses_its_json_entry_and_returns_native_lists(self):
         declaration = json.loads((ROOT / "assets/tools/builtin/Python/示例/图像尺寸.json").read_text(encoding="utf-8"))
