@@ -15,7 +15,7 @@
   "inputs": [
     {
       "id": "images",
-      "name": "输入图像批次",
+      "name": "输入图像",
       "type": "Image",
       "required": true
     },
@@ -31,7 +31,7 @@
   "outputs": [
     {
       "id": "images",
-      "name": "输出图像批次",
+      "name": "输出图像",
       "type": "Image",
       "required": true
     }

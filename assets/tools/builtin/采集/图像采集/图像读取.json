@@ -69,7 +69,7 @@
   "outputs": [
     {
       "id": "images",
-      "name": "图像批次",
+      "name": "图像",
       "type": "Image",
       "display": {
         "color_order": "BGR"

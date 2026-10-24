@@ -103,7 +103,9 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
 
         if (rawPath.empty())
         {
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::PATH) + "' 为空");
+            if (mode == "directory")
+                throw visionrt::ContractError("目录路径输入为空");
+            throw visionrt::ContractError("文件路径输入为空");
         }
 
         const auto resolved = services_.paths.resolve(rawPath);

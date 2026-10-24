@@ -6,7 +6,7 @@ def execute(inputs):
     if not isinstance(images, list):
         return {
             "__status_code": 1,
-            "__status_message": "输入端口 'images' 需要图像批次 list",
+            "__status_message": "输入端口 'images' 需要图像 list",
             "rois": None,
         }
     rois = []

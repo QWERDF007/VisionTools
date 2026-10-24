@@ -65,7 +65,7 @@ void testReadImageTool()
     {
         Values inputs = readInputs("");
         auto   res    = tool.execute(inputs);
-        requireFailure(res, "path", "Empty path must fail");
+        requireFailure(res, "文件路径输入为空", "Empty path must fail");
         REQUIRE(res.status.message.find("为空") != std::string::npos, "Empty path must be Chinese");
     }
     {

@@ -9,7 +9,7 @@ def execute(inputs):
     images = inputs.get("images")
     mode = inputs.get("mode", "copy")
     if not isinstance(images, list):
-        return error("输入端口 'images' 需要图像批次 list")
+        return error("输入端口 'images' 需要图像 list")
     if mode not in ("copy", "inplace"):
         return error("输入端口 'mode' 只能是 copy 或 inplace")
     output = []

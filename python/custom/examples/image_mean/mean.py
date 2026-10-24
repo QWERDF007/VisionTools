@@ -11,7 +11,7 @@ class ToolInstance:
                     "__status_message": "输入端口 'images' 缺失", "means": None}
         if not isinstance(images, list):
             return {"__status_code": 1,
-                    "__status_message": "输入端口 'images' 需要图像批次 list", "means": None}
+                    "__status_message": "输入端口 'images' 需要图像 list", "means": None}
         for index, image in enumerate(images):
             if not isinstance(image, np.ndarray):
                 return {"__status_code": 1,

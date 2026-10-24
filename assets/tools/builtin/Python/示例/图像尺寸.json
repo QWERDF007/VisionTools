@@ -13,7 +13,7 @@
   },
   "init_params": [],
   "inputs": [
-    {"id": "images", "name": "输入图像批次", "type": "Image", "required": true}
+    {"id": "images", "name": "输入图像", "type": "Image", "required": true}
   ],
   "outputs": [
     {"id": "sizes", "name": "图像尺寸", "type": "Array", "dtype": "int64", "rank": 2, "required": true}
