@@ -306,11 +306,11 @@
     "helper_tool_id": "visiontools.assist.circle",
     "input_map": {
       "images": "images",
-      "rois": "rois",
+      "seed_rois": "rois",
       "alignment": "alignment"
     },
     "proposal_map": {
-      "rois": "rois",
+      "proposal_rois": "rois",
       "suggested_search_half_width": "search_half_width",
       "suggested_polarity": "polarity"
     },

@@ -19,6 +19,9 @@ MAX_AST_NODES = 512
 MAX_COLLECTION_ITEMS = 100000
 MAX_STRING_CHARS = 1000000
 MAX_ARRAY_RANK = 4
+# float32 keeps only ~7 significant digits; anything beyond FLT_MAX can not be represented and
+# would silently become inf when the value crosses into the native tool boundary.
+FLOAT32_MAX = 3.4028234663852886e38
 
 INT64_MIN = -(2**63)
 INT64_MAX = 2**63 - 1
@@ -36,6 +39,27 @@ DTYPES = {
 
 class EngineError(Exception):
     """Configuration or evaluation failure with a user-facing message."""
+
+
+class Budget:
+    """Shared, cumulative element budget for one evaluation.
+
+    Per-container limits are not enough: nested containers and intermediate results can each stay
+    below the limit while the total allocation grows without bound.
+    """
+
+    __slots__ = ("remaining",)
+
+    def __init__(self, total: int = MAX_COLLECTION_ITEMS):
+        self.remaining = total
+
+    def require(self, count: int, location: str) -> None:
+        if count > self.remaining:
+            raise EngineError(f"{location} 超出累计元素上限（最多 {MAX_COLLECTION_ITEMS} 个）")
+
+    def spend(self, count: int, location: str) -> None:
+        self.require(count, location)
+        self.remaining -= count
 
 
 @dataclass(frozen=True)
@@ -91,6 +115,8 @@ def _check_leaf(value, dtype: str, location: str):
         converted = float(value)
         if not math.isfinite(converted):
             raise EngineError(f"{location} 必须是有限数值")
+        if dtype == "float32" and abs(converted) > FLOAT32_MAX:
+            raise EngineError(f"{location} 超出 float32 可表示范围")
         return converted
     if dtype == "bool":
         if not isinstance(value, bool):
@@ -109,7 +135,7 @@ def _check_leaf(value, dtype: str, location: str):
     return value
 
 
-def check_value(value, spec: TypeSpec, location: str):
+def check_value(value, spec: TypeSpec, location: str, budget: Budget | None = None):
     """Returns a normalised value or raises EngineError with the exact path."""
     if spec.name == "Int":
         if isinstance(value, bool) or not isinstance(value, int):
@@ -137,18 +163,32 @@ def check_value(value, spec: TypeSpec, location: str):
     if spec.name == "Array":
         if not isinstance(value, list):
             raise EngineError(f"{location} 需要数组，实际为 {type(value).__name__}")
-        return _check_array(value, spec, 1, location)
+        return _check_array(value, spec, 1, location, budget)
     raise EngineError(f"{location} 的类型不受支持：{spec.name}")
 
 
-def _check_array(value, spec: TypeSpec, depth: int, location: str):
+def _check_array(value, spec: TypeSpec, depth: int, location: str, budget: Budget | None = None):
     if not isinstance(value, list):
         raise EngineError(f"{location} 需要数组")
-    if len(value) > MAX_COLLECTION_ITEMS:
+    if depth < spec.rank:
+        # Rank-mismatch and size checks run before any leaf conversion allocates a copy.
+        if len(value) > MAX_COLLECTION_ITEMS:
+            raise EngineError(f"{location} 数组元素数量超出上限")
+        return [_check_array(item, spec, depth + 1, f"{location}[{index}]", budget)
+                for index, item in enumerate(value)]
+    leaves = len(value)
+    if budget is not None:
+        budget.spend(leaves, location)
+    elif leaves > MAX_COLLECTION_ITEMS:
         raise EngineError(f"{location} 数组元素数量超出上限")
-    if depth == spec.rank:
-        return [_check_leaf(item, spec.dtype, f"{location}[{index}]") for index, item in enumerate(value)]
-    return [_check_array(item, spec, depth + 1, f"{location}[{index}]") for index, item in enumerate(value)]
+    return [_check_leaf(item, spec.dtype, f"{location}[{index}]") for index, item in enumerate(value)]
+
+
+def _array_leaves(value) -> int:
+    """Leaf count of a nested list without copying or recursing into scalars."""
+    if isinstance(value, list):
+        return sum(_array_leaves(item) for item in value)
+    return 1
 
 
 def _numbers(values, location: str):
@@ -195,20 +235,25 @@ def _all_nonempty(values):
     return all(bool(item) for item in values)
 
 
-def _concat(*values):
+def _concat(*values, budget: Budget | None = None):
     if not values:
         raise EngineError("concat 至少需要一个参数")
     if all(isinstance(value, str) for value in values):
-        result = "".join(values)
-        if len(result) > MAX_STRING_CHARS:
+        total = sum(len(value) for value in values)
+        if total > MAX_STRING_CHARS:
             raise EngineError("concat 结果超出长度上限")
-        return result
+        return "".join(values)
     if all(isinstance(value, list) for value in values):
-        result = []
-        for value in values:
-            result.extend(value)
-        if len(result) > MAX_COLLECTION_ITEMS:
+        # Size is checked before extend() allocates, so a huge join is rejected up front.
+        total = sum(len(value) for value in values)
+        if total > MAX_COLLECTION_ITEMS:
             raise EngineError("concat 结果超出元素数量上限")
+        if budget is not None:
+            budget.require(total, "concat")
+        result = []
+        result.extend(values[0])
+        for value in values[1:]:
+            result.extend(value)
         return result
     raise EngineError("concat 只接受全部字符串或全部数组")
 
@@ -243,17 +288,39 @@ def _vector_compare(operation, name):
     return compare
 
 
-def _select(values, mask):
+def _select_guard(values, mask, budget: Budget | None = None):
     if not isinstance(values, list) or not isinstance(mask, list):
         raise EngineError("select 需要两个数组")
     if len(values) != len(mask):
         raise EngineError("select 的两个数组长度必须一致")
     if any(not isinstance(item, bool) for item in mask):
         raise EngineError("select 的筛选数组必须是布尔值")
+    if budget is not None:
+        budget.require(len(values), "select")
+
+
+def _select(values, mask):
+    _select_guard(values, mask)
     return [value for value, keep in zip(values, mask, strict=True) if keep]
 
 
-def functions():
+def _vector_guarded(left, right, operation, name, budget):
+    if budget is not None:
+        budget.require(len(left) if isinstance(left, list) else 0, name)
+    return _vector_operation(left, right, operation, name)
+
+
+def functions(budget: Budget | None = None):
+    def concat(*values):
+        return _concat(*values, budget=budget)
+
+    def select(values, mask):
+        _select_guard(values, mask, budget)
+        return [value for value, keep in zip(values, mask, strict=True) if keep]
+
+    def unary(operation, name):
+        return lambda left, right: _vector_guarded(left, right, operation, name, budget)
+
     return {
         "abs": abs,
         "min": min,
@@ -275,33 +342,41 @@ def functions():
         "is_missing": _is_missing,
         "all_nonempty": _all_nonempty,
         "any": lambda values: any(bool(item) for item in values) if isinstance(values, list) else bool(values),
-        "v_add": lambda left, right: _vector_operation(left, right, lambda a, b: a + b, "v_add"),
-        "v_sub": lambda left, right: _vector_operation(left, right, lambda a, b: a - b, "v_sub"),
-        "v_mul": lambda left, right: _vector_operation(left, right, lambda a, b: a * b, "v_mul"),
-        "v_div": lambda left, right: _vector_operation(left, right, _divide, "v_div"),
+        "v_add": unary(lambda a, b: a + b, "v_add"),
+        "v_sub": unary(lambda a, b: a - b, "v_sub"),
+        "v_mul": unary(lambda a, b: a * b, "v_mul"),
+        "v_div": unary(_divide, "v_div"),
         "v_gt": _vector_compare(lambda a, b: a > b, "v_gt"),
         "v_ge": _vector_compare(lambda a, b: a >= b, "v_ge"),
         "v_lt": _vector_compare(lambda a, b: a < b, "v_lt"),
         "v_le": _vector_compare(lambda a, b: a <= b, "v_le"),
         "v_eq": _vector_compare(lambda a, b: a == b, "v_eq"),
-        "select": _select,
-        "concat": _concat,
+        "select": select,
+        "concat": concat,
     }
 
 
 class _Engine(simpleeval.SimpleEval):
     """simpleeval with VisionRT's reduced AST surface."""
 
-    def __init__(self, names, table):
+    def __init__(self, names, table, budget: Budget | None = None):
         super().__init__(names=names, functions=table)
         for node in (ast.Assign, ast.AugAssign, ast.Import, ast.Attribute, ast.JoinedStr, ast.FormattedValue):
             self.nodes.pop(node, None)
         self.nodes[ast.List] = self._eval_list
         self.nodes[ast.Tuple] = self._eval_list
+        self.budget = budget
 
     def _eval_list(self, node):
+        if self.budget is not None:
+            self.budget.require(len(node.elts), "列表字面量")
+        elif len(node.elts) > MAX_COLLECTION_ITEMS:
+            raise EngineError("列表字面量超出元素数量上限")
         values = [self._eval(child) for child in node.elts]
-        if len(values) > MAX_COLLECTION_ITEMS:
+        leaves = sum(_array_leaves(value) for value in values)
+        if self.budget is not None:
+            self.budget.require(leaves, "列表字面量")
+        elif leaves > MAX_COLLECTION_ITEMS:
             raise EngineError("列表字面量超出元素数量上限")
         return values
 
@@ -397,6 +472,7 @@ class Program:
         return cls(variables, results, trees)
 
     def evaluate(self, inputs: dict) -> dict:
+        budget = Budget()
         names = {}
         for variable in self.variables:
             if variable.port_id not in inputs:
@@ -407,8 +483,8 @@ class Program:
                     raise EngineError(f"输入变量没有值：{variable.symbol}")
                 names[variable.symbol] = None
                 continue
-            names[variable.symbol] = check_value(value, variable.spec, variable.symbol)
-        engine = _Engine(names, functions())
+            names[variable.symbol] = check_value(value, variable.spec, variable.symbol, budget)
+        engine = _Engine(names, functions(budget), budget)
         outputs = {}
         for compiled in self._trees:
             try:
@@ -422,11 +498,11 @@ class Program:
             except Exception as error:  # noqa: BLE001 - messages must reach the tool status
                 raise EngineError(f"表达式求值失败：{error}") from None
             names[compiled.result.symbol] = value
-            if isinstance(value, list) and len(value) > MAX_COLLECTION_ITEMS:
-                raise EngineError("表达式结果超出元素数量上限")
+            if isinstance(value, str) and len(value) > MAX_STRING_CHARS:
+                raise EngineError(f"{compiled.result.symbol} 超出字符串长度上限")
             # Hidden results are still type-checked because later formulas use them.
             outputs[compiled.result.port_id] = check_value(value, compiled.result.spec,
-                                                           compiled.result.symbol)
+                                                           compiled.result.symbol, budget)
         return outputs
 
     def exposed_ports(self) -> list[str]:

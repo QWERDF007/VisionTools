@@ -57,86 +57,169 @@ double medianOffset(std::vector<double> values)
     std::nth_element(values.begin(), middle, values.end());
     return *middle;
 }
+
+// A cursor-nearby candidate is the whole point of point-and-click: a circle that lives outside the
+// local window (or whose centre is further away than the search extent) is never proposed, no
+// matter how clean it looks.
+constexpr int    kMaxContours   = 256;
+constexpr int    kMaxWindowSide = 1024;
+constexpr double kMinRadius     = 6.0;
+
+struct LocalSearch
+{
+    cv::Rect    window;             // full-resolution ROI that was analysed
+    cv::Mat     small;              // resized copy (may alias the ROI when no resize happened)
+    double      scaleX = 1.0;       // full pixels per small pixel, per axis
+    double      scaleY = 1.0;
+    cv::Point2d cursor;             // cursor in small coordinates
+
+    double scale() const { return (scaleX + scaleY) / 2.0; }
+
+    // Pixel-centre aware mapping: integer division without the half-pixel offset biases every
+    // centre by up to one pixel, which the acceptance report calls out explicitly.
+    cv::Point2d toFull(const cv::Point2d &point) const
+    {
+        return {window.x + (point.x + 0.5) * scaleX - 0.5, window.y + (point.y + 0.5) * scaleY - 0.5};
+    }
+};
+
+std::optional<LocalSearch> prepareSearch(const cv::Mat &gray, const AssistRequest &request)
+{
+    const double extent = std::clamp(static_cast<double>(request.searchExtent), 16.0, 4096.0);
+    const int    left   = std::max(0, static_cast<int>(std::floor(request.cursor.x - extent)));
+    const int    top    = std::max(0, static_cast<int>(std::floor(request.cursor.y - extent)));
+    const int    right  = std::min(gray.cols, static_cast<int>(std::ceil(request.cursor.x + extent + 1.0)));
+    const int    bottom = std::min(gray.rows, static_cast<int>(std::ceil(request.cursor.y + extent + 1.0)));
+    if (right - left < 16 || bottom - top < 16)
+        return std::nullopt;
+    LocalSearch search;
+    search.window = cv::Rect(left, top, right - left, bottom - top);
+    const cv::Mat roi = gray(search.window);
+    const int     side = std::max(roi.cols, roi.rows);
+    // Bounded work: the analysed window never exceeds kMaxWindowSide on its long edge.
+    int factor = 1;
+    while (side / factor > kMaxWindowSide)
+        factor *= 2;
+    if (factor == 1)
+        search.small = roi;
+    else
+        cv::resize(roi, search.small,
+                   cv::Size(std::max(1, roi.cols / factor), std::max(1, roi.rows / factor)), 0, 0, cv::INTER_AREA);
+    search.scaleX = static_cast<double>(search.window.width) / static_cast<double>(search.small.cols);
+    search.scaleY = static_cast<double>(search.window.height) / static_cast<double>(search.small.rows);
+    search.cursor = {(request.cursor.x - search.window.x - 0.5) / search.scaleX + 0.5,
+                     (request.cursor.y - search.window.y - 0.5) / search.scaleY + 0.5};
+    return search;
+}
 } // namespace
 
 AssistResult assistCircle(const cv::Mat &gray, const AssistRequest &request)
 {
     AssistResult result;
-    int          factor = 1;
-    while (std::max(gray.cols, gray.rows) / factor > 720)
-        factor *= 2;
-    cv::Mat small;
-    if (factor == 1)
-        small = gray;
-    else
-        cv::resize(gray, small, cv::Size(gray.cols / factor, gray.rows / factor), 0, 0, cv::INTER_AREA);
-    cv::Mat edges;
-    cv::Canny(small, edges, 50, 150);
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(edges, contours, cv::RETR_LIST, cv::CHAIN_APPROX_NONE);
-    struct Candidate
+    if (gray.empty())
     {
-        cv::Point2d center;
-        double      radius;
-        double      score;
-    };
-    std::optional<Candidate> best;
-    for (const auto &contour : contours)
-    {
-        if (contour.size() < 16)
-            continue;
-        cv::Point2f center;
-        float       radius = 0;
-        cv::minEnclosingCircle(contour, center, radius);
-        // The mean radius of the contour points is a far better nominal estimate
-        // than the enclosing radius, which is biased outward.
-        double meanRadius = 0;
-        for (const auto &point : contour)
-            meanRadius += cv::norm(cv::Point2f(static_cast<float>(point.x), static_cast<float>(point.y)) - center);
-        meanRadius /= static_cast<double>(contour.size());
-        radius = static_cast<float>(meanRadius);
-        const double scaledRadius = radius * factor;
-        if (scaledRadius < 6.0 || scaledRadius > request.searchExtent)
-            continue;
-        double residual = 0;
-        for (const auto &point : contour)
-            residual += std::abs(cv::norm(cv::Point2f(static_cast<float>(point.x), static_cast<float>(point.y))
-                                          - center)
-                                 - radius);
-        residual /= static_cast<double>(contour.size());
-        if (residual > 0.18 * radius)
-            continue;
-        const double area = cv::contourArea(contour);
-        const double ratio = area / (kPi * radius * radius);
-        if (ratio < 0.45 || ratio > 1.1)
-            continue;
-        const auto   cursor   = cv::Point2d{request.cursor.x / factor, request.cursor.y / factor};
-        const double distance = cv::norm(cursor - cv::Point2d{center.x, center.y});
-        const double boundary = std::abs(distance - radius) * factor;
-        const double support  = 1.0 - residual / std::max(1.0, static_cast<double>(radius));
-        const double inside   = distance <= radius ? 0.6 : 0.0;
-        const double score    = support * 2.0 + inside - boundary / std::max(1.0, static_cast<double>(request.searchExtent));
-        if (!best || score > best->score)
-            best = Candidate{{center.x * factor, center.y * factor}, scaledRadius, score};
-    }
-    if (!best)
-    {
-        result.quality = "未找到有效目标";
+        result.quality = "输入图像为空";
         return result;
     }
-
-    // A seed circle is a stronger nominal input than the contour estimate.
-    cv::Point2d nominalCenter = best->center;
-    double      nominalRadius = best->radius;
+    // A seed circle already carries the nominal geometry, so the contour search is skipped
+    // entirely: the point of the seed is that the user pointed at the target.
+    std::optional<cv::Point2d> seededCenter;
+    double                     seededRadius = 0;
     for (const auto &seed : request.seeds)
     {
         if (seed.kind != visionrt::RoiKind::Circle || seed.values.size() != 3)
             continue;
         double x = 0, y = 0;
         request.alignment.apply(seed.values[0], seed.values[1], x, y);
-        nominalCenter = {x, y};
-        nominalRadius = seed.values[2] * request.alignment.scale();
+        seededCenter = cv::Point2d{x, y};
+        seededRadius = seed.values[2] * request.alignment.scale();
         break;
+    }
+
+    cv::Point2d nominalCenter{request.cursor.x, request.cursor.y};
+    double      nominalRadius = seededRadius;
+    if (seededCenter)
+    {
+        nominalCenter = *seededCenter;
+        const double distance = cv::norm(nominalCenter - cv::Point2d{request.cursor.x, request.cursor.y});
+        // A stale seed far from the cursor must not hijack the click.
+        if (distance > request.searchExtent * 4.0)
+        {
+            result.quality = "种子区域离光标过远";
+            return result;
+        }
+    }
+    else
+    {
+        const auto search = prepareSearch(gray, request);
+        if (!search)
+        {
+            result.quality = "光标邻域超出图像范围";
+            return result;
+        }
+        cv::Mat edges;
+        cv::Canny(search->small, edges, 50, 150);
+        std::vector<std::vector<cv::Point>> contours;
+        cv::findContours(edges, contours, cv::RETR_LIST, cv::CHAIN_APPROX_NONE);
+        struct Candidate
+        {
+            cv::Point2d center;
+            double      radius;
+            double      score;
+        };
+        std::optional<Candidate> best;
+        int                      examined = 0;
+        for (const auto &contour : contours)
+        {
+            if (examined >= kMaxContours)
+                break;
+            if (contour.size() < 16)
+                continue;
+            ++examined;
+            cv::Point2f center;
+            float       enclosing = 0;
+            cv::minEnclosingCircle(contour, center, enclosing);
+            double meanRadius = 0;
+            for (const auto &point : contour)
+                meanRadius += cv::norm(cv::Point2f(static_cast<float>(point.x), static_cast<float>(point.y))
+                                       - center);
+            meanRadius /= static_cast<double>(contour.size());
+            double residual = 0;
+            for (const auto &point : contour)
+                residual += std::abs(cv::norm(cv::Point2f(static_cast<float>(point.x), static_cast<float>(point.y))
+                                              - center)
+                                     - meanRadius);
+            residual /= static_cast<double>(contour.size());
+            if (!(meanRadius > 2.0) || residual > 0.18 * meanRadius)
+                continue;
+            const double area  = cv::contourArea(contour);
+            const double ratio = area / (kPi * meanRadius * meanRadius);
+            if (ratio < 0.45 || ratio > 1.1)
+                continue;
+            const cv::Point2d fullCenter = search->toFull({center.x, center.y});
+            const double      fullRadius = meanRadius * search->scale();
+            // Hard bounds, not score penalties: outside candidates simply do not exist.
+            if (fullRadius < kMinRadius || fullRadius > request.searchExtent)
+                continue;
+            if (cv::norm(fullCenter - cv::Point2d{request.cursor.x, request.cursor.y}) > request.searchExtent)
+                continue;
+            const double distanceToCenter
+                = cv::norm(cv::Point2d{center.x, center.y} - search->cursor);
+            const double boundary = std::abs(distanceToCenter - meanRadius) * search->scale();
+            const double support  = 1.0 - residual / std::max(1.0, meanRadius);
+            const double inside   = distanceToCenter <= meanRadius ? 0.6 : 0.0;
+            const double score    = support * 2.0 + inside
+                                 - boundary / std::max(1.0, static_cast<double>(request.searchExtent));
+            if (!best || score > best->score)
+                best = Candidate{fullCenter, fullRadius, score};
+        }
+        if (!best)
+        {
+            result.quality = "未找到有效目标";
+            return result;
+        }
+        nominalCenter = best->center;
+        nominalRadius = best->radius;
     }
     if (!(nominalRadius > 2.0))
     {
@@ -160,7 +243,8 @@ AssistResult assistCircle(const cv::Mat &gray, const AssistRequest &request)
         result.quality = measurement.reason.empty() ? "候选圆精测失败" : measurement.reason;
         return result;
     }
-    if (measurement.radius > request.searchExtent)
+    // The search extent bounds candidate *search*; an existing seed ROI states its own radius.
+    if (!seededCenter && measurement.radius > request.searchExtent)
     {
         result.quality = "候选圆超出搜索范围";
         return result;

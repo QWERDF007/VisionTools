@@ -2,6 +2,8 @@
 // Synthetic fixtures provide analytic ground truth; no model or GPU is involved.
 #include "preprocess/BrightnessTool.h"
 #include "preprocess/RotateImageTool.h"
+#include "metrology/CircleFit.h"
+#include "metrology/CircleMeasureKernel.h"
 #include "metrology/CircleTool.h"
 #include "metrology/RowSpacingTool.h"
 #include "metrology/AssistTools.h"
@@ -14,6 +16,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -249,6 +252,161 @@ void assistCandidate()
             "proposal must be a circle in reference coordinates");
 }
 
+// Synthetic anti-aliased annulus: the only real edge lives on `radius`, and the ramp makes the
+// sub-pixel position unambiguous.
+cv::Mat diskImage(int size, double centerX, double centerY, double radius)
+{
+    cv::Mat gray(size, size, CV_8UC1);
+    for (int y = 0; y < gray.rows; ++y)
+        for (int x = 0; x < gray.cols; ++x)
+        {
+            const double distance = std::hypot(x - centerX, y - centerY);
+            const double coverage = std::clamp(0.5 + (radius - distance), 0.0, 1.0);
+            gray.at<std::uint8_t>(y, x) = static_cast<std::uint8_t>(std::lround(20.0 + 200.0 * coverage));
+        }
+    return gray;
+}
+
+Values circleInputs(const cv::Mat &gray, double centerX, double centerY, double radius)
+{
+    Values inputs;
+    inputs.emplace("images", DataRef<Image>(Image{gray}));
+    inputs.emplace("rois", DataRef<ROI>(ROI{{{3, centerX, centerY, radius}}}));
+    inputs.emplace("alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{})));
+    inputs.emplace("num_calipers", std::int64_t{64});
+    inputs.emplace("search_half_width", 8.0);
+    inputs.emplace("average_width", 3.0);
+    inputs.emplace("sigma", 1.0);
+    inputs.emplace("min_gradient", 8.0);
+    inputs.emplace("polarity", std::string("any"));
+    inputs.emplace("min_points", std::int64_t{12});
+    inputs.emplace("min_completeness", 0.6);
+    inputs.emplace("min_coverage_deg", 180.0);
+    inputs.emplace("radius_min", 0.5);
+    inputs.emplace("radius_max", 1000.0);
+    inputs.emplace("max_rms", 1.0);
+    inputs.emplace("units_per_pixel", 1.0);
+    inputs.emplace("unit", std::string("px"));
+    return inputs;
+}
+
+// The quality gate must run on the *final* inlier set. A short true arc surrounded by scattered
+// outliers used to pass because minPoints/completeness/coverage were measured before rejection.
+void circleQualityGate()
+{
+    cv::Mat gray = diskImage(240, 130.0, 120.0, 40.0);
+    // Keep only a 70 degree wedge of the true edge, then add isolated specks all around the ring.
+    cv::Mat arc(240, 240, CV_8UC1, cv::Scalar(0));
+    for (int y = 0; y < gray.rows; ++y)
+        for (int x = 0; x < gray.cols; ++x)
+        {
+            const double distance = std::hypot(x - 130.0, y - 120.0);
+            const double angle     = std::atan2(y - 120.0, x - 130.0) * 180.0 / 3.14159265358979323846;
+            const bool   inWedge   = angle > -35.0 && angle < 35.0;
+            if (inWedge)
+                arc.at<std::uint8_t>(y, x) = gray.at<std::uint8_t>(y, x);
+            else
+                arc.at<std::uint8_t>(y, x) = 20;
+        }
+    std::mt19937 random(20261025u);
+    std::uniform_real_distribution<double> angleDistribution(-180.0, 180.0);
+    // Specks sit 4-8 px off the ring: close enough for every caliper to report an edge (so the
+    // pre-rejection counts stay high) yet far enough to be rejected as final inliers.
+    std::uniform_real_distribution<double> offsetDistribution(4.0, 8.0);
+    std::uniform_int_distribution<int>     signDistribution(0, 1);
+    for (int index = 0; index < 90; ++index)
+    {
+        const double angle  = angleDistribution(random) * 3.14159265358979323846 / 180.0;
+        const double offset = offsetDistribution(random) * (signDistribution(random) == 0 ? -1.0 : 1.0);
+        const double radius = 40.0 + offset;
+        const int    x      = static_cast<int>(std::lround(130.0 + std::cos(angle) * radius));
+        const int    y      = static_cast<int>(std::lround(120.0 + std::sin(angle) * radius));
+        if (x >= 1 && y >= 1 && x + 1 < arc.cols && y + 1 < arc.rows)
+            arc.at<std::uint8_t>(y, x) = 200;
+    }
+    metrology::CircleTool tool(ToolServices{});
+    const auto            shortArc = tool.execute(circleInputs(arc, 130.0, 120.0, 40.0));
+    REQUIRE(shortArc.status.code == 0, shortArc.status.message);
+    const auto &arcValid = std::get<Array>(shortArc.outputs.at("valid")).get<NestedVector<bool, 2>>();
+    REQUIRE(arcValid.size() == 1 && !arcValid[0][0],
+            "short arc with ring-wide outliers must not pass the final inlier gate");
+    const auto &arcMessages = std::get<Array>(shortArc.outputs.at("reasons")).get<NestedVector<std::string, 2>>();
+    REQUIRE(!arcMessages[0][0].empty(), "a rejected circle must explain its reason");
+
+    // Too few final inliers: a very short clean arc can not describe a circle either.
+    cv::Mat shortClean(240, 240, CV_8UC1, cv::Scalar(20));
+    cv::ellipse(shortClean, cv::Point(130, 120), cv::Size(40, 40), 0, -25, 25, cv::Scalar(220), 1, cv::LINE_AA);
+    const auto shortCleanResult = tool.execute(circleInputs(shortClean, 130.0, 120.0, 40.0));
+    REQUIRE(shortCleanResult.status.code == 0, shortCleanResult.status.message);
+    const auto &cleanValid = std::get<Array>(shortCleanResult.outputs.at("valid")).get<NestedVector<bool, 2>>();
+    REQUIRE(cleanValid.size() == 1 && !cleanValid[0][0], "a 50 degree arc must not count as a circle");
+
+    // Geometry and visuals must come from the same final inlier set, and a fit that keeps no
+    // point may not report a zero-RMS success.
+    std::vector<cv::Point2d> scattered{{0, 0}, {0, 1}, {100, 100}, {100, 101}, {50, 50}};
+    metrology::CircleFitOptions options;
+    options.maxRms = 0.1;
+    const auto fit = metrology::fitCircle(scattered, options);
+    REQUIRE(!fit.has_value(), "zero inliers must fail instead of reporting a perfect fit");
+    cv::Mat valid{diskImage(200, 100.0, 100.0, 30.0)};
+    metrology::CircleOptions measureOptions;
+    measureOptions.calipers        = 64;
+    measureOptions.searchHalfWidth = 6.0;
+    measureOptions.minPoints       = 12;
+    measureOptions.minCompleteness = 0.6;
+    measureOptions.minCoverageDeg  = 180.0;
+    const auto measurement = metrology::measureCircleKernel(valid, {100.0, 100.0}, 30.0, measureOptions);
+    REQUIRE(measurement.valid, measurement.reason);
+    REQUIRE(measurement.rms > 0.0, "a measured circle must report a real residual");
+    REQUIRE(!measurement.edges.empty() && measurement.edges.size() == measurement.angles.size()
+                && measurement.edges.size() == measurement.edgeOffsets.size(),
+            "rendered points must mirror the final inlier set");
+    REQUIRE(std::abs(measurement.completeness * 64.0 - static_cast<double>(measurement.edges.size())) < 1e-9,
+            "completeness must be derived from the same final inliers");
+}
+
+// Candidate search is bounded by the cursor window and by a hard distance limit.
+void assistLocalWindow()
+{
+    cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(15));
+    cv::circle(gray, cv::Point(320, 320), 30, cv::Scalar(220), cv::FILLED, cv::LINE_AA);
+    metrology::AssistCircleTool tool(ToolServices{});
+    Values                      inputs;
+    inputs.emplace("images", DataRef<Image>(Image{gray}));
+    inputs.emplace("cursor", Array(DataRef<NestedVector<double, 1>>(NestedVector<double, 1>{60.0, 60.0})));
+    inputs.emplace("phase", std::string("hover"));
+    inputs.emplace("seed_rois", DataRef<ROI>(ROI{}));
+    inputs.emplace("alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{})));
+    inputs.emplace("search_extent", std::int64_t{80});
+    const auto outside = tool.execute(inputs);
+    REQUIRE(outside.status.code == 0, outside.status.message);
+    REQUIRE(!std::get<bool>(outside.outputs.at("candidate_valid")),
+            "a circle outside the cursor window must not become a candidate");
+
+    // Non-integer resize factors must still map back through pixel centres.
+    cv::Mat odd = diskImage(401, 200.5, 200.5, 40.0);
+    inputs["images"] = DataRef<Image>(Image{odd});
+    inputs["cursor"] = Array(DataRef<NestedVector<double, 1>>(NestedVector<double, 1>{240.0, 200.5}));
+    inputs["search_extent"] = std::int64_t{160};
+    const auto scaled = tool.execute(inputs);
+    REQUIRE(scaled.status.code == 0, scaled.status.message);
+    REQUIRE(std::get<bool>(scaled.outputs.at("candidate_valid")), "odd-sized images must still be searched");
+    const auto scaledProposal = std::get<DataRef<ROI>>(scaled.outputs.at("proposal_rois")).get();
+    REQUIRE(std::abs(scaledProposal[0][0][1] - 200.5) <= 0.8 && std::abs(scaledProposal[0][0][2] - 200.5) <= 0.8,
+            "non-integer scaling must preserve the circle centre");
+
+    // A seed states the nominal geometry: the contour search is skipped, so a radius outside the
+    // search extent still resolves as long as the user pointed at the target.
+    inputs["cursor"] = Array(DataRef<NestedVector<double, 1>>(NestedVector<double, 1>{240.5, 200.5}));
+    inputs["search_extent"] = std::int64_t{50};
+    inputs["seed_rois"]     = DataRef<ROI>(ROI{{{3, 200.5, 200.5, 40.0}}});
+    const auto seeded = tool.execute(inputs);
+    REQUIRE(seeded.status.code == 0, seeded.status.message);
+    REQUIRE(std::get<bool>(seeded.outputs.at("candidate_valid")), "seed geometry must not depend on contour search");
+    const auto seededProposal = std::get<DataRef<ROI>>(seeded.outputs.at("proposal_rois")).get();
+    REQUIRE(std::abs(seededProposal[0][0][3] - 40.0) <= 0.8, "seeded radius must survive refinement");
+}
+
 } // namespace
 
 int main()
@@ -259,6 +417,8 @@ int main()
     circleMeasurement();
     rowSpacingMeasurement();
     assistCandidate();
+    circleQualityGate();
+    assistLocalWindow();
     std::cout << "GEOMETRY_METROLOGY_PASS rotate, brightness, ROI, circle, row spacing and assist verified"
               << std::endl;
     return 0;

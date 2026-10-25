@@ -249,11 +249,11 @@
     "helper_tool_id": "visiontools.assist.row_spacing",
     "input_map": {
       "images": "images",
-      "rois": "rois",
+      "seed_rois": "rois",
       "alignment": "alignment"
     },
     "proposal_map": {
-      "rois": "rois",
+      "proposal_rois": "rois",
       "suggested_polarity": "object_polarity",
       "suggested_width_min": "width_min",
       "suggested_width_max": "width_max"

@@ -16,6 +16,9 @@ struct CircleFitResult
     double      rms        = 0;
     std::size_t inliers    = 0;
     std::size_t points     = 0;
+    // Indices into the input point list of the points that survived the final inlier gate.
+    // Quality numbers and any rendered point set must be derived from exactly this subset.
+    std::vector<std::size_t> inlierIndices;
 };
 
 struct CircleFitOptions

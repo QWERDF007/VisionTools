@@ -194,23 +194,29 @@ std::optional<CircleFitResult> fitCircle(const std::vector<cv::Point2d> &points,
     result.centerY = parameters.cy * scale + centerY;
     result.radius  = parameters.r * scale;
     result.points  = points.size();
-    double squared = 0;
-    std::size_t counted = 0;
-    for (const auto &point : points)
-    {
-        const double residual = std::hypot(point.x - result.centerX, point.y - result.centerY) - result.radius;
-        if (std::abs(residual) <= threshold)
-        {
-            squared += residual * residual;
-            ++counted;
-        }
-    }
-    result.inliers = counted;
-    result.rms     = counted > 0 ? std::sqrt(squared / static_cast<double>(counted)) : 0.0;
     if (!std::isfinite(result.radius) || !(result.radius > 0.0))
         return fail("圆拟合得到无效半径");
     if (!std::isfinite(initialMad))
         return fail("圆拟合残差无效");
+    // The gate below runs on the *final* geometry. A fit that retained no point can not report a
+    // zero RMS as if it were a high-quality circle.
+    double      squared = 0;
+    std::size_t counted = 0;
+    for (std::size_t index = 0; index < points.size(); ++index)
+    {
+        const double residual = std::hypot(points[index].x - result.centerX, points[index].y - result.centerY)
+                              - result.radius;
+        if (std::abs(residual) <= threshold)
+        {
+            squared += residual * residual;
+            ++counted;
+            result.inlierIndices.push_back(index);
+        }
+    }
+    if (counted < 3)
+        return fail(counted == 0 ? "圆拟合最终内点为空" : "圆拟合最终内点少于三点");
+    result.inliers = counted;
+    result.rms     = std::sqrt(squared / static_cast<double>(counted));
     if (result.rms > options.maxRms)
         return fail("圆拟合均方根误差超限");
     return result;

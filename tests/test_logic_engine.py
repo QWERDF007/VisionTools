@@ -105,6 +105,44 @@ class EngineSemantics(unittest.TestCase):
         with self.assertRaises(EngineError):
             self.program([], [("p1", "value", long_expression, "Int", "", -1, True)])
 
+    def test_cumulative_element_budget(self):
+        rows = [[0] * 100 for _ in range(1000)]  # 100000 leaves is the exact boundary
+        compiled = self.program([("p1", "big", "Array", "int32", 2, False)], [
+            ("p2", "total", "len(big)", "Int", "", -1, True),
+        ])
+        self.assertEqual(compiled.evaluate({"p1": rows})["p2"], 1000)
+        overflow = [[0] * 101 for _ in range(1000)]  # 101000 leaves exceeds it
+        with self.assertRaises(EngineError) as context:
+            compiled.evaluate({"p1": overflow})
+        self.assertIn("累计元素上限", str(context.exception))
+
+    def test_cumulative_budget_spans_results(self):
+        rows = [[0] * 100 for _ in range(500)]
+        compiled = self.program([("p1", "data", "Array", "int32", 2, False)], [
+            ("p2", "first", "data", "Array", "int32", 2, True),
+            ("p3", "second", "data", "Array", "int32", 2, True),
+        ])
+        with self.assertRaises(EngineError) as context:
+            compiled.evaluate({"p1": rows})
+        self.assertIn("累计元素上限", str(context.exception))
+
+    def test_concat_checks_size_before_allocating(self):
+        rows = [0] * 60000
+        compiled = self.program([("p1", "data", "Array", "int32", 1, False)], [
+            ("p2", "joined", "concat(data, data)", "Array", "int32", 1, True),
+        ])
+        with self.assertRaises(EngineError) as context:
+            compiled.evaluate({"p1": rows})
+        self.assertIn("超出元素数量上限", str(context.exception))
+
+    def test_float32_representable_range(self):
+        compiled = self.program([], [("p1", "value", "[1e100]", "Array", "float32", 1, True)])
+        with self.assertRaises(EngineError) as context:
+            compiled.evaluate({})
+        self.assertIn("float32 可表示范围", str(context.exception))
+        accepted = self.program([], [("p1", "value", "[1e30, -2.5]", "Array", "float32", 1, True)])
+        self.assertEqual(accepted.evaluate({})["p1"], [1e30, -2.5])
+
 
 class ToolContracts(unittest.TestCase):
     def test_expression_tool_returns_exposed_ports_only(self):
