@@ -364,6 +364,14 @@ int main(int argc, char **argv)
         inputs.emplace("color", std::string("bgr"));
         inputs.emplace("limit", std::int64_t(0));
         inputs.emplace("max_batch_bytes", std::int64_t(0));
+        inputs.emplace("paths_in",
+                       visionrt::Array(visionrt::DataRef<visionrt::NestedVector<std::string, 1>>(
+                           visionrt::NestedVector<std::string, 1>{})));
+        inputs.emplace("read_mode", std::string("all"));
+        inputs.emplace("recursive", false);
+        inputs.emplace("extensions", visionrt::Array(visionrt::DataRef<visionrt::NestedVector<std::string, 1>>(
+                                         visionrt::NestedVector<std::string, 1>{"png"})));
+        inputs.emplace("end_policy", std::string("wrap"));
 
         auto res = inst->execute(inputs);
         std::filesystem::remove(tempPath);

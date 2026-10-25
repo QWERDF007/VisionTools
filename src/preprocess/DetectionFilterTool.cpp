@@ -1,6 +1,6 @@
 #include "DetectionFilterTool.h"
 
-#include "InputPorts.h"
+#include "common/InputValues.h"
 
 #include <algorithm>
 #include <cmath>

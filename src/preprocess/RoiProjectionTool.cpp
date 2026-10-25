@@ -1,6 +1,6 @@
 #include "RoiProjectionTool.h"
 
-#include "InputPorts.h"
+#include "common/InputValues.h"
 
 #include <opencv2/imgproc.hpp>
 

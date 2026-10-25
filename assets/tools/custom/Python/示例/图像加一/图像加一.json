@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "category": "Python",
   "subcategory": "示例",
   "tool_id": "custom.python.image_add",
@@ -24,7 +24,10 @@
       "name": "处理方式",
       "type": "String",
       "default": "copy",
-      "options": ["copy", "inplace"],
+      "options": [
+        "copy",
+        "inplace"
+      ],
       "required": true
     }
   ],

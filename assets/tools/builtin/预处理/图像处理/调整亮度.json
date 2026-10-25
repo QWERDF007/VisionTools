@@ -1,0 +1,99 @@
+{
+  "schema_version": 3,
+  "category": "预处理",
+  "subcategory": "图像处理",
+  "tool_id": "visiontools.image.brightness",
+  "display_name": "调整亮度",
+  "version": "1.0.0",
+  "kind": "cpp",
+  "init_params": [],
+  "inputs": [
+    {
+      "id": "images",
+      "name": "输入图像",
+      "type": "Image",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "gain",
+      "name": "增益",
+      "type": "Float",
+      "default": 1.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 0.0,
+      "decimals": 3,
+      "required": true
+    },
+    {
+      "id": "offset",
+      "name": "偏移",
+      "type": "Float",
+      "default": 0.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "decimals": 3,
+      "required": true
+    },
+    {
+      "id": "rois",
+      "name": "测量区域",
+      "type": "ROI",
+      "default": [],
+      "editor": "array",
+      "tab": "基本输入",
+      "required": true,
+      "image_input": "images",
+      "alignment_input": "alignment"
+    },
+    {
+      "id": "mask",
+      "name": "输入掩码",
+      "type": "Image",
+      "tab": "基本输入",
+      "required": false
+    },
+    {
+      "id": "alignment",
+      "name": "参考到当前变换",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 3,
+      "default": [],
+      "editor": "array",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "emit_mask",
+      "name": "输出应用区域",
+      "type": "Bool",
+      "default": false,
+      "editor": "bool",
+      "tab": "基本输入",
+      "required": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "images",
+      "name": "输出图像",
+      "type": "Image",
+      "required": true,
+      "display": {
+        "color_order": "BGR",
+        "same_geometry_as_input": "images"
+      }
+    },
+    {
+      "id": "applied_mask",
+      "name": "应用区域",
+      "type": "Image",
+      "required": false,
+      "display": {
+        "color_order": "Gray"
+      }
+    }
+  ]
+}

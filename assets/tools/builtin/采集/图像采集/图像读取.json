@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "category": "采集",
   "subcategory": "图像采集",
   "tool_id": "visionrt.image.read",
@@ -17,7 +17,8 @@
       "tab": "基本输入",
       "options": [
         "file",
-        "directory"
+        "directory",
+        "list"
       ],
       "required": true
     },
@@ -29,6 +30,30 @@
       "editor": "path",
       "path_mode_from": "mode",
       "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "paths_in",
+      "name": "文件列表",
+      "type": "Array",
+      "dtype": "string",
+      "rank": 1,
+      "default": [],
+      "editor": "array",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "read_mode",
+      "name": "读取方式",
+      "type": "String",
+      "default": "all",
+      "editor": "text",
+      "tab": "基本输入",
+      "options": [
+        "all",
+        "sequence"
+      ],
       "required": true
     },
     {
@@ -46,8 +71,49 @@
       "required": true
     },
     {
+      "id": "recursive",
+      "name": "包含子目录",
+      "type": "Bool",
+      "default": false,
+      "editor": "bool",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "extensions",
+      "name": "后缀筛选",
+      "type": "Array",
+      "dtype": "string",
+      "rank": 1,
+      "default": [
+        "png",
+        "jpg",
+        "jpeg",
+        "bmp",
+        "tif",
+        "tiff"
+      ],
+      "editor": "array",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "end_policy",
+      "name": "序列末尾行为",
+      "type": "String",
+      "default": "wrap",
+      "editor": "text",
+      "tab": "基本输入",
+      "options": [
+        "wrap",
+        "hold",
+        "error"
+      ],
+      "required": true
+    },
+    {
       "id": "limit",
-      "name": "最大数量",
+      "name": "最大图像数量",
       "type": "Int",
       "default": 0,
       "min": 0,
@@ -57,7 +123,7 @@
     },
     {
       "id": "max_batch_bytes",
-      "name": "批次解码字节上限",
+      "name": "本次图像字节上限",
       "type": "Int",
       "default": 0,
       "min": 0,
@@ -81,8 +147,26 @@
       "name": "文件路径",
       "type": "Array",
       "rank": 1,
-      "required": true,
-      "dtype": "string"
+      "dtype": "string",
+      "required": true
+    },
+    {
+      "id": "current_index",
+      "name": "当前索引",
+      "type": "Int",
+      "required": true
+    },
+    {
+      "id": "total_count",
+      "name": "目录总数量",
+      "type": "Int",
+      "required": true
+    },
+    {
+      "id": "end_reached",
+      "name": "已到末项",
+      "type": "Bool",
+      "required": true
     }
   ]
 }

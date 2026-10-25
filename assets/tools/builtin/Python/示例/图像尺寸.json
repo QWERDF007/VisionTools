@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "category": "Python",
   "subcategory": "示例",
   "tool_id": "visiontools.python.image_sizes",
@@ -13,9 +13,21 @@
   },
   "init_params": [],
   "inputs": [
-    {"id": "images", "name": "输入图像", "type": "Image", "required": true}
+    {
+      "id": "images",
+      "name": "输入图像",
+      "type": "Image",
+      "required": true
+    }
   ],
   "outputs": [
-    {"id": "sizes", "name": "图像尺寸", "type": "Array", "dtype": "int64", "rank": 2, "required": true}
+    {
+      "id": "sizes",
+      "name": "图像尺寸",
+      "type": "Array",
+      "dtype": "int64",
+      "rank": 2,
+      "required": true
+    }
   ]
 }

@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "category": "处理",
   "subcategory": "检测",
   "tool_id": "visionrt.detection.filter",

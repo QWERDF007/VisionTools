@@ -32,7 +32,7 @@ class PackageFixture(unittest.TestCase):
         self.declaration = self.project / "assets/tools/custom/Math/Arithmetic/tool.json"
         self.declaration.parent.mkdir(parents=True)
         self.document = {
-            "schema_version": 2, "tool_id": "custom.math", "display_name": "Math",
+            "schema_version": 3, "tool_id": "custom.math", "display_name": "Math",
             "category": "Mathematics", "subcategory": "Arithmetic", "version": "1.0.0",
             "kind": "python_function", "entry": {"package": "examples/math", "file": "tool.py", "symbol": "run"},
             "resources": ["bias.dat"], "init_params": [], "inputs": [],

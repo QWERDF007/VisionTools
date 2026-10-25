@@ -29,7 +29,7 @@ if(VISIONTOOLS_BUILD_PYTHON)
 endif()
 
 set(VISIONTOOLS_DISTRIBUTION "${PROJECT_NAME}-${PROJECT_VERSION}" CACHE STRING "Distribution configuration name")
-set(VISIONTOOLS_BUILT_MODULES visiontools_preprocess)
+set(VISIONTOOLS_BUILT_MODULES visiontools_preprocess visiontools_metrology)
 if(VISIONTOOLS_BUILD_INFER)
     list(APPEND VISIONTOOLS_BUILT_MODULES visiontools_infer)
 endif()
@@ -51,8 +51,10 @@ list(REMOVE_ITEM _devenv_dirs "")
 string(JOIN ";" _devenv_path_line ${_devenv_dirs})
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/devenv_paths.txt" CONTENT "${_devenv_path_line}\n")
 
-# 包含预处理领域模块
+# 包含公共几何与预处理领域模块
+add_subdirectory(src/common)
 add_subdirectory(src/preprocess)
+add_subdirectory(src/metrology)
 
 # 包含推理领域模块 (可选)
 if(VISIONTOOLS_BUILD_INFER AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/infer")

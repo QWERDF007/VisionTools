@@ -30,6 +30,26 @@
 - ...
 -->
 
+### 2026-10-25 — 依据 VisionRT_VisionTools_f6f57b03_验收报告与七工具完整改进方案 完成七工具、两个隐藏辅助工具与受限表达式引擎
+
+**目标**
+- 依据《VisionRT_VisionTools_f6f57b03_验收报告与七工具完整改进方案_Specs_Tickets_20261025》（工单 T31-VT-01 ~ T31-VT-04 与七工具目标规范、端口契约、验收矩阵），在 VisionTools 现有代码上补齐七个正式工具、两个隐藏辅助工具与合流宿主侧的声明升级。
+
+**当前状态**
+- 已完成 (T31-VT-01 预处理)：`visiontools.image.rotate`（keep/expand 画布、四角像素外边界映射与平移、`alignment_out = A_rotation * alignment_in`、`border_value` 校验）、`visiontools.image.brightness`（`convertTo` 增益/偏移、BGRA alpha 保持、ROI∩mask、`[]`=全图与 `[[]]`=该图不变语义区分、`emit_mask`）、`visiontools.image.read` 重写（mode=file/directory/list、read_mode=all/sequence、end_policy=wrap/hold/error、recursive、extensions、paths_in、limit、max_batch_bytes，空目录/空列表明确失败，输出 `current_index/total_count/end_reached`）。
+- 已完成 (T31-VT-02 测量)：新增 `visiontools_metrology` 模块，`EdgeProfile`（双线性采样 + 切向平均 + Gaussian + 抛物线亚像素）、`CircleFit`（SVD 初值 + Huber 加权 GN + MAD 内点）、`CircleMeasureKernel` / `RowSpacingKernel`（配对 width/gap/pitch）及对应工具 `visiontools.measure.circle`、`visiontools.measure.row_spacing`。
+- 已完成 (T31-VT-03 逻辑)：受限 AST 引擎（vendored simpleeval 1.0.3 + 白名单函数表 + `MAX_EXPRESSION_CHARS=4096` / `MAX_AST_NODES=512` / `MAX_COLLECTION_ITEMS=100000` 资源上限），`visiontools.logic.expression`（`node_model=expression`）与 `visiontools.logic.branch`（`node_model=condition`，失败返回两路 None）。
+- 已完成 (T31-VT-04 辅助)：隐藏辅助工具 `visiontools.assist.circle` / `visiontools.assist.row_spacing`（`visibility=assist`，有界候选搜索 + 复用正式内核 + proposal 逆变换回参考坐标）。
+- 已完成: 新增 `src/common/GeometryTransform`（Alignment 相似变换判定、clockwise 旋转、逆变换）、`RoiSupport`（Record/掩码/点内判定/编码）、`ImageSupport`、`InputValues`；`package_catalog.json` 模块增至 3 个、工具增至 22 条，全部声明升级到 `schema_version 3`。
+
+**验证证据**
+- `cmake --build build -- -j 6` → 0 错误 0 失败；`ctest` → `100% tests passed, 0 tests failed out of 13`（`test_infer_whitebox_trace` 无 GPU 轨迹按设计 Skipped）。
+- 新增回归目标：`test_yolo_postprocess`（纯 CPU YOLO 后处理：IoU、几何映射、padding 过滤与上限、全 padding、部分越界、同分稳定顺序、非有限输入、参数校验）、`test_geometry_contract`（Alignment/ROI/几何契约）、`test_logic_engine`（13 项断言，覆盖白名单、资源上限与两路分支）。
+- 声明契约：`tests/CMakeLists.txt` 将 `package`/`package_payload`/`python_tools`/`distribution`/`logic_engine` 统一纳入 `foreach(_test IN ITEMS ...)`，22 条声明全部通过 `visionrt_validate_tool` 校验（随 VisionRT 打包阶段 `tools package verification passed successfully` 复核）。
+
+**下一步**
+- 等待用户验收；如需继续，按后续 spec / 工单迭代。
+
 ### 2026-10-18 — 依据职责分离方案完成生成器打包与反例闭环交付 (BT-03 ~ BT-06 / BS-03 ~ BS-06)
 
 **目标**

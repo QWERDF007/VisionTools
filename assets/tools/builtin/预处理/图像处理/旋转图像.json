@@ -1,0 +1,110 @@
+{
+  "schema_version": 3,
+  "category": "预处理",
+  "subcategory": "图像处理",
+  "tool_id": "visiontools.image.rotate",
+  "display_name": "旋转图像",
+  "version": "1.0.0",
+  "kind": "cpp",
+  "init_params": [],
+  "inputs": [
+    {
+      "id": "images",
+      "name": "输入图像",
+      "type": "Image",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "angle_deg",
+      "name": "顺时针角度",
+      "type": "Float",
+      "default": 0.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "decimals": 3,
+      "required": true
+    },
+    {
+      "id": "center",
+      "name": "旋转中心",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 1,
+      "default": [],
+      "editor": "array",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "canvas",
+      "name": "画布模式",
+      "type": "String",
+      "default": "keep",
+      "editor": "text",
+      "tab": "基本输入",
+      "options": [
+        "keep",
+        "expand"
+      ],
+      "required": true
+    },
+    {
+      "id": "interpolation",
+      "name": "插值方式",
+      "type": "String",
+      "default": "linear",
+      "editor": "text",
+      "tab": "基本输入",
+      "options": [
+        "nearest",
+        "linear",
+        "cubic"
+      ],
+      "required": true
+    },
+    {
+      "id": "border_value",
+      "name": "边界填充值",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 1,
+      "default": [
+        0.0
+      ],
+      "editor": "array",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "alignment",
+      "name": "参考到当前变换",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 3,
+      "default": [],
+      "editor": "array",
+      "tab": "基本输入",
+      "required": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "images",
+      "name": "旋转图像",
+      "type": "Image",
+      "required": true,
+      "display": {
+        "color_order": "BGR"
+      }
+    },
+    {
+      "id": "alignment",
+      "name": "参考到输出变换",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 3,
+      "required": true
+    }
+  ]
+}

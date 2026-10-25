@@ -8,7 +8,7 @@
 #include <string>
 #include <string_view>
 
-namespace visiontools::preprocess {
+namespace visiontools {
 
 // Small shared value boundary for direct consumers. The host fills declaration
 // defaults before execute; operators require the values they actually use.

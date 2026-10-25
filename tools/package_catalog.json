@@ -2,6 +2,7 @@
   "schema_version": 1,
   "modules": [
     "visiontools_preprocess",
+    "visiontools_metrology",
     "visiontools_infer"
   ],
   "tools": [
@@ -13,11 +14,36 @@
       "module": "visiontools_preprocess"
     },
     {
+      "definition": "assets/tools/builtin/流程控制/分支合流.json"
+    },
+    {
       "definition": "assets/tools/builtin/流程控制/跨流程接收.json"
+    },
+    {
+      "definition": "assets/tools/builtin/测量/圆智能点选.json",
+      "module": "visiontools_metrology"
+    },
+    {
+      "definition": "assets/tools/builtin/测量/圆测量.json",
+      "module": "visiontools_metrology"
+    },
+    {
+      "definition": "assets/tools/builtin/测量/行间距智能点选.json",
+      "module": "visiontools_metrology"
+    },
+    {
+      "definition": "assets/tools/builtin/测量/行间距测量.json",
+      "module": "visiontools_metrology"
     },
     {
       "definition": "assets/tools/builtin/深度学习/目标检测/YOLO目标检测.json",
       "module": "visiontools_infer"
+    },
+    {
+      "definition": "assets/tools/builtin/逻辑/条件分支.json"
+    },
+    {
+      "definition": "assets/tools/builtin/逻辑/评估表达式.json"
     },
     {
       "definition": "assets/tools/builtin/采集/图像采集/图像读取.json",
@@ -36,20 +62,28 @@
       "module": "visiontools_preprocess"
     },
     {
+      "definition": "assets/tools/builtin/预处理/图像处理/旋转图像.json",
+      "module": "visiontools_preprocess"
+    },
+    {
       "definition": "assets/tools/builtin/预处理/图像处理/自适应二值化.json",
       "module": "visiontools_preprocess"
     },
     {
-      "definition": "assets/tools/custom/Python/示例/计算图像均值/计算图像均值.json"
-    },
-    {
-      "definition": "assets/tools/custom/Python/示例/调用计数器/调用计数器.json"
+      "definition": "assets/tools/builtin/预处理/图像处理/调整亮度.json",
+      "module": "visiontools_preprocess"
     },
     {
       "definition": "assets/tools/custom/Python/示例/ROI几何/ROI几何.json"
     },
     {
       "definition": "assets/tools/custom/Python/示例/图像加一/图像加一.json"
+    },
+    {
+      "definition": "assets/tools/custom/Python/示例/计算图像均值/计算图像均值.json"
+    },
+    {
+      "definition": "assets/tools/custom/Python/示例/调用计数器/调用计数器.json"
     }
   ]
 }

@@ -1,6 +1,6 @@
 #include "ImageCropTool.h"
 
-#include "InputPorts.h"
+#include "common/InputValues.h"
 
 #include <opencv2/core.hpp>
 

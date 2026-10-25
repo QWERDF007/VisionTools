@@ -31,6 +31,12 @@ Values readInputs(const std::filesystem::path &path)
     inputs.emplace(read_ports::in::COLOR, std::string("bgr"));
     inputs.emplace(read_ports::in::LIMIT, std::int64_t(0));
     inputs.emplace(read_ports::in::MAX_BATCH_BYTES, std::int64_t(0));
+    inputs.emplace(read_ports::in::PATHS_IN, Array(DataRef<NestedVector<std::string, 1>>(NestedVector<std::string, 1>{})));
+    inputs.emplace(read_ports::in::READ_MODE, std::string("all"));
+    inputs.emplace(read_ports::in::RECURSIVE, false);
+    inputs.emplace(read_ports::in::EXTENSIONS,
+                   Array(DataRef<NestedVector<std::string, 1>>(NestedVector<std::string, 1>{"png"})));
+    inputs.emplace(read_ports::in::END_POLICY, std::string("wrap"));
     return inputs;
 }
 
@@ -138,12 +144,10 @@ void testReadImageTool()
         writePng(directory / "b.png", cv::Mat(8, 8, CV_8UC1, cv::Scalar(2)));
         writePng(directory / "a.png", cv::Mat(8, 8, CV_8UC1, cv::Scalar(1)));
         writePng(directory / "c.png", cv::Mat(8, 8, CV_8UC1, cv::Scalar(3)));
-        Values inputs;
-        inputs.emplace(read_ports::in::MODE, std::string("directory"));
-        inputs.emplace(read_ports::in::PATH, std::string(utf8(directory)));
-        inputs.emplace(read_ports::in::COLOR, std::string("gray"));
-        inputs.emplace(read_ports::in::LIMIT, std::int64_t(2));
-        inputs.emplace(read_ports::in::MAX_BATCH_BYTES, std::int64_t(0));
+        Values inputs = readInputs(directory);
+        inputs.insert_or_assign(read_ports::in::MODE, std::string("directory"));
+        inputs.insert_or_assign(read_ports::in::COLOR, std::string("gray"));
+        inputs.insert_or_assign(read_ports::in::LIMIT, std::int64_t(2));
         auto res = tool.execute(inputs);
         requireSuccess(res, "Directory read must succeed");
         const auto paths = std::get<Array>(res.outputs[read_ports::out::PATHS]).get<std::vector<std::string>>();
@@ -155,12 +159,10 @@ void testReadImageTool()
     {
         writePng(budgetDirectory / "a.png", cv::Mat(24, 24, CV_8UC3, cv::Scalar(1, 1, 1)));
         writePng(budgetDirectory / "b.png", cv::Mat(32, 16, CV_8UC3, cv::Scalar(2, 2, 2)));
-        Values inputs;
-        inputs.emplace(read_ports::in::MODE, std::string("directory"));
-        inputs.emplace(read_ports::in::PATH, std::string(utf8(budgetDirectory)));
-        inputs.emplace(read_ports::in::COLOR, std::string("bgr"));
-        inputs.emplace(read_ports::in::LIMIT, std::int64_t(0));
-        inputs.emplace(read_ports::in::MAX_BATCH_BYTES, std::int64_t(2000));
+        Values inputs = readInputs(budgetDirectory);
+        inputs.insert_or_assign(read_ports::in::MODE, std::string("directory"));
+        inputs.insert_or_assign(read_ports::in::COLOR, std::string("bgr"));
+        inputs.insert_or_assign(read_ports::in::MAX_BATCH_BYTES, std::int64_t(2000));
         MatAllocationProbe memory;
         auto res = tool.execute(inputs);
         requireFailure(res, "预算超限", "Cumulative decoded-byte budget must fail the batch");
