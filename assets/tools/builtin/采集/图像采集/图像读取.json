@@ -9,70 +9,17 @@
   "init_params": [],
   "inputs": [
     {
-      "id": "mode",
-      "name": "读取模式",
-      "type": "String",
-      "default": "file",
-      "editor": "text",
-      "tab": "基本输入",
-      "options": [
-        "file",
-        "directory",
-        "list"
-      ],
-      "required": true
-    },
-    {
       "id": "path",
-      "name": "文件或目录路径",
+      "name": "图像路径",
       "type": "String",
       "default": "",
       "editor": "path",
-      "path_mode_from": "mode",
       "tab": "基本输入",
-      "required": true
-    },
-    {
-      "id": "paths_in",
-      "name": "文件列表",
-      "type": "Array",
-      "dtype": "string",
-      "rank": 1,
-      "default": [],
-      "editor": "array",
-      "tab": "基本输入",
-      "required": true
-    },
-    {
-      "id": "read_mode",
-      "name": "读取方式",
-      "type": "String",
-      "default": "all",
-      "editor": "text",
-      "tab": "基本输入",
-      "options": [
-        "all",
-        "sequence"
-      ],
-      "required": true
-    },
-    {
-      "id": "color",
-      "name": "色彩模式",
-      "type": "String",
-      "default": "bgr",
-      "editor": "text",
-      "tab": "基本输入",
-      "options": [
-        "bgr",
-        "gray",
-        "unchanged"
-      ],
       "required": true
     },
     {
       "id": "recursive",
-      "name": "包含子目录",
+      "name": "递归选项",
       "type": "Bool",
       "default": false,
       "editor": "bool",
@@ -80,54 +27,47 @@
       "required": true
     },
     {
-      "id": "extensions",
-      "name": "后缀筛选",
-      "type": "Array",
-      "dtype": "string",
-      "rank": 1,
-      "default": [
-        "png",
-        "jpg",
-        "jpeg",
-        "bmp",
-        "tif",
-        "tiff"
-      ],
-      "editor": "array",
-      "tab": "基本输入",
-      "required": true
-    },
-    {
-      "id": "end_policy",
-      "name": "序列末尾行为",
+      "id": "traversal",
+      "name": "遍历选项",
       "type": "String",
-      "default": "wrap",
+      "default": "循环",
+      "options": [
+        "循环",
+        "不循环"
+      ],
       "editor": "text",
       "tab": "基本输入",
-      "options": [
-        "wrap",
-        "hold",
-        "error"
-      ],
       "required": true
     },
     {
-      "id": "limit",
-      "name": "最大图像数量",
+      "id": "order",
+      "name": "遍历顺序",
+      "type": "String",
+      "default": "顺序（下一张）",
+      "options": [
+        "顺序（下一张）",
+        "逆序（上一张）"
+      ],
+      "editor": "text",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "count",
+      "name": "图像数量",
       "type": "Int",
-      "default": 0,
-      "min": 0,
+      "default": 1,
+      "min": 1,
       "editor": "number",
       "tab": "基本输入",
       "required": true
     },
     {
-      "id": "max_batch_bytes",
-      "name": "本次图像字节上限",
-      "type": "Int",
-      "default": 0,
-      "min": 0,
-      "editor": "number",
+      "id": "reload",
+      "name": "重新读图",
+      "type": "Bool",
+      "default": false,
+      "editor": "bool",
       "tab": "基本输入",
       "required": true
     }

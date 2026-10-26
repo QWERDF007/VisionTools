@@ -359,19 +359,12 @@ int main(int argc, char **argv)
         }
 
         visionrt::Values inputs;
-        inputs.emplace("mode", std::string("file"));
         inputs.emplace("path", std::string(utf8Path));
-        inputs.emplace("color", std::string("bgr"));
-        inputs.emplace("limit", std::int64_t(0));
-        inputs.emplace("max_batch_bytes", std::int64_t(0));
-        inputs.emplace("paths_in",
-                       visionrt::Array(visionrt::DataRef<visionrt::NestedVector<std::string, 1>>(
-                           visionrt::NestedVector<std::string, 1>{})));
-        inputs.emplace("read_mode", std::string("all"));
         inputs.emplace("recursive", false);
-        inputs.emplace("extensions", visionrt::Array(visionrt::DataRef<visionrt::NestedVector<std::string, 1>>(
-                                         visionrt::NestedVector<std::string, 1>{"png"})));
-        inputs.emplace("end_policy", std::string("wrap"));
+        inputs.emplace("traversal", std::string("循环"));
+        inputs.emplace("order", std::string("顺序（下一张）"));
+        inputs.emplace("count", std::int64_t(1));
+        inputs.emplace("reload", false);
 
         auto res = inst->execute(inputs);
         std::filesystem::remove(tempPath);

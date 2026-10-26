@@ -2,11 +2,13 @@
 
 #include <visionrt/contracts/Tool.h>
 
+#include <atomic>
 #include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace visiontools::preprocess {
@@ -15,16 +17,12 @@ namespace ports::image_read {
 inline constexpr char TOOL_ID[] = "visionrt.image.read";
 
 namespace in {
-inline constexpr char COLOR[]           = "color";
-inline constexpr char LIMIT[]           = "limit";
-inline constexpr char MAX_BATCH_BYTES[] = "max_batch_bytes";
-inline constexpr char MODE[]            = "mode";
-inline constexpr char PATH[]            = "path";
-inline constexpr char PATHS_IN[]        = "paths_in";
-inline constexpr char READ_MODE[]       = "read_mode";
-inline constexpr char RECURSIVE[]       = "recursive";
-inline constexpr char EXTENSIONS[]      = "extensions";
-inline constexpr char END_POLICY[]      = "end_policy";
+inline constexpr char PATH[]      = "path";
+inline constexpr char RECURSIVE[] = "recursive";
+inline constexpr char TRAVERSAL[] = "traversal";
+inline constexpr char ORDER[]     = "order";
+inline constexpr char COUNT[]     = "count";
+inline constexpr char RELOAD[]    = "reload";
 }
 
 namespace out {
@@ -49,20 +47,31 @@ public:
 private:
     struct Catalog
     {
-        std::string                        key;
+        std::string                        rawPath;
+        bool                               isDirectory = false;
+        bool                               recursive   = false;
         std::vector<std::filesystem::path> files;
     };
 
     visionrt::ToolServices services_;
     std::optional<Catalog> catalog_;
-    std::size_t            nextIndex_ = 0;
-    std::string            readMode_;
+    std::size_t            currentIndex_ = 0;
+    bool                   lastReverse_  = false;
+
+    // Two-tier cache:
+    // 1) Decoded cv::Mat per normalized utf-8 file path
+    std::unordered_map<std::string, cv::Mat>           fileCache_;
+    // 2) Identical consecutive batch reuse
+    std::vector<std::string>                           lastPlannedPaths_;
+    std::optional<visionrt::DataRef<visionrt::Image>> lastBatchRef_;
 };
 
 #ifdef VISIONTOOLS_TESTING
 namespace testing {
-// Test-only read boundary: runs after the size checks and before stream.read.
 extern std::function<void(const std::filesystem::path &)> beforeRead;
+extern std::function<void(const std::filesystem::path &)> afterDecode;
+extern std::atomic<std::size_t>                           fileReadCount;
+extern std::atomic<std::size_t>                           decodeCount;
 } // namespace testing
 #endif
 

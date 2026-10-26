@@ -1,6 +1,5 @@
 #include "src/preprocess/ReadImageTool.h"
 #include "TestSupport.h"
-#include "MatAllocationProbe.h"
 
 #ifdef _WIN32
 #    ifndef NOMINMAX
@@ -8,6 +7,14 @@
 #    endif
 #    include <windows.h>
 #endif
+
+#include <opencv2/imgcodecs.hpp>
+
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
 
 using namespace visionrt;
 using namespace visiontools::preprocess;
@@ -23,20 +30,15 @@ std::string utf8(const std::filesystem::path &path)
     return {reinterpret_cast<const char *>(value.data()), value.size()};
 }
 
-Values readInputs(const std::filesystem::path &path)
+Values defaultInputs(const std::filesystem::path &path)
 {
     Values inputs;
-    inputs.emplace(read_ports::in::MODE, std::string("file"));
     inputs.emplace(read_ports::in::PATH, std::string(utf8(path)));
-    inputs.emplace(read_ports::in::COLOR, std::string("bgr"));
-    inputs.emplace(read_ports::in::LIMIT, std::int64_t(0));
-    inputs.emplace(read_ports::in::MAX_BATCH_BYTES, std::int64_t(0));
-    inputs.emplace(read_ports::in::PATHS_IN, Array(DataRef<NestedVector<std::string, 1>>(NestedVector<std::string, 1>{})));
-    inputs.emplace(read_ports::in::READ_MODE, std::string("all"));
     inputs.emplace(read_ports::in::RECURSIVE, false);
-    inputs.emplace(read_ports::in::EXTENSIONS,
-                   Array(DataRef<NestedVector<std::string, 1>>(NestedVector<std::string, 1>{"png"})));
-    inputs.emplace(read_ports::in::END_POLICY, std::string("wrap"));
+    inputs.emplace(read_ports::in::TRAVERSAL, std::string("循环"));
+    inputs.emplace(read_ports::in::ORDER, std::string("顺序（下一张）"));
+    inputs.emplace(read_ports::in::COUNT, std::int64_t(1));
+    inputs.emplace(read_ports::in::RELOAD, false);
     return inputs;
 }
 
@@ -53,171 +55,293 @@ void writePng(const std::filesystem::path &path, const cv::Mat &image)
 
 void testReadImageTool()
 {
-    std::cout << "[TEST] Running testReadImageTool..." << std::endl;
-    ToolServices  services{PathResolver(std::filesystem::current_path())};
+    std::cout << "[TEST] Running testReadImageTool (S-READ-01 ~ S-READ-05)..." << std::endl;
+    ToolServices services{PathResolver(std::filesystem::current_path())};
     ReadImageTool tool(services);
 
-    static_assert(std::string_view(read_ports::in::MAX_BATCH_BYTES) == "max_batch_bytes");
-    static_assert(std::string_view(read_ports::out::PATHS) == "paths");
-
-    const auto directory       = std::filesystem::current_path() / "test_read_directory";
-    const auto files           = directory / "files";
-    const auto budgetDirectory = directory / "budget";
+    const auto directory = std::filesystem::current_path() / "test_read_image_suite";
+    const auto filesDir  = directory / "files";
+    const auto subDir    = filesDir / "sub";
+    const auto emptyDir  = directory / "empty";
     std::filesystem::remove_all(directory);
-    std::filesystem::create_directories(files);
-    std::filesystem::create_directories(budgetDirectory);
+    std::filesystem::create_directories(filesDir);
+    std::filesystem::create_directories(subDir);
+    std::filesystem::create_directories(emptyDir);
 
-    // 1. Missing / empty / nonexistent path
+    // ==========================================
+    // 1. S-READ-01: 基础契约、空路径与无效参数
+    // ==========================================
     {
-        Values inputs = readInputs("");
+        // 1.1 空路径必须失败
+        Values inputs = defaultInputs("");
         auto   res    = tool.execute(inputs);
-        requireFailure(res, "文件路径输入为空", "Empty path must fail");
-        REQUIRE(res.status.message.find("为空") != std::string::npos, "Empty path must be Chinese");
-    }
-    {
-        Values inputs = readInputs(files / "missing.png");
-        auto   res    = tool.execute(inputs);
-        requireFailure(res, "文件不存在", "Non-existent path must fail");
-        REQUIRE(res.status.message.find("missing.png") != std::string::npos, "Error must include the file path");
-    }
+        requireFailure(res, "图像路径输入为空", "Empty path must fail");
 
-    // 2. Valid read
-    {
-        const auto path = files / "valid.png";
-        writePng(path, cv::Mat(24, 24, CV_8UC3, cv::Scalar(10, 20, 30)));
-        Values inputs = readInputs(path);
-        auto   res    = tool.execute(inputs);
-        requireSuccess(res, "Valid image read must succeed");
-        const auto *batch = std::get_if<DataRef<Image>>(&res.outputs[read_ports::out::IMAGES]);
-        REQUIRE(batch && batch->get().size() == 1, "Must read 1 image");
-        REQUIRE(batch->get()[0].cols == 24 && batch->get()[0].rows == 24, "Image dims must match 24x24");
-        const auto paths = std::get<Array>(res.outputs[read_ports::out::PATHS]).get<std::vector<std::string>>();
-        REQUIRE(paths[0].ends_with(utf8(path)), "Returned path must be the resolved file path");
-    }
+        // 1.2 不存在的路径必须报错
+        inputs = defaultInputs(filesDir / "nonexistent.png");
+        res    = tool.execute(inputs);
+        requireFailure(res, "图像路径不存在", "Non-existent path must fail");
 
-    // 3. Negative limit / budget
-    {
-        Values inputs = readInputs(files / "valid.png");
-        inputs.insert_or_assign(read_ports::in::LIMIT, std::int64_t(-1));
-        auto res = tool.execute(inputs);
-        requireFailure(res, "limit", "Negative image limit must be rejected");
-        REQUIRE(res.status.message.find("非负") != std::string::npos, "Limit error must state non-negative");
-    }
-    {
-        Values inputs = readInputs(files / "valid.png");
-        inputs.insert_or_assign(read_ports::in::MAX_BATCH_BYTES, std::int64_t(-1));
-        auto res = tool.execute(inputs);
-        requireFailure(res, "max_batch_bytes", "Negative budget must be rejected");
-        REQUIRE(res.status.message.find("非负") != std::string::npos, "Budget error must state non-negative");
-    }
-
-    // 4. Empty file
-    {
-        const auto path = files / "empty.png";
-        std::ofstream(path, std::ios::binary).close();
-        Values inputs = readInputs(path);
-        auto   res    = tool.execute(inputs);
-        requireFailure(res, "空", "Empty image file must fail");
-        REQUIRE(res.status.message.find("empty.png") != std::string::npos, "Error must include the file path");
-    }
-
-    // 5. Controlled short read: truncate after the size check, before stream.read
-    {
-        const auto path = files / "short.png";
-        writePng(path, cv::Mat(24, 24, CV_8UC3, cv::Scalar(1, 2, 3)));
-        testing::beforeRead = [](const std::filesystem::path &target)
-        {
-            std::ofstream truncated(target, std::ios::binary | std::ios::trunc);
-            truncated << "x";
-        };
-        Values inputs       = readInputs(path);
-        auto   res          = tool.execute(inputs);
-        testing::beforeRead = nullptr;
-        requireFailure(res, "读取图像文件不完整", "Short read must not decode as a normal image");
-        REQUIRE(res.status.message.find("short.png") != std::string::npos,
-                "Short-read error must include the file path");
-        REQUIRE(isMissing(res.outputs[read_ports::out::IMAGES]), "Short read must not publish partial images");
-    }
-
-    // 6. Directory order and explicit limit
-    {
-        writePng(directory / "b.png", cv::Mat(8, 8, CV_8UC1, cv::Scalar(2)));
-        writePng(directory / "a.png", cv::Mat(8, 8, CV_8UC1, cv::Scalar(1)));
-        writePng(directory / "c.png", cv::Mat(8, 8, CV_8UC1, cv::Scalar(3)));
-        Values inputs = readInputs(directory);
-        inputs.insert_or_assign(read_ports::in::MODE, std::string("directory"));
-        inputs.insert_or_assign(read_ports::in::COLOR, std::string("gray"));
-        inputs.insert_or_assign(read_ports::in::LIMIT, std::int64_t(2));
-        auto res = tool.execute(inputs);
-        requireSuccess(res, "Directory read must succeed");
-        const auto paths = std::get<Array>(res.outputs[read_ports::out::PATHS]).get<std::vector<std::string>>();
-        REQUIRE(paths.size() == 2, "Explicit limit must be honored");
-        REQUIRE(paths[0].ends_with("a.png") && paths[1].ends_with("b.png"), "Directory order must be lexical");
-    }
-
-    // 7. Cumulative decoded-byte budget
-    {
-        writePng(budgetDirectory / "a.png", cv::Mat(24, 24, CV_8UC3, cv::Scalar(1, 1, 1)));
-        writePng(budgetDirectory / "b.png", cv::Mat(32, 16, CV_8UC3, cv::Scalar(2, 2, 2)));
-        Values inputs = readInputs(budgetDirectory);
-        inputs.insert_or_assign(read_ports::in::MODE, std::string("directory"));
-        inputs.insert_or_assign(read_ports::in::COLOR, std::string("bgr"));
-        inputs.insert_or_assign(read_ports::in::MAX_BATCH_BYTES, std::int64_t(2000));
-        MatAllocationProbe memory;
-        auto res = tool.execute(inputs);
-        requireFailure(res, "预算超限", "Cumulative decoded-byte budget must fail the batch");
-        REQUIRE(res.status.message.find("单张解码瞬时峰值") != std::string::npos,
-                "Budget error must explain the single-image peak limit");
-        REQUIRE(res.status.message.find("b.png") != std::string::npos, "Budget error must name the failing file");
-        REQUIRE(isMissing(res.outputs[read_ports::out::IMAGES]), "Budget failure must not publish a truncated batch");
-        const auto failed = memory.snapshot(CV_8UC3);
-        REQUIRE(failed.allocations == 2 && failed.releases == 2 && failed.liveBytes == 0,
-                "Budget rejection must release both decoded images");
-        REQUIRE(failed.peakBytes == 3264,
-                "Mixed-resolution decode peak must include the retained image and the next decoded image");
-        inputs.insert_or_assign(read_ports::in::MAX_BATCH_BYTES, std::int64_t(3264));
+        // 1.3 count < 1 拒绝
+        inputs = defaultInputs(filesDir);
+        inputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(0));
         res = tool.execute(inputs);
-        requireSuccess(res, "Exact cumulative decoded-byte budget must succeed");
-        const auto &decoded = std::get<DataRef<Image>>(res.outputs.at(read_ports::out::IMAGES)).get();
-        REQUIRE(decoded.size() == 2 && decoded[0].size() == cv::Size(24, 24) && decoded[1].size() == cv::Size(16, 32),
-                "Mixed image resolutions must be preserved");
-        const auto retained = memory.snapshot(CV_8UC3);
-        REQUIRE(retained.allocations == 4 && retained.releases == 2 && retained.liveBytes == 3264,
-                "Successful read must retain exactly its decoded pixels without an extra payload copy");
-        res                 = ToolResult{};
-        const auto released = memory.snapshot(CV_8UC3);
-        REQUIRE(released.allocations == released.releases && released.liveBytes == 0,
-                "Dropping the read result must free every decoded allocation");
-        inputs.insert_or_assign(read_ports::in::MAX_BATCH_BYTES, std::int64_t(3263));
+        requireFailure(res, "count", "count < 1 must be rejected");
+
+        // 1.4 无效遍历模式拒绝
+        inputs = defaultInputs(filesDir);
+        inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("random"));
         res = tool.execute(inputs);
-        requireFailure(res, "预算超限", "One byte below the cumulative decoded budget must fail");
-        const auto final = memory.snapshot(CV_8UC3);
-        REQUIRE(final.allocations == 6 && final.releases == 6 && final.liveBytes == 0,
-                "Repeated exact-budget rejection must not accumulate decoded payloads");
-        std::cout << "[ALLOCATIONS] decode mixed=24x24+32x16 BGR budget=3264 peak_decoded_bytes=" << final.peakBytes
-                  << " allocations=" << final.allocations << '/' << final.releases << " live_bytes=" << final.liveBytes
-                  << std::endl;
+        requireFailure(res, "traversal", "Invalid traversal must be rejected");
+
+        // 1.5 空目录明确失败
+        inputs = defaultInputs(emptyDir);
+        res    = tool.execute(inputs);
+        requireFailure(res, "没有可用图像文件", "Empty directory must fail");
     }
 
-    // 8. Oversized file is rejected before allocation (Windows sparse file)
-#ifdef _WIN32
+    // ==========================================
+    // 2. S-READ-02: 计数探针与两层缓存
+    // ==========================================
     {
-        const auto path   = files / "oversized.png";
-        HANDLE     handle = CreateFileW(path.wstring().c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
-                                        FILE_ATTRIBUTE_NORMAL, nullptr);
-        REQUIRE(handle != INVALID_HANDLE_VALUE, "Oversized fixture must be created");
-        LARGE_INTEGER size{};
-        size.QuadPart = (static_cast<LONGLONG>(std::numeric_limits<int>::max()) + 4096);
-        REQUIRE(SetFilePointerEx(handle, size, nullptr, FILE_BEGIN), "Oversized fixture must seek");
-        REQUIRE(SetEndOfFile(handle), "Oversized fixture must set its length");
-        CloseHandle(handle);
-        Values inputs = readInputs(path);
-        auto   res    = tool.execute(inputs);
-        requireFailure(res, "超出可表示范围", "Oversized image must be rejected before allocation");
-        std::filesystem::remove(path);
+        const auto singleImg = filesDir / "single.png";
+        writePng(singleImg, cv::Mat(16, 16, CV_8UC3, cv::Scalar(10, 20, 30)));
+
+        testing::fileReadCount = 0;
+        testing::decodeCount   = 0;
+
+        ReadImageTool probeTool(services);
+        Values inputs = defaultInputs(singleImg);
+
+        // 第一次读取: reload=false -> read=1, decode=1
+        auto res1 = probeTool.execute(inputs);
+        requireSuccess(res1, "First read must succeed");
+        REQUIRE(testing::fileReadCount == 1, "First read must read from disk once");
+        REQUIRE(testing::decodeCount == 1, "First read must decode once");
+        const auto &batch1 = std::get<DataRef<Image>>(res1.outputs.at(read_ports::out::IMAGES)).get();
+        REQUIRE(batch1.size() == 1, "Batch 1 size must be 1");
+        uchar *pixels1 = batch1[0].data;
+
+        // 第二次读取: reload=false -> 命中缓存, read=1, decode=1 (不增加)
+        auto res2 = probeTool.execute(inputs);
+        requireSuccess(res2, "Second read must succeed");
+        REQUIRE(testing::fileReadCount == 1, "Second read with reload=false must NOT read disk");
+        REQUIRE(testing::decodeCount == 1, "Second read with reload=false must NOT decode");
+        const auto &batch2 = std::get<DataRef<Image>>(res2.outputs.at(read_ports::out::IMAGES)).get();
+        REQUIRE(batch2.size() == 1, "Batch 2 size must be 1");
+        REQUIRE(batch2[0].data == pixels1, "Cached read must share pixel memory");
+
+        // 第三次读取: reload=true -> 强制重读, read=2, decode=2
+        inputs.insert_or_assign(read_ports::in::RELOAD, true);
+        auto res3 = probeTool.execute(inputs);
+        requireSuccess(res3, "Third read (reload=true) must succeed");
+        REQUIRE(testing::fileReadCount == 2, "reload=true must read disk again");
+        REQUIRE(testing::decodeCount == 2, "reload=true must decode again");
+        const auto &batch3 = std::get<DataRef<Image>>(res3.outputs.at(read_ports::out::IMAGES)).get();
+        REQUIRE(batch3[0].data != pixels1, "reload=true must produce new decoded buffer");
+
+        // 旧输出持有的像素仍然有效
+        REQUIRE(batch1[0].data == pixels1, "Old output Owner must keep pixels alive");
+
+        // 第四次读取: reload=true -> 继续重读, read=3, decode=3
+        auto res4 = probeTool.execute(inputs);
+        requireSuccess(res4, "Fourth read (reload=true) must succeed");
+        REQUIRE(testing::fileReadCount == 3, "Continuing reload=true must read disk");
+        REQUIRE(testing::decodeCount == 3, "Continuing reload=true must decode");
     }
-#endif
+
+    // ==========================================
+    // 3. S-READ-03: 目录遍历、顺序、循环跨尾、逆序与原子失败
+    // ==========================================
+    {
+        const auto dirA = directory / "dir_traversal";
+        std::filesystem::create_directories(dirA);
+        writePng(dirA / "img_1.png", cv::Mat(8, 8, CV_8UC3, cv::Scalar(1, 1, 1)));
+        writePng(dirA / "img_2.png", cv::Mat(8, 8, CV_8UC3, cv::Scalar(2, 2, 2)));
+        writePng(dirA / "img_3.png", cv::Mat(8, 8, CV_8UC3, cv::Scalar(3, 3, 3)));
+
+        // 3.1 顺序遍历 + 循环 + count=2
+        ReadImageTool dirTool(services);
+        Values inputs = defaultInputs(dirA);
+        inputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(2));
+        inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("循环"));
+        inputs.insert_or_assign(read_ports::in::ORDER, std::string("顺序（下一张）"));
+
+        // 第 1 轮: 取 2 张 (img_1, img_2)
+        auto res = dirTool.execute(inputs);
+        requireSuccess(res, "Loop round 1 must succeed");
+        auto paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        REQUIRE(paths.size() == 2, "Round 1 must take 2 images");
+        REQUIRE(paths[0].ends_with("img_1.png") && paths[1].ends_with("img_2.png"), "Round 1: img_1, img_2");
+
+        // 第 2 轮: 跨尾循环取 2 张 (img_3, img_1)
+        res = dirTool.execute(inputs);
+        requireSuccess(res, "Loop round 2 must succeed");
+        paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        REQUIRE(paths.size() == 2, "Round 2 must take 2 images");
+        REQUIRE(paths[0].ends_with("img_3.png") && paths[1].ends_with("img_1.png"), "Round 2: img_3, img_1 (wrapped)");
+
+        // 3.2 count > total: 单次输出超过总文件数，同一文件出现多次
+        inputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(5));
+        res = dirTool.execute(inputs);
+        requireSuccess(res, "Count > total in loop must succeed");
+        paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        REQUIRE(paths.size() == 5, "Count 5 must return 5 images");
+        const auto &mats = std::get<DataRef<Image>>(res.outputs.at(read_ports::out::IMAGES)).get();
+        REQUIRE(mats.size() == 5, "Images size must be 5");
+
+        // 3.3 逆序遍历
+        inputs.insert_or_assign(read_ports::in::ORDER, std::string("逆序（上一张）"));
+        inputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(2));
+        res = dirTool.execute(inputs);
+        requireSuccess(res, "Reverse order must succeed");
+        paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        REQUIRE(paths.size() == 2, "Reverse round 1 must return 2 images");
+        REQUIRE(paths[0].ends_with("img_3.png") && paths[1].ends_with("img_2.png"), "Reverse starts from end: img_3, img_2");
+
+        // 3.4 不循环模式: 序列末尾与结束报错
+        ReadImageTool onceTool(services);
+        Values onceInputs = defaultInputs(dirA);
+        onceInputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
+        onceInputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(2));
+
+        // 第 1 轮: img_1, img_2
+        res = onceTool.execute(onceInputs);
+        requireSuccess(res, "Once round 1 must succeed");
+        REQUIRE(!std::get<bool>(res.outputs.at(read_ports::out::END_REACHED)), "End not reached yet");
+
+        // 第 2 轮: 仅剩 1 张 (img_3)
+        res = onceTool.execute(onceInputs);
+        requireSuccess(res, "Once round 2 must succeed with remaining 1 image");
+        paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        REQUIRE(paths.size() == 1, "Remaining count must be 1");
+        REQUIRE(paths[0].ends_with("img_3.png"), "Last image must be img_3");
+        REQUIRE(std::get<bool>(res.outputs.at(read_ports::out::END_REACHED)), "End reached must be true");
+
+        // 第 3 轮: 已结束，必须报错
+        res = onceTool.execute(onceInputs);
+        requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must fail");
+
+        // 3.5 损坏文件失败原子性: 中途坏图游标不推进，修复后从原位成功
+        ReadImageTool atomicTool(services);
+        const auto corruptFile = dirA / "img_corrupt.png";
+        std::ofstream(corruptFile, std::ios::binary).write("corrupted_data", 14);
+
+        Values atomicInputs = defaultInputs(dirA);
+        atomicInputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(1));
+        atomicInputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
+
+        // img_1 成功
+        res = atomicTool.execute(atomicInputs);
+        requireSuccess(res, "img_1 read must succeed");
+        REQUIRE(std::get<std::int64_t>(res.outputs.at(read_ports::out::CURRENT_INDEX)) == 0, "Index must be 0");
+
+        // img_2 成功
+        res = atomicTool.execute(atomicInputs);
+        requireSuccess(res, "img_2 read must succeed");
+        REQUIRE(std::get<std::int64_t>(res.outputs.at(read_ports::out::CURRENT_INDEX)) == 1, "Index must be 1");
+
+        // img_3 成功
+        res = atomicTool.execute(atomicInputs);
+        requireSuccess(res, "img_3 read must succeed");
+        REQUIRE(std::get<std::int64_t>(res.outputs.at(read_ports::out::CURRENT_INDEX)) == 2, "Index must be 2");
+
+        // img_corrupt 失败
+        res = atomicTool.execute(atomicInputs);
+        requireFailure(res, "图像解码失败", "Corrupt image decode must fail");
+        REQUIRE(isMissing(res.outputs.at(read_ports::out::IMAGES)), "Images output must be Missing on failure");
+
+        // 再次执行，游标未推进，依然在 corrupt 位置报错
+        res = atomicTool.execute(atomicInputs);
+        requireFailure(res, "图像解码失败", "Retry without fix must fail at the same index");
+
+        // 修复损坏文件
+        writePng(corruptFile, cv::Mat(8, 8, CV_8UC3, cv::Scalar(4, 4, 4)));
+        res = atomicTool.execute(atomicInputs);
+        requireSuccess(res, "After fix, read must succeed from original position");
+        paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        REQUIRE(paths[0].ends_with("img_corrupt.png"), "Resumed from corrupt index");
+        std::filesystem::remove(corruptFile);
+    }
+
+    // ==========================================
+    // 4. S-READ-04: 可写共享与原地修改
+    // ==========================================
+    {
+        const auto writeImg = directory / "writable.png";
+        writePng(writeImg, cv::Mat(4, 4, CV_8UC3, cv::Scalar(10, 20, 30)));
+
+        ReadImageTool writeTool(services);
+        Values inputs = defaultInputs(writeImg);
+
+        auto res1 = writeTool.execute(inputs);
+        requireSuccess(res1, "Writeable test read 1 must succeed");
+        auto &mat1 = std::get<DataRef<Image>>(res1.outputs.at(read_ports::out::IMAGES)).get()[0];
+        uchar *origPtr = mat1.data;
+
+        // 下游原地修改像素
+        mat1.at<cv::Vec3b>(0, 0) = cv::Vec3b(99, 99, 99);
+
+        // 再次读取 (reload=false): 看到下游修改后的内容
+        auto res2 = writeTool.execute(inputs);
+        requireSuccess(res2, "Writeable test read 2 must succeed");
+        auto &mat2 = std::get<DataRef<Image>>(res2.outputs.at(read_ports::out::IMAGES)).get()[0];
+        REQUIRE(mat2.data == origPtr, "Zero-copy shared memory");
+        REQUIRE(mat2.at<cv::Vec3b>(0, 0) == cv::Vec3b(99, 99, 99), "Downstream in-place modification is visible");
+
+        // 再次读取 (reload=true): 重新从磁盘解码，恢复原始磁盘数据
+        inputs.insert_or_assign(read_ports::in::RELOAD, true);
+        auto res3 = writeTool.execute(inputs);
+        requireSuccess(res3, "Reload=true must succeed");
+        auto &mat3 = std::get<DataRef<Image>>(res3.outputs.at(read_ports::out::IMAGES)).get()[0];
+        REQUIRE(mat3.data != origPtr, "Reload produces new memory buffer");
+        REQUIRE(mat3.at<cv::Vec3b>(0, 0) == cv::Vec3b(10, 20, 30), "Reload restores original disk data");
+
+        // 旧引用仍保留修改数据
+        REQUIRE(mat1.at<cv::Vec3b>(0, 0) == cv::Vec3b(99, 99, 99), "Old output reference remains valid");
+
+        // release() 测试
+        REQUIRE(bool(writeTool.release()), "release must succeed");
+    }
+
+    // ==========================================
+    // 5. S-READ-05: 递归、相对路径与中文路径
+    // ==========================================
+    // 5. S-READ-05: 递归、相对路径与中文路径
+    // ==========================================
+    {
+        const auto cnDir = directory / L"中文目录";
+        std::filesystem::create_directories(cnDir);
+        const auto subCn = cnDir / L"子目录";
+        std::filesystem::create_directories(subCn);
+        writePng(cnDir / L"根图.png", cv::Mat(4, 4, CV_8UC3, cv::Scalar(1, 1, 1)));
+        writePng(subCn / L"深层图.png", cv::Mat(4, 4, CV_8UC3, cv::Scalar(2, 2, 2)));
+
+        ReadImageTool cnTool(services);
+
+        // 不递归: 只有 1 张 (根图.png)
+        Values inputsNoRec = defaultInputs(cnDir);
+        inputsNoRec.insert_or_assign(read_ports::in::RECURSIVE, false);
+        inputsNoRec.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
+        inputsNoRec.insert_or_assign(read_ports::in::COUNT, std::int64_t(10));
+        auto res = cnTool.execute(inputsNoRec);
+        requireSuccess(res, "Non-recursive CN dir read must succeed");
+        REQUIRE(std::get<std::int64_t>(res.outputs.at(read_ports::out::TOTAL_COUNT)) == 1, "Non-recursive total_count must be 1");
+        auto paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        REQUIRE(paths.size() == 1, "Non-recursive must find exactly 1 image");
+
+        // 递归: 包含子目录, 共 2 张
+        Values inputsRec = defaultInputs(cnDir);
+        inputsRec.insert_or_assign(read_ports::in::RECURSIVE, true);
+        inputsRec.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
+        inputsRec.insert_or_assign(read_ports::in::COUNT, std::int64_t(10));
+        res = cnTool.execute(inputsRec);
+        requireSuccess(res, "Recursive CN dir read must succeed");
+        REQUIRE(std::get<std::int64_t>(res.outputs.at(read_ports::out::TOTAL_COUNT)) == 2, "Recursive total_count must be 2");
+        paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        REQUIRE(paths.size() == 2, "Recursive must find 2 images");
+    }
 
     std::filesystem::remove_all(directory);
-    std::cout << "[PASS] testReadImageTool passed." << std::endl;
+    std::cout << "[PASS] testReadImageTool passed successfully!" << std::endl;
 }
