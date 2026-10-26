@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "category": "逻辑",
   "subcategory": "表达式",
   "tool_id": "visiontools.logic.expression",

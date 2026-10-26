@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "category": "逻辑",
   "subcategory": "分支",
   "tool_id": "visiontools.logic.branch",
@@ -30,6 +30,18 @@
       "rank": 2,
       "default": [],
       "required": true
+    },
+    {
+      "id": "condition_mode",
+      "name": "条件来源",
+      "type": "String",
+      "default": "formula",
+      "editor": "text",
+      "options": [
+        "formula",
+        "upstream"
+      ],
+      "required": true
     }
   ],
   "inputs": [],
@@ -44,6 +56,18 @@
       "id": "on_false",
       "name": "否则",
       "type": "Bool",
+      "required": true
+    },
+    {
+      "id": "on_true_status",
+      "name": "成立分支状态",
+      "type": "Int",
+      "required": true
+    },
+    {
+      "id": "on_false_status",
+      "name": "否则分支状态",
+      "type": "Int",
       "required": true
     }
   ]

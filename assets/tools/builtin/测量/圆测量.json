@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "category": "测量",
   "subcategory": "尺寸测量",
   "tool_id": "visiontools.measure.circle",

@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "category": "采集",
   "subcategory": "图像采集",
   "tool_id": "visionrt.image.read",
@@ -58,6 +58,7 @@
       "type": "Int",
       "default": 1,
       "min": 1,
+      "max": 64,
       "editor": "number",
       "tab": "基本输入",
       "required": true
