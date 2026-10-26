@@ -152,8 +152,9 @@ int main(int argc, char **argv)
     REQUIRE_ABI(api->register_tools(registry).code == 0, "Module registration must succeed");
     const std::set<std::string> expectedTools{
         "visiontools.preprocess.adaptive_binary", "visionrt.image.crop", "visionrt.detection.filter",
-        "visionrt.roi.projection", "visionrt.image.preprocess", "visionrt.image.read"};
-    REQUIRE_ABI(registry.factories.size() == expectedTools.size(), "All six CPU factories must be present");
+        "visionrt.roi.projection", "visionrt.image.preprocess", "visionrt.image.read",
+        "visiontools.image.rotate", "visiontools.image.brightness"};
+    REQUIRE_ABI(registry.factories.size() == expectedTools.size(), "All CPU factories must be present");
     for (const auto &id : expectedTools)
         REQUIRE_ABI(registry.factories.contains(id), "CPU factory must use its stable ID");
     visionrt::ToolServices services{visionrt::PathResolver(std::filesystem::current_path())};
@@ -385,6 +386,54 @@ int main(int argc, char **argv)
     // Verify tool coverage: expected == actual
     std::cout << "[INFO] Installation consumer summary:" << std::endl;
     std::cout << "  DLL path: " << std::filesystem::absolute(dllPath).string() << std::endl;
+    // 9. Test tool: rotate
+    {
+        const char *reg = "visiontools.image.rotate";
+        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&services, &status);
+        REQUIRE_ABI(inst != nullptr, "Create rotate must return valid instance");
+        REQUIRE_ABI(inst->initialize({}).code == 0, "Initialize rotate must succeed");
+        visionrt::Values inputs;
+        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{cv::Mat(16, 16, CV_8UC1, cv::Scalar(7))}));
+        inputs.emplace("angle_deg", 90.0);
+        inputs.emplace("center", visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 1>>(
+                                      visionrt::NestedVector<double, 1>{})));
+        inputs.emplace("canvas", std::string("keep"));
+        inputs.emplace("interpolation", std::string("linear"));
+        inputs.emplace("border_value", visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 1>>(
+                                           visionrt::NestedVector<double, 1>{0.0})));
+        inputs.emplace("alignment", visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 3>>(
+                                        visionrt::NestedVector<double, 3>{})));
+        auto res = inst->execute(inputs);
+        REQUIRE_ABI(res.status.code == 0, "Execution of rotate must succeed");
+        const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+        REQUIRE_ABI(out != nullptr && !out->get().empty(), "Rotate output must contain images");
+        REQUIRE_ABI(inst->release().code == 0, "Release rotate must succeed");
+        registry.factories.at(reg).destroy(inst);
+        actualExecutedTools.insert(reg);
+    }
+    // 10. Test tool: brightness
+    {
+        const char *reg = "visiontools.image.brightness";
+        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&services, &status);
+        REQUIRE_ABI(inst != nullptr, "Create brightness must return valid instance");
+        REQUIRE_ABI(inst->initialize({}).code == 0, "Initialize brightness must succeed");
+        visionrt::Values inputs;
+        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{cv::Mat(8, 8, CV_8UC1, cv::Scalar(20))}));
+        inputs.emplace("gain", 1.5);
+        inputs.emplace("offset", 0.0);
+        inputs.emplace("rois", visionrt::DataRef<visionrt::ROI>(visionrt::ROI{}));
+        inputs.emplace("mask", visionrt::Missing{});
+        inputs.emplace("alignment", visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 3>>(
+                                        visionrt::NestedVector<double, 3>{})));
+        inputs.emplace("emit_mask", false);
+        auto res = inst->execute(inputs);
+        REQUIRE_ABI(res.status.code == 0, "Execution of brightness must succeed");
+        const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+        REQUIRE_ABI(out != nullptr && !out->get().empty(), "Brightness output must contain images");
+        REQUIRE_ABI(inst->release().code == 0, "Release brightness must succeed");
+        registry.factories.at(reg).destroy(inst);
+        actualExecutedTools.insert(reg);
+    }
     std::cout << "  Expected tools count: " << expectedTools.size() << std::endl;
     std::cout << "  Actual executed tools count: " << actualExecutedTools.size() << std::endl;
     REQUIRE(actualExecutedTools == expectedTools, "All expected tools must be tested and succeed without skipping");

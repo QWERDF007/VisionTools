@@ -1,5 +1,6 @@
 add_library(visiontools_preprocess SHARED
     ReadImageTool.cpp
+    ImageSequence.cpp
     RotateImageTool.cpp
     BrightnessTool.cpp
     RoiProjectionTool.cpp

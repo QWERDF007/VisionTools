@@ -61,8 +61,9 @@ int main()
     REQUIRE(api->register_tools(registry).code == 0, "Registration must succeed");
     const std::set<std::string> expected{
         "visionrt.image.read", "visionrt.roi.projection", "visionrt.image.crop",
-        "visionrt.image.preprocess", "visionrt.detection.filter", "visiontools.preprocess.adaptive_binary"};
-    REQUIRE(registry.factories.size() == expected.size(), "Exactly six CPU factories must be registered");
+        "visionrt.image.preprocess", "visionrt.detection.filter", "visiontools.preprocess.adaptive_binary",
+        "visiontools.image.rotate", "visiontools.image.brightness"};
+    REQUIRE(registry.factories.size() == expected.size(), "Every declared CPU factory must be registered");
     for (const auto &id : expected)
         REQUIRE(registry.factories.contains(id), "Every stable ID must be registered");
     REQUIRE(!registry.factories.contains("AdaptiveBinaryTool"), "Legacy class-name alias must not be registered");

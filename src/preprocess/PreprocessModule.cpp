@@ -1,9 +1,11 @@
 #include "../ToolFactory.h"
 #include "AdaptiveBinaryTool.h"
+#include "BrightnessTool.h"
 #include "DetectionFilterTool.h"
 #include "ImageCropTool.h"
 #include "ImagePreprocessTool.h"
 #include "ReadImageTool.h"
+#include "RotateImageTool.h"
 #include "RoiProjectionTool.h"
 
 #include <visionrt/contracts/Module.h>
@@ -18,6 +20,8 @@ visionrt::ToolStatus VT_CALL registerTools(visionrt::IToolRegistry &registry) no
         {ports::image_preprocess::TOOL_ID, visiontools::createTool<ImagePreprocessTool>, visiontools::destroyTool},
         {ports::detection_filter::TOOL_ID, visiontools::createTool<DetectionFilterTool>, visiontools::destroyTool},
         { ports::adaptive_binary::TOOL_ID,  visiontools::createTool<AdaptiveBinaryTool>, visiontools::destroyTool},
+        {     ports::image_rotate::TOOL_ID,     visiontools::createTool<RotateImageTool>, visiontools::destroyTool},
+        { ports::image_brightness::TOOL_ID, visiontools::createTool<BrightnessTool>, visiontools::destroyTool},
     };
     for (const auto &factory : factories)
         if (auto status = registry.add(factory); !status)

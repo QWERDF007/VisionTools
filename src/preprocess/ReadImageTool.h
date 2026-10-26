@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ImageSequence.h"
+
 #include <visionrt/contracts/Tool.h>
 
 #include <atomic>
@@ -8,7 +10,6 @@
 #include <functional>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace visiontools::preprocess {
@@ -53,16 +54,24 @@ private:
         std::vector<std::filesystem::path> files;
     };
 
-    visionrt::ToolServices services_;
-    std::optional<Catalog> catalog_;
-    std::size_t            currentIndex_ = 0;
-    bool                   lastReverse_  = false;
+    // Local decode result of one plan; committed only after the whole batch decoded.
+    struct DecodedBatch
+    {
+        visionrt::Image          images;
+        std::vector<std::string> keys;
+        std::vector<std::string> paths;
+        std::size_t              decoded = 0;
+    };
 
-    // Two-tier cache:
-    // 1) Decoded cv::Mat per normalized utf-8 file path
-    std::unordered_map<std::string, cv::Mat>           fileCache_;
-    // 2) Identical consecutive batch reuse
-    std::vector<std::string>                           lastPlannedPaths_;
+    visionrt::ToolResult decode(const Catalog &catalog, const SequencePlan &plan, SequenceCursor &cursor, bool reload);
+    void                 resetSequence();
+
+    visionrt::ToolServices services_;
+    std::optional<Catalog>  catalog_;
+    SequenceCursor          cursor_;
+    bool                    reverse_ = false;
+    DecodedImageCache       cache_{std::size_t{512} * 1024 * 1024};
+    std::vector<std::string>                          lastPlannedPaths_;
     std::optional<visionrt::DataRef<visionrt::Image>> lastBatchRef_;
 };
 
