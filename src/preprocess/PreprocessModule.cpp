@@ -8,6 +8,7 @@
 #include "RotateImageTool.h"
 #include "RoiProjectionTool.h"
 
+#include <visionrt/contracts/FunctionTool.h>
 #include <visionrt/contracts/Module.h>
 
 namespace visiontools::preprocess { namespace {
@@ -21,12 +22,12 @@ visionrt::ToolStatus VT_CALL registerTools(visionrt::IToolRegistry &registry) no
         {ports::detection_filter::TOOL_ID, visiontools::createTool<DetectionFilterTool>, visiontools::destroyTool},
         { ports::adaptive_binary::TOOL_ID,  visiontools::createTool<AdaptiveBinaryTool>, visiontools::destroyTool},
         {     ports::image_rotate::TOOL_ID,     visiontools::createTool<RotateImageTool>, visiontools::destroyTool},
-        { ports::image_brightness::TOOL_ID, visiontools::createTool<BrightnessTool>, visiontools::destroyTool},
     };
     for (const auto &factory : factories)
         if (auto status = registry.add(factory); !status)
             return status;
-    return {};
+    // 无状态工具走函数入口：同一 IToolInstance 调度，实例不保留任何业务状态。
+    return visionrt::registerFunction<&brightnessTool>(registry, ports::image_brightness::TOOL_ID);
 }
 }}
 

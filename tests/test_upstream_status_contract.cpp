@@ -22,6 +22,15 @@ namespace {
 using namespace visionrt;
 using namespace visiontools;
 
+ToolResult runBrightness(const Values &inputs, const std::vector<std::string> &businessOutputs)
+{
+    auto result = preprocess::brightnessTool(inputs, ToolServices{});
+    assert(testview::businessCount(result) == businessOutputs.size());
+    for (const auto &id : businessOutputs)
+        assert(result.outputs.contains(id));
+    return result;
+}
+
 template<class Tool>
 ToolResult run(const Values &inputs, const std::vector<std::string> &businessOutputs)
 {
@@ -64,14 +73,13 @@ void unselectedBranchDoesNothing()
          {"alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{}))},
          {"emit_mask", false},
          {"upstream_status", std::int64_t{-3}}};
-    const auto brightness
-        = run<preprocess::BrightnessTool>(brightnessInputs, {"images", "applied_mask"});
+    const auto brightness = runBrightness(brightnessInputs, {"images", "applied_mask"});
     assert(testview::status(brightness).code == -3);
     assert(isMissing(brightness.outputs.at("images")));
 
     // The same tool with a zero status runs normally, so the gate is the status alone.
     brightnessInputs["upstream_status"] = std::int64_t{0};
-    const auto processed = run<preprocess::BrightnessTool>(brightnessInputs, {"images", "applied_mask"});
+    const auto processed = runBrightness(brightnessInputs, {"images", "applied_mask"});
     assert(testview::status(processed).code == 0);
     const auto *images = std::get_if<DataRef<Image>>(&processed.outputs.at("images"));
     assert(images && images->get().size() == 1 && images->get().front().at<unsigned char>(0, 0) == 6);
@@ -87,7 +95,7 @@ void unselectedBranchStillValidatesItsContract()
                   {"alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{}))},
                   {"emit_mask", false},
                   {"upstream_status", std::int64_t{0}}};
-    const auto result = run<preprocess::BrightnessTool>(inputs, {"images", "applied_mask"});
+    const auto result = runBrightness(inputs, {"images", "applied_mask"});
     assert(testview::status(result).code != 0);
     assert(testview::status(result).message.find("images") != std::string::npos);
 }

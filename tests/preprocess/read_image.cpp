@@ -220,7 +220,7 @@ void testReadImageTool()
 
         // 第 3 轮: 已结束，必须报错
         res = onceTool.execute(onceInputs);
-        requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must fail");
+requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must fail");
 
         // 3.5 损坏文件失败原子性: 中途坏图游标不推进，修复后从原位成功
         ReadImageTool atomicTool(services);
@@ -516,6 +516,56 @@ void testReadImageTool()
             std::filesystem::remove(tailDir / "c.png");
             REQUIRE(readOne(tool, inputs).ends_with("a.png"), "a looping sequence must wrap to the first file");
         }
+    }
+
+    // ==========================================
+    // 9. S-CORE-02: the whole result is built before the cursor/catalog move; cache maintenance is
+    //    best effort and never turns a valid batch into a failure.
+    // ==========================================
+    {
+        const auto atomicDir = directory / "atomic";
+        std::filesystem::create_directories(atomicDir);
+        writePng(atomicDir / "a.png", cv::Mat(4, 4, CV_8UC1, cv::Scalar(1)));
+        writePng(atomicDir / "b.png", cv::Mat(4, 4, CV_8UC1, cv::Scalar(2)));
+        writePng(atomicDir / "c.png", cv::Mat(4, 4, CV_8UC1, cv::Scalar(3)));
+
+        const auto nextPath = [&](ReadImageTool &tool, const Values &inputs)
+        {
+            auto res = tool.execute(inputs);
+            requireSuccess(res, "atomic read must succeed");
+            return std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>()[0];
+        };
+
+        ReadImageTool tool(services);
+        Values        inputs = defaultInputs(atomicDir);
+        inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
+        REQUIRE(nextPath(tool, inputs).ends_with("a.png"), "atomic step 1 must deliver a.png");
+
+        bool fired = false;
+        testing::beforeResultBuild = [&]
+        {
+            if (fired)
+                return;
+            fired = true;
+            throw std::bad_alloc();
+        };
+        auto failed = tool.execute(inputs);
+        testing::beforeResultBuild = {};
+        requireFailure(failed, "图像读取失败", "a result packaging failure must be reported");
+        REQUIRE(nextPath(tool, inputs).ends_with("b.png"),
+                "a failed result packaging must not skip b.png");
+
+        bool cacheFailed = false;
+        testing::beforeCacheInsert = [&]
+        {
+            if (cacheFailed)
+                return;
+            cacheFailed = true;
+            throw std::bad_alloc();
+        };
+        REQUIRE(nextPath(tool, inputs).ends_with("c.png"),
+                "a cache insert failure must not fail an already valid batch");
+        testing::beforeCacheInsert = {};
     }
 
     std::filesystem::remove_all(directory);

@@ -82,7 +82,6 @@
       "type": "Image",
       "required": true,
       "display": {
-        "color_order": "BGR",
         "same_geometry_as_input": "images"
       }
     },

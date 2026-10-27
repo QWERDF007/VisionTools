@@ -93,10 +93,7 @@
       "id": "images",
       "name": "旋转图像",
       "type": "Image",
-      "required": true,
-      "display": {
-        "color_order": "BGR"
-      }
+      "required": true
     },
     {
       "id": "alignment",

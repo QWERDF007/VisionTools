@@ -90,6 +90,10 @@ private:
 namespace testing {
 extern std::function<void(const std::filesystem::path &)> beforeRead;
 extern std::function<void(const std::filesystem::path &)> afterDecode;
+// Controlled allocation-failure points: before the result is built (state must not move) and before
+// a cache insert (the valid result must survive). Tests install a one-shot throwing hook.
+extern std::function<void()> beforeResultBuild;
+extern std::function<void()> beforeCacheInsert;
 extern std::atomic<std::size_t>                           fileReadCount;
 extern std::atomic<std::size_t>                           decodeCount;
 } // namespace testing

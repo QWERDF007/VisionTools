@@ -97,8 +97,7 @@
       "name": "输出图像",
       "type": "Image",
       "display": {
-        "same_geometry_as_input": "images",
-        "color_order": "BGR"
+        "same_geometry_as_input": "images"
       },
       "required": true
     },

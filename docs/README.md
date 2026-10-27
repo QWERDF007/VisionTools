@@ -8,6 +8,7 @@
 - [真实模块注册验证](../tests/test_module_contract.cpp)、[动态消费](../tests/test_installation_consumer.cpp)、[算法数值](../tests/test_preprocess_contract.cpp)
 - [分工具数值与边界用例](../tests/preprocess)、[裁剪独立像素金标与资源存活](../tests/preprocess/image_crop.cpp)、[真实 Mat 分配观测](../tests/preprocess/MatAllocationProbe.h)、[读图预算边界](../tests/preprocess/read_image.cpp)、[共享裁剪视图及外部保活](../tests/test_writable_tools_contract.cpp)
 - [状态与原始异常详情](../3rdparty/VisionRTContracts/include/visionrt/contracts/Tool.h)、[图像解码边界](../src/preprocess/ReadImageTool.cpp)
+- [C++ 参数子类](../3rdparty/VisionRTContracts/include/visionrt/contracts/Parameters.h)、[读图参数示例](../src/preprocess/ReadImageParameters.h)、[函数工具示例](../src/preprocess/BrightnessTool.h)、[Python 作者 SDK](../python/custom/examples/image_add/visiontools_sdk/__init__.py)、[SDK 消费示例](../python/custom/examples/image_add/tool.py)
 - [声明与分发验证](../tests/test_distribution.py)、[Python 内建源码](../python/builtin)、[Python 自定义源码](../python/custom)、[Python 直接调用与真实 NumPy 契约](../tests/test_python_tools.py)
 
 ## 新增工具

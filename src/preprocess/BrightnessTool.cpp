@@ -1,34 +1,39 @@
 #include "BrightnessTool.h"
 
+#include "BrightnessParameters.h"
+
 #include "common/GeometryTransform.h"
-#include "common/UpstreamStatus.h"
 #include "common/ImageSupport.h"
-#include "common/InputValues.h"
 #include "common/RoiSupport.h"
 
 #include <opencv2/core.hpp>
 
 #include <cmath>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace visiontools::preprocess {
 namespace {
 namespace p = ports::image_brightness;
 
-visionrt::Values missingOutputs()
+double ranged(visionrt::InputReader &reader, std::string_view id, double minimum, double maximum)
 {
-    return {{p::out::IMAGES, visionrt::Missing{}}, {p::out::APPLIED_MASK, visionrt::Missing{}}};
+    const double value = reader.real(id);
+    if (!std::isfinite(value))
+        throw visionrt::ContractError("输入端口 '" + std::string(id) + "' 必须为有限数值");
+    if (value < minimum || value > maximum)
+        throw visionrt::ContractError("输入端口 '" + std::string(id) + "' 的值 " + std::to_string(value)
+                                      + " 超出允许范围 [" + std::to_string(minimum) + ", "
+                                      + std::to_string(maximum) + "]");
+    return value;
 }
 
-const std::vector<cv::Mat> *optionalMask(const visionrt::Values &inputs)
+const std::vector<cv::Mat> *optionalMask(const std::optional<visionrt::DataRef<visionrt::Image>> &mask)
 {
-    const auto found = inputs.find(p::in::MASK);
-    if (found == inputs.end() || visionrt::isMissing(found->second))
+    if (!mask || mask->get().empty())
         return nullptr;
-    const auto *mask = std::get_if<visionrt::DataRef<visionrt::Image>>(&found->second);
-    if (!mask)
-        throw visionrt::ContractError("mask 必须是图像");
-    return mask->get().empty() ? nullptr : &mask->get();
+    return &mask->get();
 }
 
 // `wholeImage` distinguishes an unconfigured ROI list (`[]`, the full image) from
@@ -53,39 +58,50 @@ cv::Mat combinedMask(const std::vector<roi::Record> &records, bool wholeImage,
 }
 } // namespace
 
-visionrt::ToolStatus BrightnessTool::initialize(const visionrt::Values &parameters)
+void BrightnessInputs::readFields(visionrt::InputReader &reader)
 {
-    if (!parameters.empty())
-        return {1, "调整亮度不接受初始化参数"};
-    return {};
+    images   = reader.image(p::in::IMAGES);
+    gain     = ranged(reader, p::in::GAIN, 0.0, 1.0e12);
+    offset   = ranged(reader, p::in::OFFSET, -1.0e12, 1.0e12);
+    emitMask = reader.boolean(p::in::EMIT_MASK);
+    mask     = reader.nullableImage(p::in::MASK);
+    // The shared kernels interpret these two values; the parameter view only keeps the handle.
+    rois      = reader.require(p::in::ROIS);
+    alignment = reader.require(p::in::ALIGNMENT);
 }
 
-visionrt::ToolResult BrightnessTool::execute(const visionrt::Values &inputs)
+void BrightnessOutputs::writeFields(visionrt::OutputWriter &writer)
 {
-    // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
-    if (const auto upstream = upstreamStatus(inputs); upstream != 0)
-        return skippedByUpstream(upstream, missingOutputs());
+    writer.optionalImage(p::out::IMAGES, images);
+    writer.optionalImage(p::out::APPLIED_MASK, appliedMask);
+}
+
+visionrt::ToolResult brightnessTool(const visionrt::Values &values, const visionrt::ToolServices &)
+{
+    BrightnessInputs  inputs;
+    BrightnessOutputs outputs;
     try
     {
-        const auto &images = requireImages(inputs, p::in::IMAGES);
-        const double gain  = requireFloatInRange(inputs, p::in::GAIN, 0.0, 1.0e12);
-        const double offset = requireFloatInRange(inputs, p::in::OFFSET, -1.0e12, 1.0e12);
-        const auto *emitValue = std::get_if<bool>(&requireInput(inputs, p::in::EMIT_MASK));
-        if (!emitValue)
-            throw visionrt::ContractError("emit_mask 必须是布尔值");
-        const bool emitMask = *emitValue;
-        const auto   alignments
-            = geometry::alignmentsFromValue(requireInput(inputs, p::in::ALIGNMENT), images.size());
-        const auto records = roi::groups(requireInput(inputs, p::in::ROIS), images.size(), "rois");
+        inputs.parse(values);
+        // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
+        if (inputs.upstreamStatus != 0)
+        {
+            outputs.status = {inputs.upstreamStatus, "上游未选中本分支，工具未执行"};
+            return outputs.pack();
+        }
+
+        const auto &images = inputs.images.get();
+        const auto  records = roi::groups(inputs.rois, images.size(), "rois");
+        const auto  alignments = geometry::alignmentsFromValue(inputs.alignment, images.size());
         // An empty outer list means "whole image"; per-image empty groups mean
         // "leave this image unchanged".
-        const bool wholeImage = records.empty();
-        const auto *masks  = optionalMask(inputs);
+        const bool  wholeImage = records.empty();
+        const auto *masks      = optionalMask(inputs.mask);
         if (masks && masks->size() != images.size())
             throw visionrt::ContractError("mask 外层长度必须与图像数量一致");
 
-        visionrt::Image                output;
-        visionrt::Image                appliedMasks;
+        visionrt::Image output;
+        visionrt::Image appliedMasks;
         output.reserve(images.size());
         appliedMasks.reserve(images.size());
         for (std::size_t index = 0; index < images.size(); ++index)
@@ -103,15 +119,15 @@ visionrt::ToolResult BrightnessTool::execute(const visionrt::Values &inputs)
             const auto toReference = alignments[index].inverse();
             if (!toReference)
                 throw visionrt::ContractError("alignment 线性部分必须可逆");
-            const auto  region = combinedMask(wholeImage ? std::vector<roi::Record>{} : records[index],
-                                              wholeImage, *toReference, image.size(), external);
-            cv::Mat     destination = image.clone();
-            const bool  constant   = gain == 1.0 && offset == 0.0;
+            const auto region = combinedMask(wholeImage ? std::vector<roi::Record>{} : records[index],
+                                             wholeImage, *toReference, image.size(), external);
+            cv::Mat    destination = image.clone();
+            const bool constant    = inputs.gain == 1.0 && inputs.offset == 0.0;
             if (!constant)
             {
                 cv::Mat converted;
                 cv::Mat scaled;
-                image.convertTo(converted, -1, gain, offset);
+                image.convertTo(converted, -1, inputs.gain, inputs.offset);
                 if (image.channels() == 4)
                 {
                     // Alpha keeps the source value: only BGR is adjusted.
@@ -128,38 +144,40 @@ visionrt::ToolResult BrightnessTool::execute(const visionrt::Values &inputs)
             output.push_back(std::move(destination));
             appliedMasks.push_back(region);
         }
-        visionrt::Values outputs;
-        outputs.emplace(p::out::IMAGES,
-                        visionrt::DataRef<visionrt::Image>(std::move(output),
-                                                           {std::get<visionrt::DataRef<visionrt::Image>>(
-                                                                requireInput(inputs, p::in::IMAGES))
-                                                                .owner()}));
-        if (emitMask)
-            outputs.emplace(p::out::APPLIED_MASK, visionrt::DataRef<visionrt::Image>(std::move(appliedMasks)));
-        else
-            outputs.emplace(p::out::APPLIED_MASK, visionrt::Missing{});
-        return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
+        outputs.images = visionrt::DataRef<visionrt::Image>(
+            std::move(output), std::vector<visionrt::Owner>{inputs.images.owner()});
+        if (inputs.emitMask)
+            outputs.appliedMask = visionrt::DataRef<visionrt::Image>(std::move(appliedMasks));
+        return outputs.pack();
     }
     catch (const visionrt::ContractError &error)
     {
-        return visionrt::toolResult(missingOutputs(), {1, error.what()});
+        outputs.images.reset();
+        outputs.appliedMask.reset();
+        outputs.status = {1, error.what()};
+        return outputs.pack();
     }
     catch (const cv::Exception &error)
     {
-        return visionrt::toolResult(missingOutputs(), {1, "调整亮度失败", error.what()});
+        outputs.images.reset();
+        outputs.appliedMask.reset();
+        outputs.status = {1, "调整亮度失败", error.what()};
+        return outputs.pack();
     }
     catch (const std::exception &error)
     {
-        return visionrt::toolResult(missingOutputs(), {1, "调整亮度失败", error.what()});
+        outputs.images.reset();
+        outputs.appliedMask.reset();
+        outputs.status = {1, "调整亮度失败", error.what()};
+        return outputs.pack();
     }
     catch (...)
     {
-        return visionrt::toolResult(missingOutputs(), {-1, "调整亮度失败：未知异常"});
+        outputs.images.reset();
+        outputs.appliedMask.reset();
+        outputs.status = {-1, "调整亮度失败：未知异常"};
+        return outputs.pack();
     }
 }
 
-visionrt::ToolStatus BrightnessTool::release()
-{
-    return {};
-}
 } // namespace visiontools::preprocess

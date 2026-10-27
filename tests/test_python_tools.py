@@ -209,6 +209,28 @@ class TestPythonToolContracts(unittest.TestCase):
         self.assertEqual(invalid["__status_code"], 1)
         self.assertIsNone(invalid["images"])
 
+    def test_image_add_honours_upstream_status(self):
+        declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一/图像加一.json").read_text(encoding="utf-8"))
+        execute = getattr(load_module_from_file(self.image_add_py), declaration["entry"]["symbol"])
+        source = np.full((2, 3), 10, dtype=np.uint8)
+        skipped = execute({"images": [source], "mode": "inplace", "upstream_status": 7})
+        self.assertEqual(skipped["__status_code"], 7)
+        self.assertEqual(skipped["__status_message"], "")
+        self.assertIsNone(skipped["images"])
+        self.assertTrue(np.array_equal(source, np.full((2, 3), 10, dtype=np.uint8)),
+                        "a non-zero upstream status must not modify the source image")
+        recovered = execute({"images": [source], "mode": "copy", "upstream_status": 0})
+        self.assertEqual(recovered["__status_code"], 0)
+        self.assertTrue(np.array_equal(recovered["images"][0], np.full((2, 3), 11, dtype=np.uint8)))
+        self.assertEqual(execute({"images": [source], "upstream_status": True})["__status_code"], 1)
+
+    def test_mean_keeps_measuring_after_upstream_failure(self):
+        instance = load_module_from_file(self.mean_py).ToolInstance()
+        instance.initialize({})
+        result = instance.execute({"images": [np.full((2, 2), 3.0)], "upstream_status": 7})
+        self.assertEqual(result["__status_code"], 0)
+        self.assertEqual(result["means"], [3.0])
+
     def test_builtin_function_uses_its_json_entry_and_returns_native_lists(self):
         declaration = json.loads((ROOT / "assets/tools/builtin/Python/示例/图像尺寸.json").read_text(encoding="utf-8"))
         self.assertEqual(declaration["kind"], "python_function")

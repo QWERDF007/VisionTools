@@ -110,14 +110,13 @@ void rotateTool()
 void brightnessTool()
 {
     cv::Mat image(40, 50, CV_8UC3, cv::Scalar(10, 20, 30));
-    preprocess::BrightnessTool tool(ToolServices{});
-    Values                     inputs = withImages(image);
+    Values  inputs = withImages(image);
     inputs.emplace("gain", 2.0);
     inputs.emplace("offset", 10.0);
     inputs.emplace("rois", DataRef<ROI>(ROI{{{2, 10, 10, 20, 10, 0}}}));
     inputs.emplace("alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{})));
     inputs.emplace("emit_mask", true);
-    const auto result = tool.execute(inputs);
+    const auto result = preprocess::brightnessTool(inputs, ToolServices{});
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     const auto &output = std::get<DataRef<Image>>(result.outputs.at("images")).get().front();
     const auto  inside = output.at<cv::Vec3b>(15, 15);
@@ -135,7 +134,7 @@ void brightnessTool()
     floatInputs.emplace("rois", DataRef<ROI>(ROI{}));
     floatInputs.emplace("alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{})));
     floatInputs.emplace("emit_mask", false);
-    const auto floatResult = tool.execute(floatInputs);
+    const auto floatResult = preprocess::brightnessTool(floatInputs, ToolServices{});
     REQUIRE(testview::status(floatResult).code == 0, testview::status(floatResult).message);
     const auto &floats = std::get<DataRef<Image>>(floatResult.outputs.at("images")).get().front();
     REQUIRE(std::abs(floats.at<float>(0, 0) - 400.0F) < 1e-3, "float images must not be clipped to 255");

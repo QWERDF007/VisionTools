@@ -159,8 +159,21 @@ bool DecodedImageCache::insert(const std::string &key, const cv::Mat &image)
     }
     if (!evictUntilWithinBudget(bytes))
         return false;
-    order_.push_front(key);
-    entries_.emplace(key, Entry{image, bytes, order_.begin()});
+    // Keep one order node per entry: if the map insertion fails, the reservation is rolled back so
+    // the cache never carries an order key without bytes or an entry without a position.
+    bool reserved = false;
+    try
+    {
+        order_.push_front(key);
+        reserved = true;
+        entries_.emplace(key, Entry{image, bytes, order_.begin()});
+    }
+    catch (...)
+    {
+        if (reserved)
+            order_.erase(order_.begin());
+        throw;
+    }
     bytes_ += bytes;
     return true;
 }

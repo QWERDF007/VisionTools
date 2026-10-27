@@ -151,15 +151,11 @@ def _load_build(build_dir: Path, config: str, project_root: Path, validator: Pat
         raise PackagingError(f"无法读取构建元数据或发行目录表：{error}") from error
     if not isinstance(metadata, dict) or not isinstance(catalog, dict):
         raise PackagingError("构建元数据与发行目录表必须是对象")
-    # The profile decides which runtime files ship, before anything is copied. A layout that cannot
-    # be explained (an unknown TensorRT builder partition) stops the package instead of shipping it.
-    selection = None
+    # The profile decides which installed runtime files ship. It is applied to the real CMake
+    # install output below, not to the (possibly empty) manifest list, so the report and the files
+    # on disk come from one set.
     if profile is not None:
-        selection = package_profile.select_dependencies(metadata.get("runtime_files", []), profile)
-        if selection.errors:
-            raise PackagingError("；".join(selection.errors))
-        metadata = package_profile.apply_to_manifest(metadata, selection)
-        metadata["__selection"] = selection
+        metadata["__profile"] = profile
     if metadata.get("config") != config or not isinstance(metadata.get("variant"), str) or not metadata["variant"]:
         raise PackagingError("构建元数据配置不一致或缺少 variant")
     if catalog.get("schema_version") != 1 or set(catalog) != {"schema_version", "modules", "tools"}:
@@ -249,20 +245,69 @@ def _run_runtime_install(staging_dir: Path, build_dir: Path, config: str, runtim
     manifest = build_dir / f"install_manifest_{runtime_install['component']}.txt"
     if not manifest.is_file():
         raise PackagingError(f"运行时安装清单不存在：{manifest}")
-    installed_files = []
-    for installed in manifest.read_text(encoding="utf-8").splitlines():
-        if not installed.strip():
-            continue
-        relative = Path(os.path.relpath(Path(installed).resolve(), staging_dir.resolve()))
-        if relative.parts and relative.parts[0] == "..":
-            raise PackagingError(f"运行时安装清单文件逃逸包根：{installed}")
-        installed_files.append(relative.as_posix())
+    # The staged directory is the truth: only files that really landed can be selected or reported.
+    installed_files = [
+        path.relative_to(staging_dir).as_posix()
+        for path in sorted(staging_dir.rglob("*"))
+        if path.is_file()
+    ]
+    if not installed_files:
+        raise PackagingError("运行时安装没有产生任何文件")
     return installed_files
+
+
+def _select_runtime(entries: list[dict], profile) -> tuple[list[dict], list[dict]]:
+    """Applies the one profile policy to the installed set and returns kept/dropped."""
+    if profile is None:
+        return [dict(entry, component="shared", reason="构建声明运行时文件",
+                     required_by=["declared-runtime"], target_sm=["shared"]) for entry in entries], []
+    selection = package_profile.select_dependencies(entries, profile)
+    if selection.errors:
+        raise PackagingError("；".join(selection.errors))
+    return selection.kept, selection.dropped
+
+
+def _dependency_report(staging_dir: Path, profile, kept: list[dict], dropped: list[dict]) -> dict:
+    described = {entry["destination"]: entry for entry in kept}
+    files = []
+    components: dict[str, dict] = {}
+    for path in sorted(staging_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(staging_dir).as_posix()
+        entry = described.get(relative) or {
+            "destination": relative,
+            "component": "tools-payload",
+            "reason": "工具声明、Python 代码或索引",
+            "required_by": ["package"],
+            "target_sm": ["shared"],
+        }
+        size = path.stat().st_size
+        files.append({
+            "destination": relative,
+            "component": entry["component"],
+            "reason": entry["reason"],
+            "required_by": entry["required_by"],
+            "target_sm": entry["target_sm"],
+            "size_bytes": size,
+        })
+        bucket = components.setdefault(entry["component"], {"files": 0, "bytes": 0})
+        bucket["files"] += 1
+        bucket["bytes"] += size
+    return {
+        "schema_version": 1,
+        "profile": profile.as_report() if profile is not None else None,
+        "components": components,
+        "files": files,
+        "excluded": dropped,
+        "errors": [],
+    }
 
 
 def _collect_package(metadata: dict, index: dict, payloads: dict[str, ToolPayload], staging_dir: Path,
                      build_dir: Path, config: str) -> dict:
     plan = CopyPlan()
+    profile = metadata.get("__profile")
     final_index = {
         "schema_version": 1,
         "variant": index["variant"],
@@ -272,7 +317,11 @@ def _collect_package(metadata: dict, index: dict, payloads: dict[str, ToolPayloa
     }
     module_files = {}
     runtime_install = metadata.get("runtime_install")
+    # A profile without inference ships neither the infer module nor the tools that need it.
+    infer_allowed = profile is None or profile.infer_enabled
     for module_name, module in metadata.get("modules", {}).items():
+        if not infer_allowed and "infer" in module_name.lower():
+            continue
         source = Path(module["source"]).resolve()
         relative = f"bin/{source.name}"
         module_files[module_name] = relative
@@ -280,37 +329,56 @@ def _collect_package(metadata: dict, index: dict, payloads: dict[str, ToolPayloa
         if not runtime_install:
             plan.add(source, Path(relative))
 
-    for tool_id, entry in final_index["tools"].items():
+    for tool_id in list(final_index["tools"]):
+        entry = final_index["tools"][tool_id]
+        module = entry.get("module")
+        if module is not None and module not in final_index["modules"]:
+            del final_index["tools"][tool_id]
+            continue
         payload = payloads[tool_id]
         payload.add_to(plan)
         entry["definition"] = payload.destination.as_posix()
 
-    for runtime in metadata.get("runtime_files", []):
-        source = Path(runtime["source"]).resolve()
-        plan.add(source, Path(runtime["destination"]))
-
-    plan.copy_to(staging_dir)
-
-    selection = metadata.get("__selection")
-    if selection is not None:
-        report = selection.report()
-        report["files"] = report["files"] + [
-            {"destination": relative, "component": "tools-module", "reason": "工具模块入口",
-             "required_by": ["package"], "target_sm": ["shared"]}
-            for relative in sorted(module_files.values())
-        ]
-        save_json(report, staging_dir / "dependencies.json")
-
-    installed_files = []
+    runtime_entries = []
+    runtime_stage = None
     if runtime_install:
-        installed_files = _run_runtime_install(staging_dir, build_dir, config, runtime_install)
+        # CMake installs into an isolated directory first. Nothing lands in the package until the
+        # single profile policy has decided the final set.
+        runtime_stage = staging_dir.parent / f".runtime-{uuid.uuid4().hex}"
+        installed_files = _run_runtime_install(runtime_stage, build_dir, config, runtime_install)
+        runtime_entries = [
+            {"source": str((runtime_stage / relative).resolve()), "destination": relative}
+            for relative in installed_files
+        ]
+        kept, dropped = _select_runtime(runtime_entries, profile)
+        for entry in kept:
+            plan.add(Path(entry["source"]), Path(entry["destination"]))
+    else:
+        runtime_entries = [
+            {"source": str(Path(runtime["source"]).resolve()), "destination": runtime["destination"]}
+            for runtime in metadata.get("runtime_files", [])
+        ]
+        kept, dropped = _select_runtime(runtime_entries, profile)
+        for entry in kept:
+            plan.add(Path(entry["source"]), Path(entry["destination"]))
+
+    try:
+        plan.copy_to(staging_dir)
+    finally:
+        if runtime_stage is not None:
+            _remove_path(runtime_stage)
+
     for module_name, relative in module_files.items():
         if not (staging_dir / relative).is_file():
             raise PackagingError(f"模块未进入安装目录：{module_name} -> {relative}")
     module_libraries = set(module_files.values())
-    final_index["runtime_files"] = sorted({path for path in installed_files if path not in module_libraries})
+    final_index["runtime_files"] = sorted(
+        entry["destination"] for entry in kept if entry["destination"] not in module_libraries
+    )
     final_index["modules"] = [{"id": name, **module} for name, module in sorted(final_index["modules"].items())]
     final_index["tools"] = [{"tool_id": identifier, **entry} for identifier, entry in sorted(final_index["tools"].items())]
+    if profile is not None:
+        save_json(_dependency_report(staging_dir, profile, kept, dropped), staging_dir / "dependencies.json")
     return final_index
 
 

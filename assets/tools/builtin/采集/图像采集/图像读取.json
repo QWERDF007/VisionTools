@@ -78,9 +78,6 @@
       "id": "images",
       "name": "图像",
       "type": "Image",
-      "display": {
-        "color_order": "BGR"
-      },
       "required": true
     },
     {

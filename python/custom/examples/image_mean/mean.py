@@ -1,6 +1,13 @@
 import numpy as np
 
 class ToolInstance:
+    """Measurement example.
+
+    Policy for ``upstream_status``: this tool never writes the pixels it reads, so it keeps
+    measuring a batch that arrived from a failed branch and reports its own measurement status.
+    Tools that modify their inputs must instead stop and publish the upstream status.
+    """
+
     def initialize(self, params):
         return {"__status_code": 0, "__status_message": ""}
 
