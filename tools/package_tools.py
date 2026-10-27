@@ -495,6 +495,13 @@ def package_tools(
         staging_dir.mkdir()
         final_index = _collect_package(metadata, index, payloads, staging_dir, build_dir, config)
         save_json(final_index, staging_dir / "module_index.json")
+
+        # 将构建元数据包含在发行包中 (Ticket AT-02)
+        for candidate in [build_dir / config / "build_info.json", build_dir / "build_info.json"]:
+            if candidate.is_file():
+                shutil.copy2(candidate, staging_dir / "build_info.json")
+                break
+
         _write_marker(staging_dir, targets.group)
         if not verify_package(staging_dir, build_validator):
             raise PackagingError("宿主包校验失败")

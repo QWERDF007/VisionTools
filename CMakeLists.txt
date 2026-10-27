@@ -42,6 +42,26 @@ foreach(_module IN LISTS VISIONTOOLS_BUILT_MODULES)
 endforeach()
 string(APPEND _resolved_deps_content "\n  }\n}\n")
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/resolved_dependencies.json" CONTENT "${_resolved_deps_content}")
+
+# 生成工具包构建元数据 build_info.json (Ticket AT-01)
+find_package(Git QUIET)
+set(VISIONTOOLS_COMMIT "unknown")
+if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE _vt_commit
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(_vt_commit)
+        set(VISIONTOOLS_COMMIT "${_vt_commit}")
+    endif()
+endif()
+string(TIMESTAMP VISIONTOOLS_BUILD_TIME_UTC "%Y-%m-%d %H:%M:%S UTC" UTC)
+set(_build_info_content "{\n  \"schema_version\": 1,\n  \"component\": \"VisionTools\",\n  \"version\": \"${PROJECT_VERSION}\",\n  \"commit\": \"${VISIONTOOLS_COMMIT}\",\n  \"build_time_utc\": \"${VISIONTOOLS_BUILD_TIME_UTC}\"\n}\n")
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/build_info.json" CONTENT "${_build_info_content}")
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/build_info.json" CONTENT "${_build_info_content}")
 set(_devenv_dirs "${VISIONTOOLS_OPENCV_BIN}")
 if(VISIONTOOLS_BUILD_INFER)
     list(APPEND _devenv_dirs "${INFERRT_BIN_DIR}" "${VISIONTOOLS_CUDA_BIN}" "${TRT_ROOT}/bin")
