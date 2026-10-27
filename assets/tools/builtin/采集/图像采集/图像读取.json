@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 4,
   "category": "采集",
   "subcategory": "图像采集",
   "tool_id": "visionrt.image.read",
@@ -9,59 +9,66 @@
   "init_params": [],
   "inputs": [
     {
-      "id": "mode",
-      "name": "读取模式",
-      "type": "String",
-      "default": "file",
-      "editor": "text",
-      "tab": "基本输入",
-      "options": [
-        "file",
-        "directory"
-      ],
-      "required": true
-    },
-    {
       "id": "path",
-      "name": "文件或目录路径",
+      "name": "图像路径",
       "type": "String",
       "default": "",
       "editor": "path",
-      "path_mode_from": "mode",
       "tab": "基本输入",
       "required": true
     },
     {
-      "id": "color",
-      "name": "色彩模式",
+      "id": "recursive",
+      "name": "递归选项",
+      "type": "Bool",
+      "default": false,
+      "editor": "bool",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "traversal",
+      "name": "遍历选项",
       "type": "String",
-      "default": "bgr",
+      "default": "循环",
+      "options": [
+        "循环",
+        "不循环"
+      ],
       "editor": "text",
       "tab": "基本输入",
-      "options": [
-        "bgr",
-        "gray",
-        "unchanged"
-      ],
       "required": true
     },
     {
-      "id": "limit",
-      "name": "最大数量",
+      "id": "order",
+      "name": "遍历顺序",
+      "type": "String",
+      "default": "顺序（下一张）",
+      "options": [
+        "顺序（下一张）",
+        "逆序（上一张）"
+      ],
+      "editor": "text",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "count",
+      "name": "图像数量",
       "type": "Int",
-      "default": 0,
-      "min": 0,
+      "default": 1,
+      "min": 1,
+      "max": 64,
       "editor": "number",
       "tab": "基本输入",
       "required": true
     },
     {
-      "id": "max_batch_bytes",
-      "name": "批次解码字节上限",
-      "type": "Int",
-      "default": 0,
-      "min": 0,
-      "editor": "number",
+      "id": "reload",
+      "name": "重新读图",
+      "type": "Bool",
+      "default": false,
+      "editor": "bool",
       "tab": "基本输入",
       "required": true
     }
@@ -69,8 +76,8 @@
   "outputs": [
     {
       "id": "images",
-      "name": "图像批次",
-      "type": "ImageBatch",
+      "name": "图像",
+      "type": "Image",
       "display": {
         "color_order": "BGR"
       },
@@ -79,9 +86,27 @@
     {
       "id": "paths",
       "name": "文件路径",
-      "type": "StringArray",
+      "type": "Array",
       "rank": 1,
-      "layout": "dense",
+      "dtype": "string",
+      "required": true
+    },
+    {
+      "id": "current_index",
+      "name": "当前索引",
+      "type": "Int",
+      "required": true
+    },
+    {
+      "id": "total_count",
+      "name": "目录总数量",
+      "type": "Int",
+      "required": true
+    },
+    {
+      "id": "end_reached",
+      "name": "已到末项",
+      "type": "Bool",
       "required": true
     }
   ]

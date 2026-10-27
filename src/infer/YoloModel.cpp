@@ -2,6 +2,8 @@
 
 #include "InferProtocol.h"
 
+#include "common/UpstreamStatus.h"
+
 #include <inferrt/model/Buffers.hpp>
 #include <inferrt/model/ModelFactory.hpp>
 #include <inferrt/model/Utils.hpp>
@@ -41,7 +43,7 @@ int integer(const Values &values, const char *name, int minimum)
 
 std::string text(const Values &values, const char *name)
 {
-    return requiredParameter<Utf8>(values, name).str();
+    return requiredParameter<std::string>(values, name);
 }
 
 std::string utf8Path(const std::filesystem::path &path)
@@ -317,36 +319,41 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
     {
         if (!state_)
             return missingResult({-3, "YOLO 执行失败：模型未初始化"});
+        // A branch the condition tool did not select must not load a model or touch the device.
+        if (const auto upstream = visiontools::upstreamStatus(inputs); upstream != 0)
+            return missingResult({upstream, "上游未选中本分支，工具未执行"});
         const auto found = inputs.find(yolo_ports::in::IMAGES);
-        if (found == inputs.end() || !std::holds_alternative<ImageBatch>(found->second))
-            throw ContractError("输入端口 'images' 缺失或不是 ImageBatch");
-        const auto               &images = std::get<ImageBatch>(found->second);
+        if (found == inputs.end() || isMissing(found->second))
+            throw ContractError("输入端口 'images' 缺失");
+        validateValue({Type::Image}, found->second);
+        const auto               &images = std::get<DataRef<Image>>(found->second);
         const DetectionParameters parameters{requiredParameter<double>(inputs, yolo_ports::in::CONF_THRESHOLD),
                                              requiredParameter<double>(inputs, yolo_ports::in::NMS_THRESHOLD),
                                              requiredParameter<std::int64_t>(inputs, yolo_ports::in::MAX_DETECTIONS)};
         validateParameters(parameters);
-        for (const auto &image : images.images())
+        for (const auto &image : images.get())
         {
-            if (image.empty() || image.readOnlyMat().depth() != CV_8U
+            if (image.empty() || image.depth() != CV_8U
                 || (image.channels() != 1 && image.channels() != 3 && image.channels() != 4))
                 throw ContractError("输入端口 'images' 必须包含非空 uint8 灰度/BGR/BGRA 图像");
         }
         auto &state = *state_;
         cudaCheck(cudaSetDevice(state.device), "cudaSetDevice");
-        std::vector<std::vector<Roi>> rois;
-        std::vector<NumericBuffer>    scores, classes;
-        std::vector<StringBuffer>     names;
-        const auto                    batch = images.images().size();
+        ROI                           rois;
+        NestedVector<float, 2>        scores;
+        NestedVector<std::int64_t, 2> classes;
+        NestedVector<std::string, 2>  names;
+        const auto                    batch = images.get().size();
         rois.reserve(batch);
         scores.reserve(batch);
         classes.reserve(batch);
         names.reserve(batch);
         if (traces)
             traces->reserve(batch);
-        for (const auto &image : images.images())
+        for (const auto &image : images.get())
         {
             cv::Mat        converted;
-            const cv::Mat *bgr = &image.readOnlyMat();
+            const cv::Mat *bgr = &image;
             if (image.channels() != 3)
             {
                 cv::cvtColor(*bgr, converted, image.channels() == 1 ? cv::COLOR_GRAY2BGR : cv::COLOR_BGRA2BGR);
@@ -392,7 +399,7 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             const auto detections = postprocess(heads, geometry, parameters, trace ? &trace->candidates : nullptr);
             if (trace)
                 trace->detections = detections;
-            std::vector<Roi>          imageRois;
+            std::vector<std::vector<double>> imageRois;
             std::vector<float>        imageScores;
             std::vector<std::int64_t> imageClasses;
             std::vector<std::string>  imageNames;
@@ -404,27 +411,23 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             for (const auto &detection : detections)
             {
                 const auto &box = detection.box;
-                imageRois.push_back(Roi::rectangle(static_cast<float>(box.x1), static_cast<float>(box.y1),
-                                                   static_cast<float>(box.x2 - box.x1),
-                                                   static_cast<float>(box.y2 - box.y1), 0));
+                imageRois.push_back({2, static_cast<double>(box.x1), static_cast<double>(box.y1),
+                                     static_cast<double>(box.x2) - box.x1, static_cast<double>(box.y2) - box.y1, 0});
                 imageScores.push_back(detection.score);
                 imageClasses.push_back(detection.classId);
                 imageNames.push_back(state.names[static_cast<std::size_t>(detection.classId)]);
             }
             rois.push_back(std::move(imageRois));
-            const auto length = static_cast<std::int64_t>(count);
-            scores.push_back(NumericBuffer::copy(DType::Float32, {length}, std::as_bytes(std::span(imageScores))));
-            classes.push_back(NumericBuffer::copy(DType::Int64, {length}, std::as_bytes(std::span(imageClasses))));
-            names.emplace_back(std::vector<std::int64_t>{length}, std::move(imageNames));
+            scores.push_back(std::move(imageScores));
+            classes.push_back(std::move(imageClasses));
+            names.push_back(std::move(imageNames));
         }
-        return {
-            executionSuccess(),
-            {{yolo_ports::out::IMAGES, images},
-             {yolo_ports::out::ROIS, RoiBatch(std::move(rois))},
-             {yolo_ports::out::SCORES, NumericArray(DType::Float32, 2, Layout::BatchRagged, std::move(scores))},
-             {yolo_ports::out::CLASSES, NumericArray(DType::Int64, 2, Layout::BatchRagged, std::move(classes))},
-             {yolo_ports::out::CLASS_NAMES, StringArray(2, Layout::BatchRagged, std::move(names))}}
-        };
+        return toolResult({{yolo_ports::out::IMAGES, images},
+                           {yolo_ports::out::ROIS, DataRef<ROI>(std::move(rois))},
+                           {yolo_ports::out::SCORES, Array(std::move(scores))},
+                           {yolo_ports::out::CLASSES, Array(std::move(classes))},
+                           {yolo_ports::out::CLASS_NAMES, Array(std::move(names))}},
+                          executionSuccess());
     }
     catch (const ContractError &error)
     {

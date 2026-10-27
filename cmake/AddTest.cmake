@@ -4,6 +4,7 @@ include_guard(GLOBAL)
 function(visiontools_test_path out_var)
     set(_paths
         "${CMAKE_BINARY_DIR}/src/preprocess"
+        "${CMAKE_BINARY_DIR}/src/metrology"
         "${CMAKE_BINARY_DIR}/src/infer"
         "${VISIONTOOLS_OPENCV_BIN}"
     )

@@ -111,7 +111,11 @@ std::vector<Detection> postprocess(std::span<const HeadView> heads, const Letter
                 candidates->push_back(detection);
             if (bestScore >= parameters.confidence && detection.box.x2 > detection.box.x1
                 && detection.box.y2 > detection.box.y1)
-                selected.push_back(detection);
+            {
+                const auto sourceBox = inverse(detection.box, geometry);
+                if (sourceBox.x2 > sourceBox.x1 && sourceBox.y2 > sourceBox.y1)
+                    selected.push_back(detection);
+            }
         }
         offset += grid;
     }

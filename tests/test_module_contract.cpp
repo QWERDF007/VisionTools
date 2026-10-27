@@ -1,4 +1,5 @@
 #include <visionrt/contracts/Module.h>
+#include "result_view.h"
 #include "TestRegistry.h"
 #include <visionrt/contracts/Tool.h>
 
@@ -61,8 +62,9 @@ int main()
     REQUIRE(api->register_tools(registry).code == 0, "Registration must succeed");
     const std::set<std::string> expected{
         "visionrt.image.read", "visionrt.roi.projection", "visionrt.image.crop",
-        "visionrt.image.preprocess", "visionrt.detection.filter", "visiontools.preprocess.adaptive_binary"};
-    REQUIRE(registry.factories.size() == expected.size(), "Exactly six CPU factories must be registered");
+        "visionrt.image.preprocess", "visionrt.detection.filter", "visiontools.preprocess.adaptive_binary",
+        "visiontools.image.rotate", "visiontools.image.brightness"};
+    REQUIRE(registry.factories.size() == expected.size(), "Every declared CPU factory must be registered");
     for (const auto &id : expected)
         REQUIRE(registry.factories.contains(id), "Every stable ID must be registered");
     REQUIRE(!registry.factories.contains("AdaptiveBinaryTool"), "Legacy class-name alias must not be registered");
@@ -89,23 +91,23 @@ int main()
     REQUIRE(uninitialized->release().code == 0, "Release must be idempotent");
     factory.destroy(uninitialized);
     // 5. Lifecycle and Snapshot persistence across execute/release/destroy (VS-05 / NS-05)
-    visionrt::OwnedImage snapshotImage;
+    cv::Mat snapshotImage;
     {
         visionrt::IToolInstance *inst = factory.create(&services, &status);
         REQUIRE(inst != nullptr, "Known registry must return instance");
 
         cv::Mat          gray(60, 60, CV_8UC1, cv::Scalar(150));
         visionrt::Values in1;
-        in1.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(gray)}));
+        in1.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(gray).clone()}));
         in1.emplace("block_size", std::int64_t(5));
         in1.emplace("constant_offset", 2.0);
 
         auto res1 = inst->execute(in1);
-        REQUIRE(res1.status.code == 0, "Execute 1 must succeed");
-        REQUIRE(res1.status.message == "运行成功", "Execute 1 success message must be shared");
-        const auto *outBatch1 = std::get_if<visionrt::ImageBatch>(&res1.outputs["images"]);
-        REQUIRE(outBatch1 != nullptr && !outBatch1->images().empty(), "Execute 1 must return valid image");
-        snapshotImage = outBatch1->images()[0];
+        REQUIRE(testview::status(res1).code == 0, "Execute 1 must succeed");
+        REQUIRE(testview::status(res1).message == "运行成功", "Execute 1 success message must be shared");
+        const auto *outBatch1 = std::get_if<visionrt::DataRef<visionrt::Image>>(&res1.outputs["images"]);
+        REQUIRE(outBatch1 != nullptr && !outBatch1->get().empty(), "Execute 1 must return valid image");
+        snapshotImage = outBatch1->get()[0];
 
         // Execute a second time with different non-uniform data
         cv::Mat gray2(40, 40, CV_8UC1);
@@ -117,15 +119,15 @@ int main()
             }
         }
         visionrt::Values in2;
-        in2.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(gray2)}));
+        in2.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(gray2).clone()}));
         in2.emplace("block_size", std::int64_t(3));
         in2.emplace("constant_offset", 1.0);
         auto res2 = inst->execute(in2);
-        REQUIRE(res2.status.code == 0, "Execute 2 must succeed");
-        REQUIRE(res2.status.message == "运行成功", "Execute 2 success message must be shared");
+        REQUIRE(testview::status(res2).code == 0, "Execute 2 must succeed");
+        REQUIRE(testview::status(res2).message == "运行成功", "Execute 2 success message must be shared");
 
         // Verify snapshot from execute 1 is still completely valid and all pixels match
-        const auto &snapMat = snapshotImage.readOnlyMat();
+        const auto &snapMat = snapshotImage;
         REQUIRE(snapMat.rows == 60 && snapMat.cols == 60, "Snapshot 1 dimensions must remain valid");
         for (int r = 0; r < 60; ++r)
         {
@@ -140,14 +142,14 @@ int main()
         REQUIRE(inst->release().code == 0, "Repeated release must succeed (idempotent)");
 
         // Snapshot must remain valid after release
-        REQUIRE(snapshotImage.rows() == 60 && snapMat.at<unsigned char>(0, 0) == 255,
+        REQUIRE(snapshotImage.rows == 60 && snapMat.at<unsigned char>(0, 0) == 255,
                 "Snapshot must remain valid after release");
 
         // Destroy instance
         factory.destroy(inst);
     }
     // Snapshot must remain valid after instance destruction
-    REQUIRE(snapshotImage.rows() == 60 && snapshotImage.readOnlyMat().at<unsigned char>(0, 0) == 255,
+    REQUIRE(snapshotImage.rows == 60 && snapshotImage.at<unsigned char>(0, 0) == 255,
             "Snapshot must remain valid after destroy");
 
     // 6. Concurrency: 2 instances running concurrently with independent states (VS-05 / NS-05)
@@ -168,7 +170,7 @@ int main()
                 }
             }
             visionrt::Values inputs;
-            inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(img)}));
+            inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
             inputs.emplace("block_size", std::int64_t(7));
             inputs.emplace("constant_offset", 3.0);
 
@@ -176,11 +178,11 @@ int main()
             for (int i = 0; i < 10; ++i)
             {
                 auto res = inst->execute(inputs);
-                REQUIRE(res.status.code == 0, "Execute must succeed");
-                const auto *b = std::get_if<visionrt::ImageBatch>(&res.outputs["images"]);
-                REQUIRE(b != nullptr && !b->images().empty(), "Output images must be non-empty");
-                REQUIRE(b->images()[0].rows() == size && b->images()[0].cols() == size, "Concurrent output size match");
-                roundOutputs.push_back(b->images()[0].readOnlyMat().clone());
+                REQUIRE(testview::status(res).code == 0, "Execute must succeed");
+                const auto *b = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+                REQUIRE(b != nullptr && !b->get().empty(), "Output images must be non-empty");
+                REQUIRE(b->get()[0].rows == size && b->get()[0].cols == size, "Concurrent output size match");
+                roundOutputs.push_back(b->get()[0].clone());
             }
 
             inst->release();
@@ -230,7 +232,7 @@ int main()
             }
         }
         visionrt::Values inputs;
-        inputs.emplace("images", visionrt::ImageBatch({visionrt::OwnedImage::copyOf(nonUniform)}));
+        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(nonUniform).clone()}));
         inputs.emplace("block_size", std::int64_t(5));
         inputs.emplace("constant_offset", 1.0);
 
@@ -238,7 +240,7 @@ int main()
         for (int w = 0; w < 5; ++w)
         {
             auto res = inst->execute(inputs);
-            REQUIRE(res.status.code == 0, "Warmup execute must succeed");
+            REQUIRE(testview::status(res).code == 0, "Warmup execute must succeed");
         }
         std::size_t rssWarmup = getProcessRSS();
 
@@ -251,7 +253,7 @@ int main()
             auto t0  = std::chrono::high_resolution_clock::now();
             auto res = inst->execute(inputs);
             auto t1  = std::chrono::high_resolution_clock::now();
-            REQUIRE(res.status.code == 0, "100 consecutive execute must succeed");
+            REQUIRE(testview::status(res).code == 0, "100 consecutive execute must succeed");
             latencies_us.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
 
             if (i == 24)

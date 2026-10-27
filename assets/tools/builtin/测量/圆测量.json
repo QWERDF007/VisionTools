@@ -1,0 +1,321 @@
+{
+  "schema_version": 4,
+  "category": "测量",
+  "subcategory": "尺寸测量",
+  "tool_id": "visiontools.measure.circle",
+  "display_name": "测量圆",
+  "version": "1.0.0",
+  "kind": "cpp",
+  "init_params": [],
+  "inputs": [
+    {
+      "id": "images",
+      "name": "图像",
+      "type": "Image",
+      "tab": "基本输入",
+      "required": false
+    },
+    {
+      "id": "rois",
+      "name": "测量区域",
+      "type": "ROI",
+      "default": [],
+      "editor": "array",
+      "tab": "基本输入",
+      "required": true,
+      "image_input": "images",
+      "alignment_input": "alignment"
+    },
+    {
+      "id": "alignment",
+      "name": "参考到当前变换",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 3,
+      "default": [],
+      "editor": "array",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "num_calipers",
+      "name": "卡尺数量",
+      "type": "Int",
+      "default": 64,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 12,
+      "max": 4096,
+      "required": true
+    },
+    {
+      "id": "search_half_width",
+      "name": "径向半搜索宽度",
+      "type": "Float",
+      "default": 8.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 0.5,
+      "max": 4096.0,
+      "decimals": 2,
+      "required": true
+    },
+    {
+      "id": "average_width",
+      "name": "切向平均宽度",
+      "type": "Float",
+      "default": 3.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 1.0,
+      "max": 1024.0,
+      "decimals": 2,
+      "required": true
+    },
+    {
+      "id": "sigma",
+      "name": "平滑标准差",
+      "type": "Float",
+      "default": 1.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 0.1,
+      "max": 20.0,
+      "decimals": 2,
+      "required": true
+    },
+    {
+      "id": "min_gradient",
+      "name": "最小梯度",
+      "type": "Float",
+      "default": 8.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 0.0,
+      "max": 255.0,
+      "decimals": 2,
+      "required": true
+    },
+    {
+      "id": "polarity",
+      "name": "边缘极性",
+      "type": "String",
+      "default": "any",
+      "editor": "text",
+      "tab": "基本输入",
+      "options": [
+        "any",
+        "dark_to_light",
+        "light_to_dark"
+      ],
+      "required": true
+    },
+    {
+      "id": "min_points",
+      "name": "最少有效点",
+      "type": "Int",
+      "default": 12,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 3,
+      "max": 4096,
+      "required": true
+    },
+    {
+      "id": "min_completeness",
+      "name": "最小完整度",
+      "type": "Float",
+      "default": 0.6,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 0.0,
+      "max": 1.0,
+      "decimals": 2,
+      "required": true
+    },
+    {
+      "id": "min_coverage_deg",
+      "name": "最小覆盖角度",
+      "type": "Float",
+      "default": 180.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 0.0,
+      "max": 360.0,
+      "decimals": 1,
+      "required": true
+    },
+    {
+      "id": "radius_min",
+      "name": "最小半径",
+      "type": "Float",
+      "default": 0.5,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 0.0,
+      "decimals": 3,
+      "required": true
+    },
+    {
+      "id": "radius_max",
+      "name": "最大半径",
+      "type": "Float",
+      "default": 1000000.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 0.0,
+      "decimals": 3,
+      "required": true
+    },
+    {
+      "id": "max_rms",
+      "name": "最大拟合误差",
+      "type": "Float",
+      "default": 1.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 0.0,
+      "decimals": 3,
+      "required": true
+    },
+    {
+      "id": "units_per_pixel",
+      "name": "每像素物理长度",
+      "type": "Float",
+      "default": 1.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 1e-09,
+      "decimals": 6,
+      "required": true
+    },
+    {
+      "id": "unit",
+      "name": "单位",
+      "type": "String",
+      "default": "px",
+      "editor": "text",
+      "tab": "基本输入",
+      "required": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "images",
+      "name": "显示图像",
+      "type": "Image",
+      "required": true,
+      "display": {
+        "color_order": "BGR"
+      }
+    },
+    {
+      "id": "valid",
+      "name": "逐ROI有效性",
+      "type": "Array",
+      "dtype": "bool",
+      "rank": 2,
+      "required": true
+    },
+    {
+      "id": "reasons",
+      "name": "逐ROI说明",
+      "type": "Array",
+      "dtype": "string",
+      "rank": 2,
+      "required": true
+    },
+    {
+      "id": "valid_count",
+      "name": "逐图有效圆数量",
+      "type": "Array",
+      "dtype": "int64",
+      "rank": 1,
+      "required": true
+    },
+    {
+      "id": "source_roi_indices",
+      "name": "有效圆来源索引",
+      "type": "Array",
+      "dtype": "int64",
+      "rank": 2,
+      "required": true
+    },
+    {
+      "id": "circles",
+      "name": "测得圆",
+      "type": "ROI",
+      "required": true,
+      "image_port": "images"
+    },
+    {
+      "id": "centers",
+      "name": "圆心坐标",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 3,
+      "required": true
+    },
+    {
+      "id": "radius_px",
+      "name": "半径像素值",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 2,
+      "required": true
+    },
+    {
+      "id": "radius",
+      "name": "半径物理值",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 2,
+      "required": true
+    },
+    {
+      "id": "rms",
+      "name": "拟合误差像素值",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 2,
+      "required": true
+    },
+    {
+      "id": "completeness",
+      "name": "完整度",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 2,
+      "required": true
+    },
+    {
+      "id": "used_edges",
+      "name": "拟合边缘点",
+      "type": "ROI",
+      "required": true,
+      "image_port": "images"
+    },
+    {
+      "id": "unit",
+      "name": "单位",
+      "type": "String",
+      "required": true
+    }
+  ],
+  "interaction": {
+    "helper_tool_id": "visiontools.assist.circle",
+    "input_map": {
+      "images": "images",
+      "seed_rois": "rois",
+      "alignment": "alignment"
+    },
+    "proposal_map": {
+      "proposal_rois": "rois",
+      "suggested_search_half_width": "search_half_width",
+      "suggested_polarity": "polarity"
+    },
+    "roi_kinds": [
+      "circle"
+    ]
+  }
+}

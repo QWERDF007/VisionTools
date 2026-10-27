@@ -1,0 +1,265 @@
+{
+  "schema_version": 4,
+  "category": "测量",
+  "subcategory": "尺寸测量",
+  "tool_id": "visiontools.measure.row_spacing",
+  "display_name": "测量行间距",
+  "version": "1.0.0",
+  "kind": "cpp",
+  "init_params": [],
+  "inputs": [
+    {
+      "id": "images",
+      "name": "图像",
+      "type": "Image",
+      "tab": "基本输入",
+      "required": false
+    },
+    {
+      "id": "rois",
+      "name": "测量区域",
+      "type": "ROI",
+      "default": [],
+      "editor": "array",
+      "tab": "基本输入",
+      "required": true,
+      "image_input": "images",
+      "alignment_input": "alignment"
+    },
+    {
+      "id": "alignment",
+      "name": "参考到当前变换",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 3,
+      "default": [],
+      "editor": "array",
+      "tab": "基本输入",
+      "required": true
+    },
+    {
+      "id": "sigma",
+      "name": "平滑标准差",
+      "type": "Float",
+      "default": 1.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 0.1,
+      "max": 20.0,
+      "decimals": 2,
+      "required": true
+    },
+    {
+      "id": "min_gradient",
+      "name": "最小梯度",
+      "type": "Float",
+      "default": 8.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 0.0,
+      "max": 255.0,
+      "decimals": 2,
+      "required": true
+    },
+    {
+      "id": "object_polarity",
+      "name": "物体极性",
+      "type": "String",
+      "default": "bright",
+      "editor": "text",
+      "tab": "基本输入",
+      "options": [
+        "bright",
+        "dark"
+      ],
+      "required": true
+    },
+    {
+      "id": "width_min",
+      "name": "合格宽度下限",
+      "type": "Float",
+      "default": 1.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 0.0,
+      "decimals": 3,
+      "required": true
+    },
+    {
+      "id": "width_max",
+      "name": "合格宽度上限",
+      "type": "Float",
+      "default": 1000000.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 0.0,
+      "decimals": 3,
+      "required": true
+    },
+    {
+      "id": "units_per_pixel",
+      "name": "每像素物理长度",
+      "type": "Float",
+      "default": 1.0,
+      "editor": "number",
+      "tab": "基本输入",
+      "min": 1e-09,
+      "decimals": 6,
+      "required": true
+    },
+    {
+      "id": "unit",
+      "name": "单位",
+      "type": "String",
+      "default": "px",
+      "editor": "text",
+      "tab": "基本输入",
+      "required": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "images",
+      "name": "显示图像",
+      "type": "Image",
+      "required": true,
+      "display": {
+        "color_order": "BGR"
+      }
+    },
+    {
+      "id": "valid_roi",
+      "name": "逐ROI有效性",
+      "type": "Array",
+      "dtype": "bool",
+      "rank": 2,
+      "required": true
+    },
+    {
+      "id": "reasons",
+      "name": "逐ROI说明",
+      "type": "Array",
+      "dtype": "string",
+      "rank": 2,
+      "required": true
+    },
+    {
+      "id": "pair_count",
+      "name": "完整物体数量",
+      "type": "Array",
+      "dtype": "int64",
+      "rank": 2,
+      "required": true
+    },
+    {
+      "id": "accepted_count",
+      "name": "宽度合格数量",
+      "type": "Array",
+      "dtype": "int64",
+      "rank": 2,
+      "required": true
+    },
+    {
+      "id": "unpaired_count",
+      "name": "未配对边缘数量",
+      "type": "Array",
+      "dtype": "int64",
+      "rank": 2,
+      "required": true
+    },
+    {
+      "id": "accepted",
+      "name": "逐物体宽度合格",
+      "type": "Array",
+      "dtype": "bool",
+      "rank": 3,
+      "required": true
+    },
+    {
+      "id": "width_px",
+      "name": "宽度像素值",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 3,
+      "required": true
+    },
+    {
+      "id": "gap_px",
+      "name": "间隙像素值",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 3,
+      "required": true
+    },
+    {
+      "id": "pitch_px",
+      "name": "节距像素值",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 3,
+      "required": true
+    },
+    {
+      "id": "width",
+      "name": "宽度物理值",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 3,
+      "required": true
+    },
+    {
+      "id": "gap",
+      "name": "间隙物理值",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 3,
+      "required": true
+    },
+    {
+      "id": "pitch",
+      "name": "节距物理值",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 3,
+      "required": true
+    },
+    {
+      "id": "pair_points",
+      "name": "物体边缘中点",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 4,
+      "required": true
+    },
+    {
+      "id": "overlay_segments",
+      "name": "边缘显示线段",
+      "type": "ROI",
+      "required": true,
+      "image_port": "images"
+    },
+    {
+      "id": "unit",
+      "name": "单位",
+      "type": "String",
+      "required": true
+    }
+  ],
+  "interaction": {
+    "helper_tool_id": "visiontools.assist.row_spacing",
+    "input_map": {
+      "images": "images",
+      "seed_rois": "rois",
+      "alignment": "alignment"
+    },
+    "proposal_map": {
+      "proposal_rois": "rois",
+      "suggested_polarity": "object_polarity",
+      "suggested_width_min": "width_min",
+      "suggested_width_max": "width_max"
+    },
+    "roi_kinds": [
+      "rectangle"
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 4,
   "category": "预处理",
   "subcategory": "ROI",
   "tool_id": "visionrt.roi.projection",
@@ -11,8 +11,8 @@
     {
       "id": "images",
       "name": "图像",
-      "type": "ImageBatch",
-      "required": true
+      "type": "Image",
+      "required": false
     },
     {
       "id": "axis",
@@ -95,7 +95,7 @@
     {
       "id": "images",
       "name": "输出图像",
-      "type": "ImageBatch",
+      "type": "Image",
       "display": {
         "same_geometry_as_input": "images",
         "color_order": "BGR"
@@ -105,7 +105,7 @@
     {
       "id": "rois",
       "name": "ROI批次",
-      "type": "RoiBatch",
+      "type": "ROI",
       "image_port": "images",
       "required": true
     }

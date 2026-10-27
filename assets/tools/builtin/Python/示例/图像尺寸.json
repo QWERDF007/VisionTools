@@ -1,0 +1,33 @@
+{
+  "schema_version": 4,
+  "category": "Python",
+  "subcategory": "示例",
+  "tool_id": "visiontools.python.image_sizes",
+  "display_name": "图像尺寸",
+  "version": "1.0.0",
+  "kind": "python_function",
+  "entry": {
+    "package": "examples/image_sizes",
+    "file": "tool.py",
+    "symbol": "execute"
+  },
+  "init_params": [],
+  "inputs": [
+    {
+      "id": "images",
+      "name": "输入图像",
+      "type": "Image",
+      "required": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "sizes",
+      "name": "图像尺寸",
+      "type": "Array",
+      "dtype": "int64",
+      "rank": 2,
+      "required": true
+    }
+  ]
+}

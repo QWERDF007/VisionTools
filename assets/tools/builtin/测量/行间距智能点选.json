@@ -1,0 +1,115 @@
+{
+  "schema_version": 4,
+  "category": "测量",
+  "subcategory": "辅助",
+  "tool_id": "visiontools.assist.row_spacing",
+  "display_name": "行间距智能点选",
+  "version": "1.0.0",
+  "kind": "cpp",
+  "visibility": "assist",
+  "init_params": [],
+  "inputs": [
+    {
+      "id": "images",
+      "name": "当前图像",
+      "type": "Image",
+      "required": true
+    },
+    {
+      "id": "cursor",
+      "name": "光标像素坐标",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 1,
+      "editor": "array",
+      "required": true
+    },
+    {
+      "id": "phase",
+      "name": "辅助阶段",
+      "type": "String",
+      "default": "hover",
+      "editor": "text",
+      "options": [
+        "hover",
+        "learn"
+      ],
+      "required": true
+    },
+    {
+      "id": "seed_rois",
+      "name": "候选种子",
+      "type": "ROI",
+      "default": [],
+      "editor": "array",
+      "image_input": "images",
+      "alignment_input": "alignment",
+      "required": true
+    },
+    {
+      "id": "alignment",
+      "name": "参考到当前变换",
+      "type": "Array",
+      "dtype": "float64",
+      "rank": 3,
+      "default": [],
+      "editor": "array",
+      "required": true
+    },
+    {
+      "id": "search_extent",
+      "name": "最大搜索半径",
+      "type": "Int",
+      "default": 256,
+      "editor": "number",
+      "min": 16,
+      "max": 2048,
+      "required": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "preview_rois",
+      "name": "候选轮廓",
+      "type": "ROI",
+      "image_port": "images",
+      "required": true
+    },
+    {
+      "id": "proposal_rois",
+      "name": "拟提交ROI",
+      "type": "ROI",
+      "required": true
+    },
+    {
+      "id": "candidate_valid",
+      "name": "候选有效",
+      "type": "Bool",
+      "required": true
+    },
+    {
+      "id": "quality",
+      "name": "候选质量说明",
+      "type": "String",
+      "required": true
+    },
+    {
+      "id": "suggested_polarity",
+      "name": "建议极性",
+      "type": "String",
+      "required": true
+    },
+    {
+      "id": "suggested_width_min",
+      "name": "建议宽度下限",
+      "type": "Float",
+      "required": true
+    },
+    {
+      "id": "suggested_width_max",
+      "name": "建议宽度上限",
+      "type": "Float",
+      "required": true
+    }
+  ]
+}

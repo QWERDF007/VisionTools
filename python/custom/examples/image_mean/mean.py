@@ -11,7 +11,7 @@ class ToolInstance:
                     "__status_message": "输入端口 'images' 缺失", "means": None}
         if not isinstance(images, list):
             return {"__status_code": 1,
-                    "__status_message": "输入端口 'images' 需要图像批次 list", "means": None}
+                    "__status_message": "输入端口 'images' 需要图像 list", "means": None}
         for index, image in enumerate(images):
             if not isinstance(image, np.ndarray):
                 return {"__status_code": 1,
@@ -27,8 +27,7 @@ class ToolInstance:
                         "__status_message": (f"输入端口 'images' 批次索引 {index} "
                                              f"图像像素需要实数数值类型，实际 {image.dtype}"),
                         "means": None}
-        means = np.asarray([float(image.mean()) for image in images],
-                           dtype=np.float64)
+        means = [float(image.mean()) for image in images]
         return {"__status_code": 0, "__status_message": "运行成功", "means": means}
 
     def release(self):

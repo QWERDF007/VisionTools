@@ -1,6 +1,7 @@
 #include "DetectionFilterTool.h"
 
-#include "InputPorts.h"
+#include "common/InputValues.h"
+#include "common/UpstreamStatus.h"
 
 #include <algorithm>
 #include <cmath>
@@ -12,11 +13,6 @@ namespace {
 
 namespace p = ports::detection_filter;
 
-template<class T>
-visionrt::NumericBuffer makeBuffer(visionrt::DType dtype, std::vector<std::int64_t> shape, const std::vector<T> &values)
-{
-    return visionrt::NumericBuffer::copy(dtype, std::move(shape), std::as_bytes(std::span(values)));
-}
 
 } // namespace
 
@@ -34,176 +30,132 @@ visionrt::ToolStatus DetectionFilterTool::initialize(const visionrt::Values &par
     return {};
 }
 
+
+namespace {
+visionrt::Values missingOutputs()
+{
+    return {{p::out::IMAGES, visionrt::Missing{}},
+            {p::out::ROIS, visionrt::Missing{}},
+            {p::out::SCORES, visionrt::Missing{}},
+            {p::out::CLASSES, visionrt::Missing{}},
+            {p::out::CLASS_NAMES, visionrt::Missing{}},
+            {p::out::COUNTS, visionrt::Missing{}}};
+}
+} // namespace
+
 visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs)
 {
+    // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
+    if (const auto upstream = upstreamStatus(inputs); upstream != 0)
+        return skippedByUpstream(upstream, missingOutputs());
     try
     {
-        const auto *images = std::get_if<visionrt::ImageBatch>(&requireInput(inputs, p::in::IMAGES));
-        if (!images)
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::IMAGES) + "' 必须是 ImageBatch");
-        const auto *rois = std::get_if<visionrt::RoiBatch>(&requireInput(inputs, p::in::ROIS));
-        if (!rois)
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::ROIS) + "' 必须是 RoiBatch");
-        const auto *scores = std::get_if<visionrt::NumericArray>(&requireInput(inputs, p::in::SCORES));
-        if (!scores)
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::SCORES) + "' 必须是 NumericArray");
-        const auto *classes = std::get_if<visionrt::NumericArray>(&requireInput(inputs, p::in::CLASSES));
-        if (!classes)
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::CLASSES) + "' 必须是 NumericArray");
-        const auto *names = std::get_if<visionrt::StringArray>(&requireInput(inputs, p::in::CLASS_NAMES));
-        if (!names)
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::CLASS_NAMES) + "' 必须是 StringArray");
-        const auto *allowedArray = std::get_if<visionrt::NumericArray>(&requireInput(inputs, p::in::ALLOWED_CLASSES));
-        if (!allowedArray)
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::ALLOWED_CLASSES) + "' 必须是 NumericArray");
-
-        if (scores->dtype() != visionrt::DType::Float32 || classes->dtype() != visionrt::DType::Int64
-            || allowedArray->dtype() != visionrt::DType::Int64)
-        {
-            throw visionrt::ContractError("检测过滤输入数组的 dtype 无效：scores 需要 float32，classes/allowed_classes 需要 int64");
-        }
-
+        const auto &images
+            = requireTypedInput<visionrt::DataRef<visionrt::Image>>(inputs, p::in::IMAGES, {visionrt::Type::Image});
+        const auto &rois
+            = requireTypedInput<visionrt::DataRef<visionrt::ROI>>(inputs, p::in::ROIS, {visionrt::Type::ROI}).get();
+        const auto &scores = requireTypedInput<visionrt::Array>(inputs, p::in::SCORES,
+                                                                {visionrt::Type::Array, visionrt::DType::Float32, 2})
+                                 .get<visionrt::NestedVector<float, 2>>();
+        const auto &classes = requireTypedInput<visionrt::Array>(inputs, p::in::CLASSES,
+                                                                 {visionrt::Type::Array, visionrt::DType::Int64, 2})
+                                  .get<visionrt::NestedVector<std::int64_t, 2>>();
+        const auto &names = requireTypedInput<visionrt::Array>(inputs, p::in::CLASS_NAMES,
+                                                               {visionrt::Type::Array, visionrt::DType::String, 2})
+                                .get<visionrt::NestedVector<std::string, 2>>();
+        const auto &allowed = requireTypedInput<visionrt::Array>(inputs, p::in::ALLOWED_CLASSES,
+                                                                 {visionrt::Type::Array, visionrt::DType::Int64, 1})
+                                  .get<std::vector<std::int64_t>>();
         const double minimumScore = requireFloatInRange(inputs, p::in::MIN_SCORE, 0.0, 1.0);
         const double minimumArea = requireFloat(inputs, p::in::MIN_AREA);
         if (!std::isfinite(minimumArea) || minimumArea < 0.0)
-        {
             throw visionrt::ContractError("输入端口 '" + std::string(p::in::MIN_AREA) + "' 的值 "
                                           + std::to_string(minimumArea) + " 必须为非负有限数值");
-        }
 
-        std::span<const std::int64_t> allowed;
-        if (!allowedArray->buffers().empty())
-        {
-            allowed = allowedArray->buffers()[0].values<std::int64_t>();
-        }
+        const auto batchSize = images.get().size();
+        if (rois.size() != batchSize || scores.size() != batchSize || classes.size() != batchSize
+            || names.size() != batchSize)
+            throw visionrt::ContractError("检测批次长度不一致：images=" + std::to_string(batchSize) + "，rois="
+                                          + std::to_string(rois.size()) + "，scores=" + std::to_string(scores.size())
+                                          + "，classes=" + std::to_string(classes.size())
+                                          + "，class_names=" + std::to_string(names.size()));
 
-        const auto batchSize = images->images().size();
-        if (rois->images().size() != batchSize || scores->buffers().size() != batchSize
-            || classes->buffers().size() != batchSize || names->buffers().size() != batchSize)
-        {
-            throw visionrt::ContractError("检测批次长度不一致：images=" + std::to_string(batchSize)
-                                          + "，rois=" + std::to_string(rois->images().size())
-                                          + "，scores=" + std::to_string(scores->buffers().size())
-                                          + "，classes=" + std::to_string(classes->buffers().size())
-                                          + "，class_names=" + std::to_string(names->buffers().size()));
-        }
-
-        std::vector<std::vector<visionrt::Roi>> filteredRois;
-        std::vector<visionrt::NumericBuffer>    filteredScores, filteredClasses;
-        std::vector<visionrt::StringBuffer>     filteredNames;
+        visionrt::ROI                           filteredRois;
+        visionrt::NestedVector<float, 2>        filteredScores;
+        visionrt::NestedVector<std::int64_t, 2> filteredClasses;
+        visionrt::NestedVector<std::string, 2>  filteredNames;
         std::vector<std::int64_t>               counts;
-
         filteredRois.reserve(batchSize);
         filteredScores.reserve(batchSize);
         filteredClasses.reserve(batchSize);
         filteredNames.reserve(batchSize);
         counts.reserve(batchSize);
 
-        for (std::size_t b = 0; b < batchSize; ++b)
+        for (std::size_t batch = 0; batch < batchSize; ++batch)
         {
-            const auto &imageRois = rois->images()[b];
-            const auto  imageScores = scores->buffers()[b].values<float>();
-            const auto  imageClasses = classes->buffers()[b].values<std::int64_t>();
-            const auto  imageNames = names->buffers()[b].values();
-
+            const auto &imageRois    = rois[batch];
+            const auto &imageScores  = scores[batch];
+            const auto &imageClasses = classes[batch];
+            const auto &imageNames   = names[batch];
             if (imageScores.size() != imageRois.size() || imageClasses.size() != imageRois.size()
                 || imageNames.size() != imageRois.size())
-            {
-                throw visionrt::ContractError("批次索引 " + std::to_string(b)
-                                              + " 的检测字段长度不一致：rois=" + std::to_string(imageRois.size())
-                                              + "，scores=" + std::to_string(imageScores.size())
-                                              + "，classes=" + std::to_string(imageClasses.size())
-                                              + "，class_names=" + std::to_string(imageNames.size()));
-            }
+                throw visionrt::ContractError(
+                    "批次索引 " + std::to_string(batch) + " 的检测字段长度不一致：rois="
+                    + std::to_string(imageRois.size()) + "，scores=" + std::to_string(imageScores.size()) + "，classes="
+                    + std::to_string(imageClasses.size()) + "，class_names=" + std::to_string(imageNames.size()));
 
-            std::vector<visionrt::Roi> keptRois;
-            std::vector<float>         keptScores;
-            std::vector<std::int64_t>  keptClasses;
-            std::vector<std::string>   keptNames;
-
+            auto &keptRois    = filteredRois.emplace_back();
+            auto &keptScores  = filteredScores.emplace_back();
+            auto &keptClasses = filteredClasses.emplace_back();
+            auto &keptNames   = filteredNames.emplace_back();
             keptRois.reserve(imageRois.size());
             keptScores.reserve(imageRois.size());
             keptClasses.reserve(imageRois.size());
             keptNames.reserve(imageRois.size());
-
-            for (std::size_t n = 0; n < imageRois.size(); ++n)
+            for (std::size_t detection = 0; detection < imageRois.size(); ++detection)
             {
-                if (!std::isfinite(imageScores[n]) || imageClasses[n] < 0)
+                if (!std::isfinite(imageScores[detection]) || imageClasses[detection] < 0)
+                    throw visionrt::ContractError("批次索引 " + std::to_string(batch) + " 的检测索引 "
+                                                  + std::to_string(detection) + " 的得分或类别无效");
+                if (visionrt::roiKind(imageRois[detection]) != visionrt::RoiKind::Rectangle)
+                    throw visionrt::ContractError("批次索引 " + std::to_string(batch) + " 的检测索引 "
+                                                  + std::to_string(detection) + " 的 ROI 必须是矩形");
+                const auto  &encoded = imageRois[detection];
+                const double area    = encoded[3] * encoded[4];
+                const bool   classAllowed
+                    = allowed.empty()
+                   || std::find(allowed.begin(), allowed.end(), imageClasses[detection]) != allowed.end();
+                if (imageScores[detection] >= minimumScore && area >= minimumArea && classAllowed)
                 {
-                    throw visionrt::ContractError("批次索引 " + std::to_string(b) + " 的检测索引 "
-                                                  + std::to_string(n) + " 的得分或类别无效");
-                }
-                if (imageRois[n].kind() != visionrt::RoiKind::Rectangle)
-                {
-                    throw visionrt::ContractError("批次索引 " + std::to_string(b) + " 的检测索引 "
-                                                  + std::to_string(n) + " 的 ROI 必须是矩形");
-                }
-                const auto   encoded = imageRois[n].encoded();
-                const double area = static_cast<double>(encoded[3]) * encoded[4];
-
-                const bool classAllowed
-                    = allowed.empty() || (std::find(allowed.begin(), allowed.end(), imageClasses[n]) != allowed.end());
-
-                if (imageScores[n] >= minimumScore && area >= minimumArea && classAllowed)
-                {
-                    keptRois.push_back(imageRois[n]);
-                    keptScores.push_back(imageScores[n]);
-                    keptClasses.push_back(imageClasses[n]);
-                    keptNames.push_back(std::string(imageNames[n]));
+                    keptRois.push_back(imageRois[detection]);
+                    keptScores.push_back(imageScores[detection]);
+                    keptClasses.push_back(imageClasses[detection]);
+                    keptNames.push_back(imageNames[detection]);
                 }
             }
-
-            const auto count = static_cast<std::int64_t>(keptRois.size());
-            counts.push_back(count);
-            filteredRois.push_back(std::move(keptRois));
-            filteredScores.push_back(makeBuffer(visionrt::DType::Float32, {count}, keptScores));
-            filteredClasses.push_back(makeBuffer(visionrt::DType::Int64, {count}, keptClasses));
-            filteredNames.emplace_back(std::vector<std::int64_t>{count}, std::move(keptNames));
+            counts.push_back(static_cast<std::int64_t>(keptRois.size()));
         }
 
         visionrt::Values outputs;
-        outputs.emplace(p::out::IMAGES, *images);
-        outputs.emplace(p::out::ROIS, visionrt::RoiBatch(std::move(filteredRois)));
-        outputs.emplace(p::out::SCORES,
-                        visionrt::NumericArray(visionrt::DType::Float32, 2, visionrt::Layout::BatchRagged,
-                                               std::move(filteredScores)));
-        outputs.emplace(p::out::CLASSES,
-                        visionrt::NumericArray(visionrt::DType::Int64, 2, visionrt::Layout::BatchRagged,
-                                               std::move(filteredClasses)));
-        outputs.emplace(p::out::CLASS_NAMES,
-                        visionrt::StringArray(2, visionrt::Layout::BatchRagged, std::move(filteredNames)));
-        outputs.emplace(p::out::COUNTS,
-                        visionrt::NumericArray(
-                            visionrt::DType::Int64, 1, visionrt::Layout::Dense,
-                            {makeBuffer(visionrt::DType::Int64, {static_cast<std::int64_t>(batchSize)}, counts)}));
-
-        return {visionrt::executionSuccess(), std::move(outputs)};
+        outputs.emplace(p::out::IMAGES, images);
+        outputs.emplace(p::out::ROIS, visionrt::DataRef<visionrt::ROI>(std::move(filteredRois)));
+        outputs.emplace(p::out::SCORES, visionrt::Array(std::move(filteredScores)));
+        outputs.emplace(p::out::CLASSES, visionrt::Array(std::move(filteredClasses)));
+        outputs.emplace(p::out::CLASS_NAMES, visionrt::Array(std::move(filteredNames)));
+        outputs.emplace(p::out::COUNTS, visionrt::Array(std::move(counts)));
+        return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &error)
     {
-        return {{1, error.what()},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}},
-                 {p::out::SCORES, visionrt::Missing{}}, {p::out::CLASSES, visionrt::Missing{}},
-                 {p::out::CLASS_NAMES, visionrt::Missing{}}, {p::out::COUNTS, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {1, error.what()});
     }
     catch (const std::exception &error)
     {
-        return {
-            {1, "缺陷过滤失败", error.what()},
-            {{p::out::IMAGES, visionrt::Missing{}},
-             {p::out::ROIS, visionrt::Missing{}},
-             {p::out::SCORES, visionrt::Missing{}},
-             {p::out::CLASSES, visionrt::Missing{}},
-             {p::out::CLASS_NAMES, visionrt::Missing{}},
-             {p::out::COUNTS, visionrt::Missing{}}}
-        };
+        return visionrt::toolResult(missingOutputs(), {1, "缺陷过滤失败", error.what()});
     }
     catch (...)
     {
-        return {{-1, "缺陷过滤失败：未知异常"},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}},
-                 {p::out::SCORES, visionrt::Missing{}}, {p::out::CLASSES, visionrt::Missing{}},
-                 {p::out::CLASS_NAMES, visionrt::Missing{}}, {p::out::COUNTS, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {-1, "缺陷过滤失败：未知异常"});
     }
 }
 

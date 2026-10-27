@@ -1,6 +1,7 @@
 #include "ImageCropTool.h"
 
-#include "InputPorts.h"
+#include "common/InputValues.h"
+#include "common/UpstreamStatus.h"
 
 #include <opencv2/core.hpp>
 
@@ -62,39 +63,33 @@ visionrt::ToolStatus ImageCropTool::initialize(const visionrt::Values &parameter
     return {};
 }
 
+namespace {
+visionrt::Values missingOutputs()
+{
+    return {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ORIGINS, visionrt::Missing{}}};
+}
+} // namespace
+
 visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
 {
+    // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
+    if (const auto upstream = upstreamStatus(inputs); upstream != 0)
+        return skippedByUpstream(upstream, missingOutputs());
     try
     {
-        const auto &imageValue = requireInput(inputs, p::in::IMAGES);
-        const auto *images = std::get_if<visionrt::ImageBatch>(&imageValue);
-        if (!images)
-        {
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::IMAGES) + "' 必须是 ImageBatch");
-        }
-        const auto &rectangleValue = requireInput(inputs, p::in::RECT);
-        if (!std::holds_alternative<visionrt::Roi>(rectangleValue))
-        {
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::RECT) + "' 必须是 Rect");
-        }
-        const auto &rectangle = std::get<visionrt::Roi>(rectangleValue);
-        if (rectangle.kind() != visionrt::RoiKind::Rectangle)
-        {
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::RECT) + "' 必须是矩形 ROI");
-        }
-        try
-        {
-            visionrt::validateValue({visionrt::Type::Rect}, rectangleValue);
-        }
-        catch (const visionrt::ContractError &error)
-        {
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::RECT) + "' 的值无效：" + error.what());
-        }
+        const auto &images
+            = requireTypedInput<visionrt::DataRef<visionrt::Image>>(inputs, p::in::IMAGES, {visionrt::Type::Image});
+        const auto &rectangleValue
+            = requireTypedInput<visionrt::DataRef<visionrt::ROI>>(inputs, p::in::RECT, {visionrt::Type::ROI});
+        const auto &groups = rectangleValue.get();
+        if (groups.size() != 1 || groups[0].size() != 1 || groups[0][0][0] != 2)
+            throw visionrt::ContractError("输入端口 '" + std::string(p::in::RECT) + "' 必须包含一组一个矩形 ROI");
+        const auto &rectangle = groups[0][0];
 
         std::array<cv::Point2d, 4> corners;
         try
         {
-            corners = rectangle.rectangleCorners();
+            corners = visionrt::rectangleCorners(rectangle);
         }
         catch (const std::exception &error)
         {
@@ -117,23 +112,28 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
                         <= 32 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(value))
                      ? nearest : value;
         };
-        const bool axisAligned = std::remainder(static_cast<double>(rectangle.encoded()[5]), 360.0) == 0.0;
+        const bool   axisAligned = std::remainder(static_cast<double>(rectangle[5]), 360.0) == 0.0;
         const double epsilon = 32 * std::numeric_limits<double>::epsilon()
                              * std::max({1.0, std::abs(minimumX), std::abs(minimumY), std::abs(maximumX), std::abs(maximumY)});
-        std::vector<visionrt::OwnedImage> output;
-        std::vector<double> origins;
-        output.reserve(images->images().size());
-        origins.reserve(images->images().size() * 2);
+        visionrt::Image                   output;
+        visionrt::NestedVector<double, 2> origins;
+        std::vector<visionrt::Owner>      outputOwners;
+        output.reserve(images.get().size());
+        origins.reserve(images.get().size());
         std::map<std::array<int, 4>, MaskEntry> masks;
 
-        for (std::size_t index = 0; index < images->images().size(); ++index)
+        for (std::size_t index = 0; index < images.get().size(); ++index)
         {
-            const auto &image = images->images()[index];
+            const auto       &image   = images.get()[index];
             const std::string context = "图像索引 " + std::to_string(index) + "：";
-            const int left = static_cast<int>(std::clamp(std::floor(snap(minimumX)), 0.0, static_cast<double>(image.cols())));
-            const int top = static_cast<int>(std::clamp(std::floor(snap(minimumY)), 0.0, static_cast<double>(image.rows())));
-            const int right = static_cast<int>(std::clamp(std::ceil(snap(maximumX)), 0.0, static_cast<double>(image.cols())));
-            const int bottom = static_cast<int>(std::clamp(std::ceil(snap(maximumY)), 0.0, static_cast<double>(image.rows())));
+            const int         left
+                = static_cast<int>(std::clamp(std::floor(snap(minimumX)), 0.0, static_cast<double>(image.cols)));
+            const int top
+                = static_cast<int>(std::clamp(std::floor(snap(minimumY)), 0.0, static_cast<double>(image.rows)));
+            const int right
+                = static_cast<int>(std::clamp(std::ceil(snap(maximumX)), 0.0, static_cast<double>(image.cols)));
+            const int bottom
+                = static_cast<int>(std::clamp(std::ceil(snap(maximumY)), 0.0, static_cast<double>(image.rows)));
             if (left >= right || top >= bottom)
                 throw visionrt::ContractError(context + "裁剪矩形超出图像范围");
             const cv::Rect bounds(left, top, right - left, bottom - top);
@@ -142,7 +142,9 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
                                              && bottom - 0.5 <= maximumY + epsilon;
             if (coversEveryPixelCenter)
             {
-                output.push_back(image.region(bounds));
+                output.push_back(image(bounds));
+                if (outputOwners.empty())
+                    outputOwners.push_back(images.owner());
             }
             else
             {
@@ -172,36 +174,27 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
                 if (!entry->second.any)
                     throw visionrt::ContractError(context + "裁剪区域没有有效像素中心");
                 cv::Mat cropped;
-                image.readOnlyMat()(bounds).copyTo(cropped, entry->second.mask);
-                output.push_back(visionrt::OwnedImage::take(std::move(cropped)));
+                image(bounds).copyTo(cropped, entry->second.mask);
+                output.push_back(std::move(cropped));
             }
-            origins.push_back(left);
-            origins.push_back(top);
+            origins.push_back({static_cast<double>(left), static_cast<double>(top)});
         }
-        const auto count = static_cast<std::int64_t>(output.size());
         visionrt::Values results;
-        results.emplace(p::out::IMAGES, visionrt::ImageBatch(std::move(output)));
-        results.emplace(p::out::ORIGINS,
-                        visionrt::NumericArray(visionrt::DType::Float64, 2, visionrt::Layout::Dense,
-                            {visionrt::NumericBuffer::copy(visionrt::DType::Float64, {count, 2},
-                                                          std::as_bytes(std::span(origins)))}));
-        return {visionrt::executionSuccess(), std::move(results)};
+        results.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(std::move(output), std::move(outputOwners)));
+        results.emplace(p::out::ORIGINS, visionrt::Array(std::move(origins)));
+        return visionrt::toolResult(std::move(results), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &error)
     {
-        return {{1, error.what()}, {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ORIGINS, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {1, error.what()});
     }
     catch (const std::exception &error)
     {
-        return {
-            {1, "图像裁剪失败", error.what()},
-            {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ORIGINS, visionrt::Missing{}}}
-        };
+        return visionrt::toolResult(missingOutputs(), {1, "图像裁剪失败", error.what()});
     }
     catch (...)
     {
-        return {{-1, "图像裁剪失败：未知异常"},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ORIGINS, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {-1, "图像裁剪失败：未知异常"});
     }
 }
 

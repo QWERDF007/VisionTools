@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 4,
   "category": "Python",
   "subcategory": "示例",
   "tool_id": "custom.call.counter",
@@ -7,6 +7,7 @@
   "version": "1.0.0",
   "kind": "python_class",
   "entry": {
+    "package": "examples/call_counter",
     "file": "counter.py",
     "symbol": "CounterTool"
   },

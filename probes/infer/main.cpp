@@ -1,5 +1,7 @@
 #include <cuda_runtime.h>
+#include "../../tests/result_view.h"
 #include <visionrt/contracts/Module.h>
+#include <visionrt/contracts/ROI.h>
 #include <visionrt/contracts/Tool.h>
 #include <visionrt/contracts/Value.h>
 
@@ -17,6 +19,7 @@
 #include <limits>
 #include <memory>
 #include <map>
+#include <span>
 #ifdef _WIN32
 #    define WIN32_LEAN_AND_MEAN
 #    ifndef NOMINMAX
@@ -231,7 +234,8 @@ void success(const ToolStatus &status)
 
 void allMissing(const ToolResult &result)
 {
-    require(!result.status && result.outputs.size() == 5, "Expected whole-invocation failure with five outputs");
+    require(!testview::status(result) && testview::businessCount(result) == 5,
+            "Expected whole-invocation failure with five business outputs");
     for (const auto &[name, value] : result.outputs)
         require(isMissing(value), "Partial output escaped after failure: " + name);
 }
@@ -333,12 +337,12 @@ Tool create(const std::filesystem::path &modulePath = "")
 Values configuration(const Arguments &args, bool build)
 {
     return {
-        {        "model_name",                                    Utf8("yolov8n")},
-        {         "load_mode",               Utf8(build ? "build_wts" : "engine")},
-        {        "model_path", Utf8(absolute(build ? args.weights : args.engine))},
-        {"engine_output_path",                        Utf8(absolute(args.engine))},
-        {         "precision",                               Utf8(args.precision)},
-        {       "labels_path",                                          Utf8("")},
+        {        "model_name",                                    std::string("yolov8n")},
+        {         "load_mode",               std::string(build ? "build_wts" : "engine")},
+        {        "model_path", std::string(absolute(build ? args.weights : args.engine))},
+        {"engine_output_path",                        std::string(absolute(args.engine))},
+        {         "precision",                               std::string(args.precision)},
+        {       "labels_path",                                          std::string("")},
         {         "gpu_index",                          std::int64_t(args.device)},
         {       "input_width",                           std::int64_t(args.width)},
         {      "input_height",                          std::int64_t(args.height)},
@@ -346,7 +350,7 @@ Values configuration(const Arguments &args, bool build)
     };
 }
 
-Values inputs(const ImageBatch &images, const DetectionParameters &parameters)
+Values inputs(const DataRef<Image> &images, const DetectionParameters &parameters)
 {
     return {
         {        "images",                images},
@@ -356,17 +360,17 @@ Values inputs(const ImageBatch &images, const DetectionParameters &parameters)
     };
 }
 
-ImageBatch loadImages(const Arguments &args)
+DataRef<Image> loadImages(const Arguments &args)
 {
-    std::vector<OwnedImage> images;
+    Image images;
     for (const auto &name : args.images)
     {
         cv::Mat image = cv::imread(name);
         require(!image.empty(), "Cannot load test image: " + name);
-        images.push_back(OwnedImage::copyOf(image));
+        images.push_back(std::move(image));
     }
-    images.push_back(OwnedImage::take(cv::Mat(197, 321, CV_8UC3, cv::Scalar(0, 0, 0))));
-    return ImageBatch(std::move(images));
+    images.push_back(cv::Mat(197, 321, CV_8UC3, cv::Scalar(0, 0, 0)));
+    return DataRef<Image>(std::move(images));
 }
 
 struct PublicDetection
@@ -377,44 +381,45 @@ struct PublicDetection
     std::string          className;
 };
 
-std::vector<std::vector<PublicDetection>> outputContract(const ToolResult &result, const ImageBatch &images)
+std::vector<std::vector<PublicDetection>> outputContract(const ToolResult &result, const DataRef<Image> &images)
 {
-    success(result.status);
-    require(result.outputs.size() == 5, "Public detection output contract must expose 5 outputs");
-    const auto *rois     = std::get_if<RoiBatch>(&result.outputs.at("rois"));
-    const auto *scores   = std::get_if<NumericArray>(&result.outputs.at("scores"));
-    const auto *classes  = std::get_if<NumericArray>(&result.outputs.at("classes"));
-    const auto *names    = std::get_if<StringArray>(&result.outputs.at("class_names"));
-    const auto *returned = std::get_if<ImageBatch>(&result.outputs.at("images"));
+    success(testview::status(result));
+    require(testview::businessCount(result) == 5, "Public detection output contract must expose 5 business outputs");
+    const auto *rois     = std::get_if<DataRef<ROI>>(&result.outputs.at("rois"));
+    const auto *scores   = std::get_if<Array>(&result.outputs.at("scores"));
+    const auto *classes  = std::get_if<Array>(&result.outputs.at("classes"));
+    const auto *names    = std::get_if<Array>(&result.outputs.at("class_names"));
+    const auto *returned = std::get_if<DataRef<Image>>(&result.outputs.at("images"));
     require(rois && scores && classes && names && returned, "Invalid public output types");
 
-    const auto count = images.images().size();
-    require(rois->images().size() == count && scores->buffers().size() == count && classes->buffers().size() == count
-                && names->buffers().size() == count && returned->images().size() == count,
+    const auto &roiBatch   = rois->get();
+    const auto &scoreData  = scores->get<std::vector<std::vector<float>>>();
+    const auto &classData  = classes->get<std::vector<std::vector<std::int64_t>>>();
+    const auto &nameData   = names->get<std::vector<std::vector<std::string>>>();
+    const auto  count      = images.get().size();
+    require(roiBatch.size() == count && scoreData.size() == count && classData.size() == count
+                && nameData.size() == count && returned->get().size() == count,
             "Mismatched batch size in outputs");
 
     std::vector<std::vector<PublicDetection>> batch(count);
     for (std::size_t b = 0; b < count; ++b)
     {
-        const auto &boxes       = rois->images()[b];
-        const auto  n           = boxes.size();
-        const auto &scoreBuffer = scores->buffers()[b];
-        const auto &classBuffer = classes->buffers()[b];
-        const auto &nameBuffer  = names->buffers()[b];
-        const auto  rawScores   = scoreBuffer.values<float>();
-        const auto  rawClasses  = classBuffer.values<std::int64_t>();
-        const auto  rawNames    = nameBuffer.values();
-        require(rawScores.size() == n && rawClasses.size() == n && rawNames.size() == n,
+        const auto &boxes      = roiBatch[b];
+        const auto  n          = boxes.size();
+        const auto &scoreRow   = scoreData[b];
+        const auto &classRow   = classData[b];
+        const auto &nameRow    = nameData[b];
+        require(scoreRow.size() == n && classRow.size() == n && nameRow.size() == n,
                 "Ragged element mismatch across outputs in batch item");
         for (std::size_t i = 0; i < n; ++i)
         {
             PublicDetection d;
-            const auto      corners = boxes[i].rectangleCorners();
+            const auto      corners = rectangleCorners(std::span<const double>(boxes[i]));
             d.box                   = {static_cast<float>(corners[0].x), static_cast<float>(corners[0].y),
                                        static_cast<float>(corners[2].x), static_cast<float>(corners[2].y)};
-            d.score                 = rawScores[i];
-            d.classId               = rawClasses[i];
-            d.className             = rawNames[i];
+            d.score                 = scoreRow[i];
+            d.classId               = classRow[i];
+            d.className             = nameRow[i];
             batch[b].push_back(d);
         }
     }
@@ -645,9 +650,9 @@ int main(int argc, char **argv)
         const auto buildResult     = built->execute(batchInputs);
         const auto buildDetections = outputContract(buildResult, images);
 
-        const auto emptyInputs = inputs(ImageBatch{}, args.detection);
+        const auto emptyInputs = inputs(DataRef<Image>(Image{}), args.detection);
         const auto emptyResult = built->execute(emptyInputs);
-        outputContract(emptyResult, std::get<ImageBatch>(emptyInputs.at("images")));
+        outputContract(emptyResult, std::get<DataRef<Image>>(emptyInputs.at("images")));
 
         auto bad      = batchInputs;
         bad["images"] = Missing{};
@@ -656,7 +661,7 @@ int main(int argc, char **argv)
         bad["nms_threshold"] = std::numeric_limits<double>::infinity();
         allMissing(built->execute(bad));
         bad           = batchInputs;
-        bad["images"] = ImageBatch({images.images()[0], OwnedImage::take(cv::Mat(4, 4, CV_32FC1, cv::Scalar(0)))});
+        bad["images"] = DataRef<Image>(Image{images.get()[0], cv::Mat(4, 4, CV_32FC1, cv::Scalar(0))});
         allMissing(built->execute(bad));
 
         bool thresholdEqualKeeps = false, thresholdAboveExcludes = false;
@@ -668,7 +673,7 @@ int main(int argc, char **argv)
             if (target.score >= 1.0f)
                 continue;
             const double boundaryScore = target.score;
-            const auto   single        = ImageBatch({images.images()[b]});
+            const auto   single        = DataRef<Image>(Image{images.get()[b]});
             auto         boundary      = inputs(single, args.detection);
             boundary["conf_threshold"] = boundaryScore;
             const auto equalResult     = built->execute(boundary);
@@ -687,7 +692,7 @@ int main(int argc, char **argv)
 
         auto stricter              = batchInputs;
         stricter["conf_threshold"] = 1.0;
-        success(built->execute(stricter).status);
+        success(testview::status(built->execute(stricter)));
 
         // Snapshot persistence across release and destroy
         success(built->release());
@@ -700,9 +705,9 @@ int main(int argc, char **argv)
         const auto loadDetections = outputContract(loadResult, images);
 
         bool passed = thresholdEqualKeeps && thresholdAboveExcludes;
-        for (std::size_t b = 0; b < images.images().size(); ++b)
+        for (std::size_t b = 0; b < images.get().size(); ++b)
         {
-            const auto single           = ImageBatch({images.images()[b]});
+            const auto single           = DataRef<Image>(Image{images.get()[b]});
             const auto singleInputs     = inputs(single, args.detection);
             const auto singleResult     = loaded->execute(singleInputs);
             const auto singleDetections = outputContract(singleResult, single);

@@ -1,0 +1,74 @@
+{
+  "schema_version": 4,
+  "category": "逻辑",
+  "subcategory": "分支",
+  "tool_id": "visiontools.logic.branch",
+  "display_name": "条件分支",
+  "version": "1.0.0",
+  "kind": "python_class",
+  "node_model": "condition",
+  "entry": {
+    "package": "logic",
+    "file": "branch/tool.py",
+    "symbol": "BranchTool"
+  },
+  "init_params": [
+    {
+      "id": "variables",
+      "name": "派生变量表",
+      "type": "Array",
+      "dtype": "string",
+      "rank": 2,
+      "default": [],
+      "required": true
+    },
+    {
+      "id": "program",
+      "name": "派生表达式表",
+      "type": "Array",
+      "dtype": "string",
+      "rank": 2,
+      "default": [],
+      "required": true
+    },
+    {
+      "id": "condition_mode",
+      "name": "条件来源",
+      "type": "String",
+      "default": "formula",
+      "editor": "text",
+      "options": [
+        "formula",
+        "upstream"
+      ],
+      "required": true
+    }
+  ],
+  "inputs": [],
+  "outputs": [
+    {
+      "id": "on_true",
+      "name": "条件成立",
+      "type": "Bool",
+      "required": true
+    },
+    {
+      "id": "on_false",
+      "name": "否则",
+      "type": "Bool",
+      "required": true
+    },
+    {
+      "id": "on_true_status",
+      "name": "成立分支状态",
+      "type": "Int",
+      "required": true
+    },
+    {
+      "id": "on_false_status",
+      "name": "否则分支状态",
+      "type": "Int",
+      "required": true
+    }
+  ]
+}

@@ -11,6 +11,7 @@ endif()
 
 target_include_directories(visiontools_infer PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_SOURCE_DIR}/src"
 )
 
 target_link_libraries(visiontools_infer PRIVATE
