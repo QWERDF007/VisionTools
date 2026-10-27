@@ -21,6 +21,7 @@ import zipfile
 
 import json
 
+import package_profile
 from package_payload import CopyPlan, PackagingError, ToolPayload, load_json, relative_path, resolve_inside, save_json
 
 
@@ -141,8 +142,8 @@ def _validate_targets(targets: PackageTargets, project_root: Path, build_dir: Pa
     _validate_artifact_target(targets.index_output, "外置索引", targets, claimed, project_root, build_dir)
 
 
-def _load_build(build_dir: Path, config: str, project_root: Path,
-                validator: Path | None = None) -> tuple[dict, dict, Path, dict[str, ToolPayload]]:
+def _load_build(build_dir: Path, config: str, project_root: Path, validator: Path | None = None,
+                profile: package_profile.Profile | None = None) -> tuple[dict, dict, Path, dict[str, ToolPayload]]:
     try:
         metadata = load_json(build_dir / config / "resolved_dependencies.json")
         catalog = load_json(project_root / "tools/package_catalog.json")
@@ -150,6 +151,15 @@ def _load_build(build_dir: Path, config: str, project_root: Path,
         raise PackagingError(f"无法读取构建元数据或发行目录表：{error}") from error
     if not isinstance(metadata, dict) or not isinstance(catalog, dict):
         raise PackagingError("构建元数据与发行目录表必须是对象")
+    # The profile decides which runtime files ship, before anything is copied. A layout that cannot
+    # be explained (an unknown TensorRT builder partition) stops the package instead of shipping it.
+    selection = None
+    if profile is not None:
+        selection = package_profile.select_dependencies(metadata.get("runtime_files", []), profile)
+        if selection.errors:
+            raise PackagingError("；".join(selection.errors))
+        metadata = package_profile.apply_to_manifest(metadata, selection)
+        metadata["__selection"] = selection
     if metadata.get("config") != config or not isinstance(metadata.get("variant"), str) or not metadata["variant"]:
         raise PackagingError("构建元数据配置不一致或缺少 variant")
     if catalog.get("schema_version") != 1 or set(catalog) != {"schema_version", "modules", "tools"}:
@@ -281,6 +291,16 @@ def _collect_package(metadata: dict, index: dict, payloads: dict[str, ToolPayloa
 
     plan.copy_to(staging_dir)
 
+    selection = metadata.get("__selection")
+    if selection is not None:
+        report = selection.report()
+        report["files"] = report["files"] + [
+            {"destination": relative, "component": "tools-module", "reason": "工具模块入口",
+             "required_by": ["package"], "target_sm": ["shared"]}
+            for relative in sorted(module_files.values())
+        ]
+        save_json(report, staging_dir / "dependencies.json")
+
     installed_files = []
     if runtime_install:
         installed_files = _run_runtime_install(staging_dir, build_dir, config, runtime_install)
@@ -388,11 +408,12 @@ def package_tools(
     project_root: Path | None = None,
     validator: Path | None = None,
     zip_output: Path | None = None,
+    profile: package_profile.Profile | None = None,
 ) -> Path:
     build_dir = Path(build_dir).resolve()
     project_root = Path(project_root or Path(__file__).resolve().parents[1]).resolve()
     targets = resolve_targets(install_dir, project_root, zip_output)
-    metadata, index, build_validator, payloads = _load_build(build_dir, config, project_root, validator)
+    metadata, index, build_validator, payloads = _load_build(build_dir, config, project_root, validator, profile)
     _validate_targets(targets, project_root, build_dir)
     _precheck_payload(metadata, payloads)
 
@@ -459,6 +480,10 @@ def main() -> int:
     parser.add_argument("--config", default="Release")
     parser.add_argument("--zip-output", type=Path)
     parser.add_argument("--validator", type=Path)
+    parser.add_argument("--profile", help="打包目标：cpu / rtx40-runtime / rtx40-build / gpu-custom")
+    parser.add_argument("--sm", help="gpu-custom 的目标架构，逗号分隔，例如 89,86")
+    parser.add_argument("--engine-build", action="store_true", help="gpu-custom 是否保留现场构建能力")
+    parser.add_argument("--profiles", type=Path, default=Path(__file__).with_name("package_profiles.json"))
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--verify-runtime", action="store_true")
     parser.add_argument("--consumer", type=Path,
@@ -466,6 +491,12 @@ def main() -> int:
                         else Path("build/tests/test_installation_consumer"))
     arguments = parser.parse_args()
     try:
+        profile = None
+        if arguments.profile:
+            profiles = package_profile.load_profiles(arguments.profiles)
+            sms = [item for item in arguments.sm.split(",") if item.strip()] if arguments.sm else None
+            profile = package_profile.resolve_profile(profiles, arguments.profile, sms,
+                                                       arguments.engine_build or None)
         if arguments.verify_only:
             metadata = load_json(arguments.build_dir / arguments.config / "resolved_dependencies.json")
             validator = arguments.validator or Path(metadata["validator"])
@@ -473,7 +504,7 @@ def main() -> int:
                 return 1
         else:
             package_tools(arguments.build_dir, arguments.install_dir, arguments.config,
-                          validator=arguments.validator, zip_output=arguments.zip_output)
+                          validator=arguments.validator, zip_output=arguments.zip_output, profile=profile)
         if arguments.verify_runtime and not verify_runtime(arguments.install_dir, arguments.consumer):
             return 1
         return 0

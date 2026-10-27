@@ -1,4 +1,5 @@
 #include "src/preprocess/AdaptiveBinaryTool.h"
+#include "../result_view.h"
 #include "TestSupport.h"
 
 using namespace visionrt;
@@ -22,7 +23,7 @@ void testAdaptiveBinaryTool()
     {
         auto res = tool.execute({});
         requireFailure(res, "images", "Missing input 'images' must fail");
-        REQUIRE(res.status.message.find("缺失") != std::string::npos, "Error must be Chinese");
+        REQUIRE(testview::status(res).message.find("缺失") != std::string::npos, "Error must be Chinese");
         REQUIRE(isMissing(res.outputs["images"]), "Output must be Missing");
     }
 
@@ -32,7 +33,7 @@ void testAdaptiveBinaryTool()
         inputs.emplace(ab::in::IMAGES, std::int64_t(42));
         auto res = tool.execute(inputs);
         requireFailure(res, "Image", "Non-Image must fail");
-        REQUIRE(res.status.message.find("images") != std::string::npos, "Error must mention port 'images'");
+        REQUIRE(testview::status(res).message.find("images") != std::string::npos, "Error must mention port 'images'");
     }
 
     // 3. B=0 -> success with empty batch
@@ -52,7 +53,7 @@ void testAdaptiveBinaryTool()
         inputs.emplace(ab::in::IMAGES, DataRef<Image>(Image{(gradient(32, 32)).clone()}));
         auto res = tool.execute(inputs);
         requireFailure(res, "block_size", "Missing block_size must fail");
-        REQUIRE(res.status.message.find("缺失") != std::string::npos, "Missing value must be Chinese");
+        REQUIRE(testview::status(res).message.find("缺失") != std::string::npos, "Missing value must be Chinese");
     }
 
     // 5. block_size even -> rejected
@@ -63,7 +64,7 @@ void testAdaptiveBinaryTool()
         inputs.emplace(ab::in::CONSTANT_OFFSET, 2.0);
         auto res = tool.execute(inputs);
         requireFailure(res, "奇数", "Even block_size must be rejected");
-        REQUIRE(res.status.message.find("4") != std::string::npos, "Error must include the actual value");
+        REQUIRE(testview::status(res).message.find("4") != std::string::npos, "Error must include the actual value");
     }
 
     // 6. block_size outside [3, 999]
@@ -75,7 +76,7 @@ void testAdaptiveBinaryTool()
         inputs.emplace(ab::in::CONSTANT_OFFSET, 2.0);
         auto res = tool.execute(inputs);
         requireFailure(res, "block_size", "block_size outside the declared range must fail");
-        REQUIRE(res.status.message.find("[3, 999]") != std::string::npos, "Range failure must state the allowed range");
+        REQUIRE(testview::status(res).message.find("[3, 999]") != std::string::npos, "Range failure must state the allowed range");
     }
 
     // 7. Strict float check: Int constant_offset rejected
@@ -86,7 +87,7 @@ void testAdaptiveBinaryTool()
         inputs.emplace(ab::in::CONSTANT_OFFSET, std::int64_t(5));
         auto res = tool.execute(inputs);
         requireFailure(res, "浮点", "Int constant_offset must be strictly rejected");
-        REQUIRE(res.status.message.find("constant_offset") != std::string::npos, "Error must mention constant_offset");
+        REQUIRE(testview::status(res).message.find("constant_offset") != std::string::npos, "Error must mention constant_offset");
     }
 
     // 8. Non-finite constant_offset rejected
@@ -108,7 +109,7 @@ void testAdaptiveBinaryTool()
         inputs.emplace(ab::in::CONSTANT_OFFSET, 2.0);
         auto res = tool.execute(inputs);
         requireFailure(res, "批次索引 0", "BGR image must be rejected without auto-conversion");
-        REQUIRE(res.status.message.find("CV_8UC1") != std::string::npos, "Error must state the expected type");
+        REQUIRE(testview::status(res).message.find("CV_8UC1") != std::string::npos, "Error must state the expected type");
     }
 
     // 10. Synthetic grayscale comparison against OpenCV reference

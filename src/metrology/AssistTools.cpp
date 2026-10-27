@@ -107,19 +107,19 @@ visionrt::ToolResult AssistCircleTool::execute(const visionrt::Values &inputs)
         const auto result  = assistCircle(grayscale(requireImages(inputs, p::in::IMAGES).front()), request);
         auto       outputs = baseOutputs(result);
         outputs.emplace(p::out::SUGGESTED_SEARCH, result.searchHalfWidth);
-        return {visionrt::executionSuccess(), std::move(outputs)};
+        return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &error)
     {
-        return {{1, error.what()}, missingCircleOutputs()};
+        return visionrt::toolResult(missingCircleOutputs(), {1, error.what()});
     }
     catch (const std::exception &error)
     {
-        return {{1, "圆智能点选失败", error.what()}, missingCircleOutputs()};
+        return visionrt::toolResult(missingCircleOutputs(), {1, "圆智能点选失败", error.what()});
     }
     catch (...)
     {
-        return {{-1, "圆智能点选失败：未知异常"}, missingCircleOutputs()};
+        return visionrt::toolResult(missingCircleOutputs(), {-1, "圆智能点选失败：未知异常"});
     }
 }
 
@@ -144,19 +144,19 @@ visionrt::ToolResult AssistRowSpacingTool::execute(const visionrt::Values &input
         auto       outputs = baseOutputs(result);
         outputs.emplace(p::out::SUGGESTED_WIDTH_MIN, result.widthMin);
         outputs.emplace(p::out::SUGGESTED_WIDTH_MAX, result.widthMax);
-        return {visionrt::executionSuccess(), std::move(outputs)};
+        return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &error)
     {
-        return {{1, error.what()}, missingRowOutputs()};
+        return visionrt::toolResult(missingRowOutputs(), {1, error.what()});
     }
     catch (const std::exception &error)
     {
-        return {{1, "行间距智能点选失败", error.what()}, missingRowOutputs()};
+        return visionrt::toolResult(missingRowOutputs(), {1, "行间距智能点选失败", error.what()});
     }
     catch (...)
     {
-        return {{-1, "行间距智能点选失败：未知异常"}, missingRowOutputs()};
+        return visionrt::toolResult(missingRowOutputs(), {-1, "行间距智能点选失败：未知异常"});
     }
 }
 

@@ -30,6 +30,28 @@
 - ...
 -->
 
+### 2026-10-26 — 工具声明升 schema 4、条件分支双模式、读图序列化与旋转/亮度工厂注册
+
+**目标**
+- 配合 VisionRT 宿主的参数规范化与统一状态端口改造，把工具包声明升级到 schema 4，并补齐条件分支、图像读取与已实现工具的注册缺口。
+
+**当前状态**
+- 已完成：内置与自定义声明全部由 schema 3 升到 4；条件分支初始化参数新增 `condition_mode`（formula/upstream），输出新增 `on_true_status` / `on_false_status`；分支工具按条件来源派发，缺省仍走公式。
+- 已完成：图像读取拆出 `ImageSequence`（批次规划）与解码缓存；`count` 上限 64；不循环时按需重扫、循环时按游标推进；解码失败拆分为用户消息与 OpenCV 技术细节，主消息不再泄漏库内部文本。
+- 已完成：补齐 `visiontools.image.rotate` / `visiontools.image.brightness` 工厂注册（实现早已存在但未注册）；索引 modules=3、tools=22。
+- 已完成：提交并推送 `83c6244`（声明升级）、`d6bab3d`（读图重构与工厂注册），与 `origin/refactor/abi4-writable-data` 同步。
+- 未完成：无。
+
+**验证证据**
+- `ctest --test-dir build` → `100% tests passed, 0 tests failed out of 13`（`test_infer_whitebox_trace` 按设计 Skipped）。
+- `module_index.json` → modules=3（`visiontools_infer` / `visiontools_metrology` / `visiontools_preprocess`），tools=22。
+- 宿主校验 `visionrt_validate_tool.exe --package F:\Projects\VisionTools\dist\visiontools-deploy` → `Valid tools package`。
+- 旋转/亮度执行路径由 `test_module_contract`、`test_installation_consumer` 覆盖（补齐 `center` / `canvas` / `interpolation` / `border_value` / `alignment` 等必需输入后通过）。
+- 宿主安装态链路：`installed_pipeline_contract.exe F:\tmp\VisionRT\tools-package` 与 `installed_python_author_contract.exe` 均通过。
+
+**下一步**
+- 无新增动作；GPU 工具真实权重端到端联调仍受外部权重阻塞（见顶部待裁决）。
+
 ### 2026-10-25 — 依据 VisionRT_VisionTools_f6f57b03_验收报告与七工具完整改进方案 完成七工具、两个隐藏辅助工具与受限表达式引擎
 
 **目标**

@@ -1,4 +1,5 @@
 #include "src/preprocess/DetectionFilterTool.h"
+#include "../result_view.h"
 #include "TestSupport.h"
 
 using namespace visionrt;
@@ -46,7 +47,7 @@ void testDetectionFilterTool()
         inputs.insert_or_assign(filter_ports::in::MIN_SCORE, std::string("not_a_number"));
         auto res = tool.execute(inputs);
         requireFailure(res, "浮点", "String min_score must be rejected");
-        REQUIRE(res.status.message.find("min_score") != std::string::npos, "Error must mention min_score");
+        REQUIRE(testview::status(res).message.find("min_score") != std::string::npos, "Error must mention min_score");
     }
     {
         auto inputs = detectionInputs();
@@ -59,21 +60,21 @@ void testDetectionFilterTool()
         inputs.erase(filter_ports::in::MIN_SCORE);
         auto res = tool.execute(inputs);
         requireFailure(res, "min_score", "Missing min_score must be rejected");
-        REQUIRE(res.status.message.find("缺失") != std::string::npos, "Missing value must be Chinese");
+        REQUIRE(testview::status(res).message.find("缺失") != std::string::npos, "Missing value must be Chinese");
     }
     {
         auto inputs = detectionInputs();
         inputs.insert_or_assign(filter_ports::in::MIN_SCORE, 1.5);
         auto res = tool.execute(inputs);
         requireFailure(res, "min_score", "Out-of-range min_score must be rejected");
-        REQUIRE(res.status.message.find("[0") != std::string::npos, "Range must be stated");
+        REQUIRE(testview::status(res).message.find("[0") != std::string::npos, "Range must be stated");
     }
     {
         auto inputs = detectionInputs();
         inputs.insert_or_assign(filter_ports::in::MIN_AREA, -1.0);
         auto res = tool.execute(inputs);
         requireFailure(res, "min_area", "Negative min_area must be rejected");
-        REQUIRE(res.status.message.find("非负") != std::string::npos, "Error must state non-negative");
+        REQUIRE(testview::status(res).message.find("非负") != std::string::npos, "Error must state non-negative");
     }
     {
         auto inputs = detectionInputs();
@@ -105,7 +106,7 @@ void testDetectionFilterTool()
         inputs.insert_or_assign(filter_ports::in::CLASS_NAMES, Array(std::vector<std::vector<std::string>>{oneName}));
         auto res = tool.execute(inputs);
         requireFailure(res, "长度不一致", "Field length mismatch must fail");
-        REQUIRE(res.status.message.find("批次索引 0") != std::string::npos, "Error must name the batch index");
+        REQUIRE(testview::status(res).message.find("批次索引 0") != std::string::npos, "Error must name the batch index");
     }
     {
         auto       inputs = detectionInputs();

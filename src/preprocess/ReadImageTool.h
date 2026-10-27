@@ -54,16 +54,27 @@ private:
         std::vector<std::filesystem::path> files;
     };
 
+    // Cache writes planned by a decode. They are applied only when the whole batch succeeded, so a
+    // failed attempt can never mix its pixels into the retained history.
+    using PendingInserts = std::vector<std::pair<std::string, cv::Mat>>;
+
     // Local decode result of one plan; committed only after the whole batch decoded.
     struct DecodedBatch
     {
         visionrt::Image          images;
         std::vector<std::string> keys;
         std::vector<std::string> paths;
+        PendingInserts           pending;
         std::size_t              decoded = 0;
     };
 
-    visionrt::ToolResult decode(const Catalog &catalog, const SequencePlan &plan, SequenceCursor &cursor, bool reload);
+    // Reads and decodes the plan. Throws without touching any committed state.
+    DecodedBatch decode(const Catalog &catalog, const SequencePlan &plan, bool reload, PendingInserts &pending);
+    // Swaps a fully successful batch into the tool. Nothing here can fail, which is what makes a
+    // failed read leave the previous catalog, cursor and last batch untouched.
+    visionrt::ToolResult commit(DecodedBatch batch, const SequencePlan &plan, SequenceCursor cursor,
+                                const Catalog *scannedCatalog, bool sourceChanged, bool reverse,
+                                std::size_t totalFiles);
     void                 resetSequence();
 
     visionrt::ToolServices services_;

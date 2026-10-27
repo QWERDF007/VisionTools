@@ -1,4 +1,5 @@
 #include "src/preprocess/ImageCropTool.h"
+#include "../result_view.h"
 #include "TestSupport.h"
 #include "MatAllocationProbe.h"
 
@@ -90,7 +91,7 @@ void testImageCropTool()
         inputs.emplace(crop_ports::in::RECT, DataRef<ROI>(ROI{{std::vector<double>{2, 0.1, 0.1, 0.1, 0.1, 0.0}}}));
         auto res = tool.execute(inputs);
         requireFailure(res, "没有有效像素中心", "Narrow ROI with no pixel centers must fail");
-        REQUIRE(res.status.message.find("图像索引 0") != std::string::npos, "Error must name the image index");
+        REQUIRE(testview::status(res).message.find("图像索引 0") != std::string::npos, "Error must name the image index");
     }
 
     // 4. Batch order, clipping and origins
@@ -137,7 +138,7 @@ void testImageCropTool()
         {
             inputs.insert_or_assign(crop_ports::in::RECT, invalid);
             auto result = tool.execute(inputs);
-            REQUIRE(!result.status, "Missing, non-rectangle, batch and disjoint inputs must fail");
+            REQUIRE(!testview::status(result), "Missing, non-rectangle, batch and disjoint inputs must fail");
             REQUIRE(isMissing(result.outputs.at(crop_ports::out::IMAGES))
                         && isMissing(result.outputs.at(crop_ports::out::ORIGINS)),
                     "Failure must not publish partial outputs");
@@ -156,7 +157,7 @@ void testImageCropTool()
                                                      (cv::Mat(1, 1, CV_8UC1, cv::Scalar(9))).clone()}));
         inputs.insert_or_assign(crop_ports::in::RECT, DataRef<ROI>(ROI{{std::vector<double>{2, 2, 2, 2, 2, 45}}}));
         auto partial = tool.execute(inputs);
-        REQUIRE(!partial.status && isMissing(partial.outputs.at(crop_ports::out::IMAGES)),
+        REQUIRE(!testview::status(partial) && isMissing(partial.outputs.at(crop_ports::out::IMAGES)),
                 "A later disjoint image must fail the whole batch without publishing earlier crops");
     }
 
@@ -344,7 +345,7 @@ void testImageCropTool()
             {  crop_ports::in::RECT,      DataRef<ROI>(ROI{{{2., 10., 10., 15., 15., 15.}}})},
         };
         const auto failed = tool.execute(invalid);
-        REQUIRE(!failed.status && isMissing(failed.outputs.at(crop_ports::out::IMAGES)),
+        REQUIRE(!testview::status(failed) && isMissing(failed.outputs.at(crop_ports::out::IMAGES)),
                 "Later-image failure must not publish an earlier cropped output");
         invalid.insert_or_assign(crop_ports::in::IMAGES, DataRef<Image>(Image{full}));
         invalid.insert_or_assign(crop_ports::in::RECT, DataRef<ROI>(ROI{{{2., 0.1, 0.1, 0.1, 0.1, 30.}}}));

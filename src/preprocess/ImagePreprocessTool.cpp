@@ -1,6 +1,7 @@
 #include "ImagePreprocessTool.h"
 
 #include "common/InputValues.h"
+#include "common/UpstreamStatus.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -48,8 +49,18 @@ visionrt::ToolStatus ImagePreprocessTool::initialize(const visionrt::Values &par
     return {};
 }
 
+namespace {
+visionrt::Values missingOutputs()
+{
+    return {{p::out::IMAGES, visionrt::Missing{}}};
+}
+} // namespace
+
 visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs)
 {
+    // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
+    if (const auto upstream = upstreamStatus(inputs); upstream != 0)
+        return skippedByUpstream(upstream, missingOutputs());
     try
     {
         const auto &images
@@ -83,7 +94,7 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
         {
             visionrt::Values outputs;
             outputs.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(visionrt::Image{}));
-            return {visionrt::executionSuccess(), std::move(outputs)};
+            return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
         }
 
         for (std::size_t index = 0; index < images.get().size(); ++index)
@@ -95,7 +106,7 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
         {
             visionrt::Values outputs;
             outputs.emplace(p::out::IMAGES, images);
-            return {visionrt::executionSuccess(), std::move(outputs)};
+            return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
         }
 
         visionrt::Image output;
@@ -121,22 +132,19 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
 
         visionrt::Values outputs;
         outputs.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(std::move(output)));
-        return {visionrt::executionSuccess(), std::move(outputs)};
+        return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &error)
     {
-        return {{1, error.what()}, {{p::out::IMAGES, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {1, error.what()});
     }
     catch (const std::exception &error)
     {
-        return {
-            {1, "图像预处理失败", error.what()},
-            {{p::out::IMAGES, visionrt::Missing{}}}
-        };
+        return visionrt::toolResult(missingOutputs(), {1, "图像预处理失败", error.what()});
     }
     catch (...)
     {
-        return {{-1, "图像预处理失败：未知异常"}, {{p::out::IMAGES, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {-1, "图像预处理失败：未知异常"});
     }
 }
 

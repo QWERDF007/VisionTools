@@ -12,6 +12,16 @@ else()
     target_compile_options(test_writable_tools_contract PRIVATE -UNDEBUG)
 endif()
 
+visiontools_add_test(test_upstream_status_contract
+    SOURCES test_upstream_status_contract.cpp
+    LIBRARIES visiontools_preprocess VisionRT::Contracts ${OpenCV_LIBS}
+)
+if(MSVC)
+    target_compile_options(test_upstream_status_contract PRIVATE /UNDEBUG)
+else()
+    target_compile_options(test_upstream_status_contract PRIVATE -UNDEBUG)
+endif()
+
 visiontools_add_test(test_preprocess_contract
     SOURCES
         test_preprocess_contract.cpp
@@ -68,12 +78,12 @@ if(VISIONTOOLS_BUILD_INFER AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_infer_co
 endif()
 
 if(VISIONTOOLS_BUILD_PYTHON)
-    foreach(_test IN ITEMS package package_payload python_tools distribution logic_engine)
+    foreach(_test IN ITEMS package package_payload package_profile python_tools distribution logic_engine)
         add_test(NAME test_${_test}
             COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tests/test_${_test}.py"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()
     visiontools_test_path(_vt_test_paths)
-    set_tests_properties(test_package test_package_payload test_distribution test_python_tools test_logic_engine PROPERTIES
+    set_tests_properties(test_package test_package_payload test_package_profile test_distribution test_python_tools test_logic_engine PROPERTIES
         ENVIRONMENT "PATH=${_vt_test_paths};VISIONTOOLS_VALIDATOR=${VISIONTOOLS_VALIDATOR};PYTHONDONTWRITEBYTECODE=1")
 endif()

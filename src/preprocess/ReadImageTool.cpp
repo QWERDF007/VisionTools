@@ -1,6 +1,7 @@
 #include "ReadImageTool.h"
 
 #include "common/InputValues.h"
+#include "common/UpstreamStatus.h"
 
 #include <opencv2/imgcodecs.hpp>
 
@@ -11,6 +12,7 @@
 #include <fstream>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace visiontools::preprocess {
@@ -134,15 +136,14 @@ void ReadImageTool::resetSequence()
     lastBatchRef_.reset();
 }
 
-visionrt::ToolResult ReadImageTool::decode(const Catalog &catalog, const SequencePlan &plan, SequenceCursor &cursor,
-                                           bool reload)
+ReadImageTool::DecodedBatch ReadImageTool::decode(const Catalog &catalog, const SequencePlan &plan, bool reload,
+                                                  PendingInserts &pending)
 {
     DecodedBatch batch;
-    batch.keys  = plan.keys;
+    batch.keys = plan.keys;
     batch.paths.reserve(plan.files.size());
     batch.images.reserve(plan.files.size());
 
-    const std::size_t total = catalog.files.size();
     for (std::size_t i = 0; i < plan.files.size(); ++i)
     {
         const auto &file    = plan.files[i];
@@ -150,105 +151,116 @@ visionrt::ToolResult ReadImageTool::decode(const Catalog &catalog, const Sequenc
         batch.paths.push_back(pathStr);
 
         const cv::Mat *cached = (!reload) ? cache_.find(pathStr) : nullptr;
-        if (!cached)
+        if (cached)
         {
-            std::ifstream stream(file, std::ios::binary | std::ios::ate);
-            if (!stream.is_open())
-                throw visionrt::ContractError("无法打开图像文件：" + pathStr);
-            const auto endPosition = stream.tellg();
-            if (endPosition == std::streampos(-1) || !stream)
-                throw visionrt::ContractError("无法读取图像文件长度：" + pathStr);
-            const auto fileSize = static_cast<std::streamoff>(endPosition);
-            if (fileSize <= 0)
-                throw visionrt::ContractError("图像文件为空：" + pathStr);
-            if (static_cast<std::uintmax_t>(fileSize) > std::numeric_limits<std::size_t>::max()
-                || fileSize > std::numeric_limits<std::streamsize>::max()
-                || fileSize > std::numeric_limits<int>::max())
-                throw visionrt::ContractError("图像文件大小 " + std::to_string(fileSize)
-                                              + " 字节超出可表示范围：" + pathStr);
-
-            std::vector<char> buffer(static_cast<std::size_t>(fileSize));
-            stream.seekg(0, std::ios::beg);
-            if (!stream)
-                throw visionrt::ContractError("无法定位图像文件读取位置：" + pathStr);
-
-#ifdef VISIONTOOLS_TESTING
-            if (testing::beforeRead)
-                testing::beforeRead(file);
-            testing::fileReadCount.fetch_add(1);
-#endif
-
-            stream.read(buffer.data(), static_cast<std::streamsize>(fileSize));
-            const auto readBytes = stream.gcount();
-            if (readBytes != static_cast<std::streamsize>(fileSize) || stream.bad())
-                throw visionrt::ContractError("读取图像文件不完整：" + pathStr + "（期望 "
-                                              + std::to_string(fileSize) + " 字节，实际 "
-                                              + std::to_string(readBytes) + " 字节）");
-
-            cv::Mat decoded;
-            try
-            {
-                const cv::Mat rawData(1, static_cast<int>(buffer.size()), CV_8UC1, buffer.data());
-                decoded = cv::imdecode(rawData, cv::IMREAD_UNCHANGED);
-            }
-            catch (const cv::Exception &error)
-            {
-                throw ImageFailure{"图像解码失败：文件 " + pathStr + "（批次索引 " + std::to_string(i) + "）",
-                                   error.what()};
-            }
-            if (decoded.empty())
-                throw ImageFailure{"图像解码失败：文件 " + pathStr + "（批次索引 " + std::to_string(i)
-                                       + "）：无法解码图像",
-                                   {}};
-
-#ifdef VISIONTOOLS_TESTING
-            if (testing::afterDecode)
-                testing::afterDecode(file);
-            testing::decodeCount.fetch_add(1);
-#endif
-
-            // A single image larger than the whole budget is returned once and never retained.
-            cache_.insert(pathStr, decoded);
-            ++batch.decoded;
-            batch.images.push_back(std::move(decoded));
-        }
-        else
             batch.images.push_back(*cached);
-    }
+            continue;
+        }
 
-    // Commit: nothing below can fail, so a failed decode leaves the previous cursor,
-    // cache and last successful batch untouched.
+        std::ifstream stream(file, std::ios::binary | std::ios::ate);
+        if (!stream.is_open())
+            throw visionrt::ContractError("无法打开图像文件：" + pathStr);
+        const auto endPosition = stream.tellg();
+        if (endPosition == std::streampos(-1) || !stream)
+            throw visionrt::ContractError("无法读取图像文件长度：" + pathStr);
+        const auto fileSize = static_cast<std::streamoff>(endPosition);
+        if (fileSize <= 0)
+            throw visionrt::ContractError("图像文件为空：" + pathStr);
+        if (static_cast<std::uintmax_t>(fileSize) > std::numeric_limits<std::size_t>::max()
+            || fileSize > std::numeric_limits<std::streamsize>::max()
+            || fileSize > std::numeric_limits<int>::max())
+            throw visionrt::ContractError("图像文件大小 " + std::to_string(fileSize)
+                                          + " 字节超出可表示范围：" + pathStr);
+
+        std::vector<char> buffer(static_cast<std::size_t>(fileSize));
+        stream.seekg(0, std::ios::beg);
+        if (!stream)
+            throw visionrt::ContractError("无法定位图像文件读取位置：" + pathStr);
+
+#ifdef VISIONTOOLS_TESTING
+        if (testing::beforeRead)
+            testing::beforeRead(file);
+        testing::fileReadCount.fetch_add(1);
+#endif
+
+        stream.read(buffer.data(), static_cast<std::streamsize>(fileSize));
+        const auto readBytes = stream.gcount();
+        if (readBytes != static_cast<std::streamsize>(fileSize) || stream.bad())
+            throw visionrt::ContractError("读取图像文件不完整：" + pathStr + "（期望 " + std::to_string(fileSize)
+                                          + " 字节，实际 " + std::to_string(readBytes) + " 字节）");
+
+        cv::Mat decoded;
+        try
+        {
+            const cv::Mat rawData(1, static_cast<int>(buffer.size()), CV_8UC1, buffer.data());
+            decoded = cv::imdecode(rawData, cv::IMREAD_UNCHANGED);
+        }
+        catch (const cv::Exception &error)
+        {
+            throw ImageFailure{"图像解码失败：文件 " + pathStr + "（批次索引 " + std::to_string(i) + "）",
+                               error.what()};
+        }
+        if (decoded.empty())
+            throw ImageFailure{"图像解码失败：文件 " + pathStr + "（批次索引 " + std::to_string(i)
+                                   + "）：无法解码图像",
+                               {}};
+
+#ifdef VISIONTOOLS_TESTING
+        if (testing::afterDecode)
+            testing::afterDecode(file);
+        testing::decodeCount.fetch_add(1);
+#endif
+
+        // A cache write is a discardable side effect of a successful batch: nothing is retained
+        // until the whole batch decoded, so a failed attempt cannot mix its pixels into history.
+        pending.emplace_back(pathStr, decoded);
+        ++batch.decoded;
+        batch.images.push_back(std::move(decoded));
+    }
+    return batch;
+}
+
+visionrt::ToolResult ReadImageTool::commit(DecodedBatch batch, const SequencePlan &plan, SequenceCursor cursor,
+                                           const Catalog *scannedCatalog, bool sourceChanged, bool reverse,
+                                           std::size_t totalFiles)
+{
+    // Commit point: nothing below can fail, so a failed scan, read or decode leaves the previous
+    // catalog, cursor, cache and last successful batch exactly as they were.
+    if (scannedCatalog)
+        catalog_ = *scannedCatalog;
+    if (sourceChanged)
+        cache_.clear();
+    for (auto &[key, image] : batch.pending)
+        cache_.insert(key, image);
     cache_.protect(batch.paths);
+
     lastPlannedPaths_ = batch.paths;
-    lastBatchRef_     = visionrt::DataRef<visionrt::Image>(batch.images);
-    const auto reportedIndex = plan.startIndex;
-    cursor.nextKey           = plan.nextKey;
-    cursor.lastKey           = plan.lastKey;
-    cursor.exhausted         = plan.exhausted;
+    lastBatchRef_     = visionrt::DataRef<visionrt::Image>(std::move(batch.images));
+    reverse_          = reverse;
+    cursor_           = std::move(cursor);
+    cursor_.started   = true;
+    cursor_.nextKey   = plan.nextKey;
+    cursor_.lastKey   = plan.lastKey;
+    cursor_.exhausted = plan.exhausted;
 
     visionrt::Values outputs;
     outputs.emplace(p::out::IMAGES, *lastBatchRef_);
     outputs.emplace(p::out::PATHS, visionrt::Array(std::move(batch.paths)));
-    outputs.emplace(p::out::CURRENT_INDEX, static_cast<std::int64_t>(reportedIndex));
-    outputs.emplace(p::out::TOTAL_COUNT, static_cast<std::int64_t>(total));
+    outputs.emplace(p::out::CURRENT_INDEX, static_cast<std::int64_t>(plan.startIndex));
+    outputs.emplace(p::out::TOTAL_COUNT, static_cast<std::int64_t>(totalFiles));
     outputs.emplace(p::out::END_REACHED, plan.exhausted);
-    return {visionrt::executionSuccess(), std::move(outputs)};
+    return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
 }
 
 visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
 {
+    // An unselected upstream branch is not an error: no algorithm runs and nothing is read, so the
+    // decision is taken before the catalog, the cursor or the cache can change.
+    if (const auto upstream = upstreamStatus(inputs); upstream != 0)
+        return skippedByUpstream(upstream, missingOutputs());
+
     try
     {
-        // The tool owns the policy for a non-zero upstream status. Reading an image has disk and
-        // cursor side effects, so the decision is taken before scanning or decoding anything.
-        const auto statusInput = inputs.find("upstream_status");
-        const auto upstreamStatus = statusInput == inputs.end() ? std::int64_t{0}
-                                 : std::get_if<std::int64_t>(&statusInput->second)
-                                     ? *std::get_if<std::int64_t>(&statusInput->second)
-                                     : 0;
-        if (upstreamStatus != 0)
-            return {{1, "上层工具状态为 " + std::to_string(upstreamStatus) + "，本次未读取图像"}, missingOutputs()};
-
         const auto rawPath = requireString(inputs, p::in::PATH);
         if (rawPath.empty())
             throw visionrt::ContractError("图像路径输入为空");
@@ -274,7 +286,8 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         else if (order.find("顺序") != std::string::npos || order == "forward")
             isReverse = false;
         else
-            throw visionrt::ContractError("输入端口 'order' 的取值无效：" + order + "（允许 顺序（下一张）/逆序（上一张））");
+            throw visionrt::ContractError("输入端口 'order' 的取值无效：" + order
+                                          + "（允许 顺序（下一张）/逆序（上一张））");
 
         const auto count = requireInt(inputs, p::in::COUNT);
         if (count < 1 || count > kMaxCount)
@@ -294,33 +307,59 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         if (!isDir && !isFile)
             throw visionrt::ContractError("图像路径既非文件也非目录：" + utf8Path(resolved));
 
-        const bool pathChanged = !catalog_ || catalog_->rawPath != rawPath || catalog_->recursive != recursive
-                              || catalog_->isDirectory != isDir;
+        const bool sourceChanged = !catalog_ || catalog_->rawPath != rawPath || catalog_->recursive != recursive
+                                || catalog_->isDirectory != isDir;
         const bool directionChanged = isReverse != reverse_;
-        if (pathChanged || directionChanged)
-            resetSequence();
 
-        const bool needScan = pathChanged || !catalog_ || (reload && isDir);
-        if (needScan)
+        // Candidate catalog: a rescan is prepared locally and only becomes the tool's state after a
+        // fully successful batch.
+        std::optional<Catalog> scanned;
+        const Catalog         *catalog = catalog_ ? &*catalog_ : nullptr;
+        if (sourceChanged || (reload && isDir) || !catalog)
         {
-            std::vector<std::filesystem::path> files;
+            Catalog candidate;
+            candidate.rawPath     = rawPath;
+            candidate.isDirectory = isDir;
+            candidate.recursive   = recursive;
             if (isFile)
-                files.push_back(resolved);
+                candidate.files.push_back(resolved);
             else
-                files = scanDirectory(resolved, recursive);
-            if (files.empty())
+                candidate.files = scanDirectory(resolved, recursive);
+            if (candidate.files.empty())
                 throw visionrt::ContractError("没有可用图像文件");
-            if (!catalog_)
-                catalog_.emplace();
-            catalog_->rawPath    = rawPath;
-            catalog_->isDirectory = isDir;
-            catalog_->recursive  = recursive;
-            catalog_->files      = std::move(files);
+            scanned = std::move(candidate);
+            catalog = &*scanned;
         }
-        reverse_ = isReverse;
 
-        const auto plan = planSequence(catalog_->files, cursor_,
-                                       SequenceRequest{isReverse, isLoop, static_cast<std::size_t>(count)});
+        // Candidate cursor: a changed source or direction starts a fresh sequence, but the committed
+        // one is only replaced once this call succeeds.
+        SequenceCursor nextCursor = (sourceChanged || directionChanged) ? SequenceCursor{} : cursor_;
+        const auto     request
+            = SequenceRequest{isReverse, isLoop, static_cast<std::size_t>(count)};
+        auto plan = planSequence(catalog->files, nextCursor, request);
+
+        // A file can be deleted between calls without the path changing. Re-scan once so the cursor
+        // is resolved against the folder as it is now: a deleted tail must end the sequence (or wrap
+        // on request) instead of being retried as a missing file.
+        if (isDir)
+        {
+            const auto missingAtPlan = std::any_of(plan.files.begin(), plan.files.end(),
+                                                   [](const auto &file) { return !std::filesystem::exists(file); });
+            if (missingAtPlan)
+            {
+                Catalog refreshed;
+                refreshed.rawPath     = rawPath;
+                refreshed.isDirectory = true;
+                refreshed.recursive   = recursive;
+                refreshed.files       = scanDirectory(resolved, recursive);
+                if (!refreshed.files.empty())
+                {
+                    scanned = std::move(refreshed);
+                    catalog = &*scanned;
+                    plan    = planSequence(catalog->files, nextCursor, request);
+                }
+            }
+        }
 
         // Re-reading the same unchanged batch keeps the exact previous output reference.
         if (!reload && lastBatchRef_.has_value() && plan.files.size() == lastPlannedPaths_.size())
@@ -331,6 +370,13 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
                 planned.push_back(utf8Path(file));
             if (planned == lastPlannedPaths_)
             {
+                if (scanned && sourceChanged)
+                    cache_.clear();
+                if (scanned)
+                    catalog_ = std::move(*scanned);
+                reverse_ = isReverse;
+                cursor_  = std::move(nextCursor);
+                cursor_.started   = true;
                 cursor_.nextKey   = plan.nextKey;
                 cursor_.lastKey   = plan.lastKey;
                 cursor_.exhausted = plan.exhausted;
@@ -340,27 +386,31 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
                 outputs.emplace(p::out::CURRENT_INDEX, static_cast<std::int64_t>(plan.startIndex));
                 outputs.emplace(p::out::TOTAL_COUNT, static_cast<std::int64_t>(catalog_->files.size()));
                 outputs.emplace(p::out::END_REACHED, plan.exhausted);
-                return {visionrt::executionSuccess(), std::move(outputs)};
+                return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
             }
         }
 
-        return decode(*catalog_, plan, cursor_, reload);
+        PendingInserts pending;
+        auto           batch = decode(*catalog, plan, reload, pending);
+        batch.pending        = std::move(pending);
+        return commit(std::move(batch), plan, std::move(nextCursor), scanned ? &*scanned : nullptr, sourceChanged,
+                      isReverse, catalog ? catalog->files.size() : 0);
     }
     catch (const ImageFailure &error)
     {
-        return {{1, error.message, error.detail}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {1, error.message, error.detail});
     }
     catch (const visionrt::ContractError &error)
     {
-        return {{1, error.what()}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {1, error.what()});
     }
     catch (const std::exception &error)
     {
-        return {{1, "图像读取失败", error.what()}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {1, "图像读取失败", error.what()});
     }
     catch (...)
     {
-        return {{-1, "图像读取失败：未知异常"}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {-1, "图像读取失败：未知异常"});
     }
 }
 

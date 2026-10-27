@@ -1,4 +1,5 @@
 #include "src/infer/YoloModel.h"
+#include "result_view.h"
 #include "src/infer/YoloPostprocess.h"
 
 #include <visionrt/contracts/Module.h>
@@ -63,7 +64,7 @@ void testWhiteboxYoloUninitializedErrorPath()
     inputs.emplace("conf_threshold", 0.25);
     inputs.emplace("nms_threshold", 0.45);
     auto res = tool.executeWithTrace(inputs, traces);
-    REQUIRE(res.status.code != 0, "Uninitialized tool execution must return non-zero error code");
+    REQUIRE(testview::status(res).code != 0, "Uninitialized tool execution must return non-zero error code");
     REQUIRE(traces.empty(), "Uninitialized tool execution must produce no traces");
     std::cout << "[PASS] testWhiteboxYoloUninitializedErrorPath passed." << std::endl;
 }
@@ -136,7 +137,7 @@ void testWhiteboxYoloInitializedTrace()
     inputs.emplace("max_detections", static_cast<std::int64_t>(300));
 
     auto res = tool.executeWithTrace(inputs, traces);
-    REQUIRE(res.status.code == 0, "Initialized executeWithTrace must succeed");
+    REQUIRE(testview::status(res).code == 0, "Initialized executeWithTrace must succeed");
     REQUIRE(traces.size() == 1, "Must produce one trace per input image");
     REQUIRE(traces[0].geometry.inputWidth == 640 && traces[0].geometry.inputHeight == 640,
             "Trace geometry network dims match");

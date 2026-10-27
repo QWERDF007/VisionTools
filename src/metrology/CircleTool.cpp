@@ -3,6 +3,7 @@
 #include "CircleMeasureKernel.h"
 
 #include "common/GeometryTransform.h"
+#include "common/UpstreamStatus.h"
 #include "common/ImageSupport.h"
 #include "common/InputValues.h"
 #include "common/RoiSupport.h"
@@ -65,6 +66,9 @@ visionrt::ToolStatus CircleTool::initialize(const visionrt::Values &parameters)
 
 visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
 {
+    // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
+    if (const auto upstream = upstreamStatus(inputs); upstream != 0)
+        return skippedByUpstream(upstream, missingOutputs());
     try
     {
         const auto &images = requireImages(inputs, p::in::IMAGES);
@@ -196,19 +200,19 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
         outputs.emplace(p::out::COMPLETENESS, array2(std::move(completenessValues)));
         outputs.emplace(p::out::USED_EDGES, roi::roiValue(std::move(edgeGroups)));
         outputs.emplace(p::out::UNIT, unit);
-        return {visionrt::executionSuccess(), std::move(outputs)};
+        return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &error)
     {
-        return {{1, error.what()}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {1, error.what()});
     }
     catch (const std::exception &error)
     {
-        return {{1, "圆测量失败", error.what()}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {1, "圆测量失败", error.what()});
     }
     catch (...)
     {
-        return {{-1, "圆测量失败：未知异常"}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {-1, "圆测量失败：未知异常"});
     }
 }
 

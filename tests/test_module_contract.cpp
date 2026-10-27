@@ -1,4 +1,5 @@
 #include <visionrt/contracts/Module.h>
+#include "result_view.h"
 #include "TestRegistry.h"
 #include <visionrt/contracts/Tool.h>
 
@@ -102,8 +103,8 @@ int main()
         in1.emplace("constant_offset", 2.0);
 
         auto res1 = inst->execute(in1);
-        REQUIRE(res1.status.code == 0, "Execute 1 must succeed");
-        REQUIRE(res1.status.message == "运行成功", "Execute 1 success message must be shared");
+        REQUIRE(testview::status(res1).code == 0, "Execute 1 must succeed");
+        REQUIRE(testview::status(res1).message == "运行成功", "Execute 1 success message must be shared");
         const auto *outBatch1 = std::get_if<visionrt::DataRef<visionrt::Image>>(&res1.outputs["images"]);
         REQUIRE(outBatch1 != nullptr && !outBatch1->get().empty(), "Execute 1 must return valid image");
         snapshotImage = outBatch1->get()[0];
@@ -122,8 +123,8 @@ int main()
         in2.emplace("block_size", std::int64_t(3));
         in2.emplace("constant_offset", 1.0);
         auto res2 = inst->execute(in2);
-        REQUIRE(res2.status.code == 0, "Execute 2 must succeed");
-        REQUIRE(res2.status.message == "运行成功", "Execute 2 success message must be shared");
+        REQUIRE(testview::status(res2).code == 0, "Execute 2 must succeed");
+        REQUIRE(testview::status(res2).message == "运行成功", "Execute 2 success message must be shared");
 
         // Verify snapshot from execute 1 is still completely valid and all pixels match
         const auto &snapMat = snapshotImage;
@@ -177,7 +178,7 @@ int main()
             for (int i = 0; i < 10; ++i)
             {
                 auto res = inst->execute(inputs);
-                REQUIRE(res.status.code == 0, "Execute must succeed");
+                REQUIRE(testview::status(res).code == 0, "Execute must succeed");
                 const auto *b = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
                 REQUIRE(b != nullptr && !b->get().empty(), "Output images must be non-empty");
                 REQUIRE(b->get()[0].rows == size && b->get()[0].cols == size, "Concurrent output size match");
@@ -239,7 +240,7 @@ int main()
         for (int w = 0; w < 5; ++w)
         {
             auto res = inst->execute(inputs);
-            REQUIRE(res.status.code == 0, "Warmup execute must succeed");
+            REQUIRE(testview::status(res).code == 0, "Warmup execute must succeed");
         }
         std::size_t rssWarmup = getProcessRSS();
 
@@ -252,7 +253,7 @@ int main()
             auto t0  = std::chrono::high_resolution_clock::now();
             auto res = inst->execute(inputs);
             auto t1  = std::chrono::high_resolution_clock::now();
-            REQUIRE(res.status.code == 0, "100 consecutive execute must succeed");
+            REQUIRE(testview::status(res).code == 0, "100 consecutive execute must succeed");
             latencies_us.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
 
             if (i == 24)

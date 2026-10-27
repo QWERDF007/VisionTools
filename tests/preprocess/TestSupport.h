@@ -1,6 +1,7 @@
 #pragma once
 
 #include <opencv2/imgcodecs.hpp>
+#include "../result_view.h"
 #include <opencv2/imgproc.hpp>
 #include <visionrt/contracts/Module.h>
 #include <visionrt/contracts/Tool.h>
@@ -36,15 +37,15 @@ namespace visiontools::tests {
 
 inline void requireSuccess(const visionrt::ToolResult &result, const char *context)
 {
-    REQUIRE(result.status.code == 0, context);
-    REQUIRE(result.status.message == "运行成功", "Successful execute must use the shared success message");
+    REQUIRE(testview::status(result).code == 0, context);
+    REQUIRE(testview::status(result).message == "运行成功", "Successful execute must use the shared success message");
 }
 
 inline void requireFailure(const visionrt::ToolResult &result, std::string_view expected, const char *context)
 {
-    REQUIRE(result.status.code != 0, context);
-    REQUIRE(result.status.message.find(expected) != std::string::npos,
-            std::string(context) + ": " + result.status.message);
+    REQUIRE(testview::status(result).code != 0, context);
+    REQUIRE(testview::status(result).message.find(expected) != std::string::npos,
+            std::string(context) + ": " + testview::status(result).message);
 }
 
 inline cv::Mat gradient(int rows, int cols)

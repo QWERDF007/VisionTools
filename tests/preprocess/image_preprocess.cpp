@@ -1,4 +1,5 @@
 #include "src/preprocess/ImagePreprocessTool.h"
+#include "../result_view.h"
 #include "TestSupport.h"
 
 using namespace visionrt;
@@ -62,7 +63,7 @@ void testImagePreprocessTool()
         inputs.emplace(preprocess_ports::in::IMAGES, DataRef<Image>(Image{owned}));
         auto res = tool.execute(inputs);
         requireFailure(res, "operation", "Missing operation must fail");
-        REQUIRE(res.status.message.find("缺失") != std::string::npos, "Missing value must be Chinese");
+        REQUIRE(testview::status(res).message.find("缺失") != std::string::npos, "Missing value must be Chinese");
     }
     {
         Values inputs;
@@ -70,7 +71,7 @@ void testImagePreprocessTool()
         inputs.emplace(preprocess_ports::in::OPERATION, std::string("unknown"));
         auto res = tool.execute(inputs);
         requireFailure(res, "operation", "Invalid operation must fail");
-        REQUIRE(res.status.message.find("unknown") != std::string::npos, "Error must include the invalid value");
+        REQUIRE(testview::status(res).message.find("unknown") != std::string::npos, "Error must include the invalid value");
     }
     {
         Values inputs;
@@ -95,7 +96,7 @@ void testImagePreprocessTool()
         inputs.emplace(preprocess_ports::in::THRESHOLD, std::int64_t(300));
         auto res = tool.execute(inputs);
         requireFailure(res, "threshold", "Out-of-range threshold must fail");
-        REQUIRE(res.status.message.find("[0, 255]") != std::string::npos, "Range must be stated");
+        REQUIRE(testview::status(res).message.find("[0, 255]") != std::string::npos, "Range must be stated");
     }
 
     // 5. Invalid image type names the batch index

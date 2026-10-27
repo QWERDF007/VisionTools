@@ -1,6 +1,7 @@
 #include "ImageCropTool.h"
 
 #include "common/InputValues.h"
+#include "common/UpstreamStatus.h"
 
 #include <opencv2/core.hpp>
 
@@ -62,8 +63,18 @@ visionrt::ToolStatus ImageCropTool::initialize(const visionrt::Values &parameter
     return {};
 }
 
+namespace {
+visionrt::Values missingOutputs()
+{
+    return {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ORIGINS, visionrt::Missing{}}};
+}
+} // namespace
+
 visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
 {
+    // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
+    if (const auto upstream = upstreamStatus(inputs); upstream != 0)
+        return skippedByUpstream(upstream, missingOutputs());
     try
     {
         const auto &images
@@ -171,23 +182,19 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
         visionrt::Values results;
         results.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(std::move(output), std::move(outputOwners)));
         results.emplace(p::out::ORIGINS, visionrt::Array(std::move(origins)));
-        return {visionrt::executionSuccess(), std::move(results)};
+        return visionrt::toolResult(std::move(results), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &error)
     {
-        return {{1, error.what()}, {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ORIGINS, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {1, error.what()});
     }
     catch (const std::exception &error)
     {
-        return {
-            {1, "图像裁剪失败", error.what()},
-            {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ORIGINS, visionrt::Missing{}}}
-        };
+        return visionrt::toolResult(missingOutputs(), {1, "图像裁剪失败", error.what()});
     }
     catch (...)
     {
-        return {{-1, "图像裁剪失败：未知异常"},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ORIGINS, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {-1, "图像裁剪失败：未知异常"});
     }
 }
 

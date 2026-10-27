@@ -12,14 +12,14 @@
       "id": "images",
       "name": "图像",
       "type": "Image",
-      "required": true
+      "required": false
     },
     {
       "id": "rois",
       "name": "候选ROI",
       "type": "ROI",
       "image_input": "images",
-      "required": true
+      "required": false
     },
     {
       "id": "scores",
@@ -27,7 +27,7 @@
       "type": "Array",
       "dtype": "float32",
       "rank": 2,
-      "required": true
+      "required": false
     },
     {
       "id": "classes",
@@ -35,14 +35,14 @@
       "type": "Array",
       "dtype": "int64",
       "rank": 2,
-      "required": true
+      "required": false
     },
     {
       "id": "class_names",
       "name": "类别名称",
       "type": "Array",
       "rank": 2,
-      "required": true,
+      "required": false,
       "dtype": "string"
     },
     {

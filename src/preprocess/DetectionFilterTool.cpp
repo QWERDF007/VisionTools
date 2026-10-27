@@ -1,6 +1,7 @@
 #include "DetectionFilterTool.h"
 
 #include "common/InputValues.h"
+#include "common/UpstreamStatus.h"
 
 #include <algorithm>
 #include <cmath>
@@ -29,8 +30,24 @@ visionrt::ToolStatus DetectionFilterTool::initialize(const visionrt::Values &par
     return {};
 }
 
+
+namespace {
+visionrt::Values missingOutputs()
+{
+    return {{p::out::IMAGES, visionrt::Missing{}},
+            {p::out::ROIS, visionrt::Missing{}},
+            {p::out::SCORES, visionrt::Missing{}},
+            {p::out::CLASSES, visionrt::Missing{}},
+            {p::out::CLASS_NAMES, visionrt::Missing{}},
+            {p::out::COUNTS, visionrt::Missing{}}};
+}
+} // namespace
+
 visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs)
 {
+    // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
+    if (const auto upstream = upstreamStatus(inputs); upstream != 0)
+        return skippedByUpstream(upstream, missingOutputs());
     try
     {
         const auto &images
@@ -126,33 +143,19 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
         outputs.emplace(p::out::CLASSES, visionrt::Array(std::move(filteredClasses)));
         outputs.emplace(p::out::CLASS_NAMES, visionrt::Array(std::move(filteredNames)));
         outputs.emplace(p::out::COUNTS, visionrt::Array(std::move(counts)));
-        return {visionrt::executionSuccess(), std::move(outputs)};
+        return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &error)
     {
-        return {{1, error.what()},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}},
-                 {p::out::SCORES, visionrt::Missing{}}, {p::out::CLASSES, visionrt::Missing{}},
-                 {p::out::CLASS_NAMES, visionrt::Missing{}}, {p::out::COUNTS, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {1, error.what()});
     }
     catch (const std::exception &error)
     {
-        return {
-            {1, "缺陷过滤失败", error.what()},
-            {{p::out::IMAGES, visionrt::Missing{}},
-             {p::out::ROIS, visionrt::Missing{}},
-             {p::out::SCORES, visionrt::Missing{}},
-             {p::out::CLASSES, visionrt::Missing{}},
-             {p::out::CLASS_NAMES, visionrt::Missing{}},
-             {p::out::COUNTS, visionrt::Missing{}}}
-        };
+        return visionrt::toolResult(missingOutputs(), {1, "缺陷过滤失败", error.what()});
     }
     catch (...)
     {
-        return {{-1, "缺陷过滤失败：未知异常"},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}},
-                 {p::out::SCORES, visionrt::Missing{}}, {p::out::CLASSES, visionrt::Missing{}},
-                 {p::out::CLASS_NAMES, visionrt::Missing{}}, {p::out::COUNTS, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {-1, "缺陷过滤失败：未知异常"});
     }
 }
 

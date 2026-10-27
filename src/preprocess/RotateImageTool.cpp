@@ -1,6 +1,7 @@
 #include "RotateImageTool.h"
 
 #include "common/GeometryTransform.h"
+#include "common/UpstreamStatus.h"
 #include "common/ImageSupport.h"
 #include "common/InputValues.h"
 
@@ -69,6 +70,9 @@ visionrt::ToolStatus RotateImageTool::initialize(const visionrt::Values &paramet
 
 visionrt::ToolResult RotateImageTool::execute(const visionrt::Values &inputs)
 {
+    // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
+    if (const auto upstream = upstreamStatus(inputs); upstream != 0)
+        return skippedByUpstream(upstream, missingOutputs());
     try
     {
         const auto &images        = requireImages(inputs, p::in::IMAGES);
@@ -139,23 +143,23 @@ visionrt::ToolResult RotateImageTool::execute(const visionrt::Values &inputs)
                                                                 requireInput(inputs, p::in::IMAGES))
                                                                 .owner()}));
         outputs.emplace(p::out::ALIGNMENT, geometry::alignmentArray(outputAlignments));
-        return {visionrt::executionSuccess(), std::move(outputs)};
+        return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &error)
     {
-        return {{1, error.what()}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {1, error.what()});
     }
     catch (const cv::Exception &error)
     {
-        return {{1, "旋转图像失败", error.what()}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {1, "旋转图像失败", error.what()});
     }
     catch (const std::exception &error)
     {
-        return {{1, "旋转图像失败", error.what()}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {1, "旋转图像失败", error.what()});
     }
     catch (...)
     {
-        return {{-1, "旋转图像失败：未知异常"}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {-1, "旋转图像失败：未知异常"});
     }
 }
 

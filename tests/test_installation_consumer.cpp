@@ -1,4 +1,5 @@
 #include <opencv2/core.hpp>
+#include "result_view.h"
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <visionrt/contracts/Module.h>
@@ -182,8 +183,8 @@ int main(int argc, char **argv)
         inputs.emplace("constant_offset", 2.0);
 
         auto res = inst->execute(inputs);
-        REQUIRE(res.status.code == 0, "Execution of adaptive_binary must succeed");
-        REQUIRE(res.status.message == "运行成功", "Adaptive binary success message must be shared");
+        REQUIRE(testview::status(res).code == 0, "Execution of adaptive_binary must succeed");
+        REQUIRE(testview::status(res).message == "运行成功", "Adaptive binary success message must be shared");
 
         const auto *outBatch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
         REQUIRE(outBatch != nullptr && !outBatch->get().empty(), "Adaptive binary output must contain images");
@@ -193,7 +194,7 @@ int main(int argc, char **argv)
         auto badInputs = inputs;
         badInputs.insert_or_assign("block_size", std::string("not_an_int"));
         auto badRes = inst->execute(badInputs);
-        REQUIRE(badRes.status.code == 1 && badRes.status.message.find("block_size") != std::string::npos,
+        REQUIRE(testview::status(badRes).code == 1 && testview::status(badRes).message.find("block_size") != std::string::npos,
                 "Invalid block_size must return the operator-owned business error");
 
         REQUIRE(inst->release().code == 0, "Release 1 must succeed");
@@ -220,8 +221,8 @@ int main(int argc, char **argv)
         inputs.emplace("rect", visionrt::DataRef<visionrt::ROI>(visionrt::ROI{{roi}}));
 
         auto res = inst->execute(inputs);
-        REQUIRE_EXECUTION(res.status.code == 0, "Crop tool execution must succeed");
-        REQUIRE_EXECUTION(res.status.message == "运行成功", "Crop success message must be shared");
+        REQUIRE_EXECUTION(testview::status(res).code == 0, "Crop tool execution must succeed");
+        REQUIRE_EXECUTION(testview::status(res).message == "运行成功", "Crop success message must be shared");
 
         const auto *outBatch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
         REQUIRE_EXECUTION(outBatch != nullptr && !outBatch->get().empty(), "Crop output must contain images");
@@ -264,8 +265,8 @@ int main(int argc, char **argv)
         inputs.emplace("min_area", 0.0);
 
         auto res = inst->execute(inputs);
-        REQUIRE(res.status.code == 0, "Detection filter execution must succeed");
-        REQUIRE(res.status.message == "运行成功", "Detection filter success message must be shared");
+        REQUIRE(testview::status(res).code == 0, "Detection filter execution must succeed");
+        REQUIRE(testview::status(res).message == "运行成功", "Detection filter success message must be shared");
 
         const auto *outRois = std::get_if<visionrt::DataRef<visionrt::ROI>>(&res.outputs["rois"]);
         REQUIRE(outRois != nullptr && outRois->get()[0].size() == 1, "Only score >= 0.5 passes");
@@ -274,7 +275,7 @@ int main(int argc, char **argv)
         auto badInputs = inputs;
         badInputs.insert_or_assign("min_score", std::string("not_a_float"));
         auto badRes = inst->execute(badInputs);
-        REQUIRE(badRes.status.code == 1 && badRes.status.message.find("min_score") != std::string::npos,
+        REQUIRE(testview::status(badRes).code == 1 && testview::status(badRes).message.find("min_score") != std::string::npos,
                 "Invalid min_score must return the operator-owned business error");
 
         REQUIRE(inst->release().code == 0, "Filter release must succeed");
@@ -303,8 +304,8 @@ int main(int argc, char **argv)
         inputs.emplace("padding", std::int64_t(0));
 
         auto res = inst->execute(inputs);
-        REQUIRE(res.status.code == 0, "Roi projection execution must succeed");
-        REQUIRE(res.status.message == "运行成功", "Roi projection success message must be shared");
+        REQUIRE(testview::status(res).code == 0, "Roi projection execution must succeed");
+        REQUIRE(testview::status(res).message == "运行成功", "Roi projection success message must be shared");
 
         const auto *rois = std::get_if<visionrt::DataRef<visionrt::ROI>>(&res.outputs["rois"]);
         REQUIRE(rois != nullptr && rois->get().size() == 1 && rois->get()[0].size() == 1, "Expected 1 projected ROI");
@@ -328,8 +329,8 @@ int main(int argc, char **argv)
         inputs.emplace("threshold", std::int64_t(100));
 
         auto res = inst->execute(inputs);
-        REQUIRE(res.status.code == 0, "Image preprocess execution must succeed");
-        REQUIRE(res.status.message == "运行成功", "Image preprocess success message must be shared");
+        REQUIRE(testview::status(res).code == 0, "Image preprocess execution must succeed");
+        REQUIRE(testview::status(res).message == "运行成功", "Image preprocess success message must be shared");
 
         const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
         REQUIRE(out != nullptr && !out->get().empty(), "Output must have ImageBatch");
@@ -370,8 +371,8 @@ int main(int argc, char **argv)
         auto res = inst->execute(inputs);
         std::filesystem::remove(tempPath);
 
-        REQUIRE(res.status.code == 0, "Image read execution must succeed");
-        REQUIRE(res.status.message == "运行成功", "Image read success message must be shared");
+        REQUIRE(testview::status(res).code == 0, "Image read execution must succeed");
+        REQUIRE(testview::status(res).message == "运行成功", "Image read success message must be shared");
         const auto &paths = std::get<visionrt::Array>(res.outputs.at("paths")).get<std::vector<std::string>>();
         REQUIRE(paths[0].ends_with(utf8Path), "Image path must preserve Unicode UTF-8");
         const auto *batch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
@@ -404,7 +405,7 @@ int main(int argc, char **argv)
         inputs.emplace("alignment", visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 3>>(
                                         visionrt::NestedVector<double, 3>{})));
         auto res = inst->execute(inputs);
-        REQUIRE_ABI(res.status.code == 0, "Execution of rotate must succeed");
+        REQUIRE_ABI(testview::status(res).code == 0, "Execution of rotate must succeed");
         const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
         REQUIRE_ABI(out != nullptr && !out->get().empty(), "Rotate output must contain images");
         REQUIRE_ABI(inst->release().code == 0, "Release rotate must succeed");
@@ -427,7 +428,7 @@ int main(int argc, char **argv)
                                         visionrt::NestedVector<double, 3>{})));
         inputs.emplace("emit_mask", false);
         auto res = inst->execute(inputs);
-        REQUIRE_ABI(res.status.code == 0, "Execution of brightness must succeed");
+        REQUIRE_ABI(testview::status(res).code == 0, "Execution of brightness must succeed");
         const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
         REQUIRE_ABI(out != nullptr && !out->get().empty(), "Brightness output must contain images");
         REQUIRE_ABI(inst->release().code == 0, "Release brightness must succeed");

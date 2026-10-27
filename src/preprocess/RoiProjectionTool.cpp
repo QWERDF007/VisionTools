@@ -1,6 +1,7 @@
 #include "RoiProjectionTool.h"
 
 #include "common/InputValues.h"
+#include "common/UpstreamStatus.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -45,8 +46,18 @@ visionrt::ToolStatus RoiProjectionTool::initialize(const visionrt::Values &param
     return {};
 }
 
+namespace {
+visionrt::Values missingOutputs()
+{
+    return {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}}};
+}
+} // namespace
+
 visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
 {
+    // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
+    if (const auto upstream = upstreamStatus(inputs); upstream != 0)
+        return skippedByUpstream(upstream, missingOutputs());
     try
     {
         const auto &imgBatch
@@ -79,7 +90,7 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
             visionrt::Values outputs;
             outputs.emplace(p::out::IMAGES, imgBatch);
             outputs.emplace(p::out::ROIS, visionrt::DataRef<visionrt::ROI>(visionrt::ROI{}));
-            return {visionrt::executionSuccess(), std::move(outputs)};
+            return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
         }
 
         visionrt::ROI output;
@@ -141,24 +152,19 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
         visionrt::Values outputs;
         outputs.emplace(p::out::IMAGES, imgBatch);
         outputs.emplace(p::out::ROIS, visionrt::DataRef<visionrt::ROI>(std::move(output)));
-        return {visionrt::executionSuccess(), std::move(outputs)};
+        return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &error)
     {
-        return {{1, error.what()},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {1, error.what()});
     }
     catch (const std::exception &error)
     {
-        return {
-            {1, "投影ROI失败", error.what()},
-            {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}}}
-        };
+        return visionrt::toolResult(missingOutputs(), {1, "投影ROI失败", error.what()});
     }
     catch (...)
     {
-        return {{-1, "投影ROI失败：未知异常"},
-                {{p::out::IMAGES, visionrt::Missing{}}, {p::out::ROIS, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {-1, "投影ROI失败：未知异常"});
     }
 }
 

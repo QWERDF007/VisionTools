@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "profiles": {
+    "cpu": {
+      "description": "无 GPU 推理：图像、测量与 Python 工具，不含 TensorRT/CUDA 推理依赖",
+      "gpu_architectures": [],
+      "infer_enabled": false,
+      "engine_build": false,
+      "runtime": "none",
+      "hardware_forward_compatibility": false
+    },
+    "rtx40-runtime": {
+      "description": "GeForce RTX40（计算能力 8.9）只加载已兼容的 engine，不提供现场构建",
+      "gpu_architectures": ["sm89"],
+      "infer_enabled": true,
+      "engine_build": false,
+      "runtime": "full",
+      "hardware_forward_compatibility": false
+    },
+    "rtx40-build": {
+      "description": "GeForce RTX40 的默认发行：加载 engine 并保留 build_wts 现场构建能力",
+      "gpu_architectures": ["sm89"],
+      "infer_enabled": true,
+      "engine_build": true,
+      "runtime": "full",
+      "hardware_forward_compatibility": false
+    },
+    "gpu-custom": {
+      "description": "显式 SM 集合：架构资源为目标集合并集，构建能力由 --engine-build 决定",
+      "gpu_architectures": [],
+      "infer_enabled": true,
+      "engine_build": false,
+      "runtime": "full",
+      "hardware_forward_compatibility": false
+    }
+  },
+  "rules": {
+    "copy_directory_wildcards": false,
+    "unknown_tensorrt_layout": "error",
+    "reason_fields": ["component", "reason", "required_by", "target_sm"]
+  }
+}

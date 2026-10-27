@@ -2,6 +2,8 @@
 
 #include "InferProtocol.h"
 
+#include "common/UpstreamStatus.h"
+
 #include <inferrt/model/Buffers.hpp>
 #include <inferrt/model/ModelFactory.hpp>
 #include <inferrt/model/Utils.hpp>
@@ -317,6 +319,9 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
     {
         if (!state_)
             return missingResult({-3, "YOLO 执行失败：模型未初始化"});
+        // A branch the condition tool did not select must not load a model or touch the device.
+        if (const auto upstream = visiontools::upstreamStatus(inputs); upstream != 0)
+            return missingResult({upstream, "上游未选中本分支，工具未执行"});
         const auto found = inputs.find(yolo_ports::in::IMAGES);
         if (found == inputs.end() || isMissing(found->second))
             throw ContractError("输入端口 'images' 缺失");
@@ -417,14 +422,12 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             classes.push_back(std::move(imageClasses));
             names.push_back(std::move(imageNames));
         }
-        return {
-            executionSuccess(),
-            {{yolo_ports::out::IMAGES, images},
-                {yolo_ports::out::ROIS, DataRef<ROI>(std::move(rois))},
-                {yolo_ports::out::SCORES, Array(std::move(scores))},
-                {yolo_ports::out::CLASSES, Array(std::move(classes))},
-                {yolo_ports::out::CLASS_NAMES, Array(std::move(names))}}
-        };
+        return toolResult({{yolo_ports::out::IMAGES, images},
+                           {yolo_ports::out::ROIS, DataRef<ROI>(std::move(rois))},
+                           {yolo_ports::out::SCORES, Array(std::move(scores))},
+                           {yolo_ports::out::CLASSES, Array(std::move(classes))},
+                           {yolo_ports::out::CLASS_NAMES, Array(std::move(names))}},
+                          executionSuccess());
     }
     catch (const ContractError &error)
     {

@@ -342,6 +342,182 @@ void testReadImageTool()
         REQUIRE(paths.size() == 2, "Recursive must find 2 images");
     }
 
+    // ==========================================
+    // 6. T35-12: 历史缓存是严格有界的 LRU
+    // ==========================================
+    {
+        const auto oneImage = [](uchar value) { return cv::Mat(10, 10, CV_8UC1, cv::Scalar(value)); };
+        const std::size_t imageBytes = 10 * 10;
+        DecodedImageCache cache{imageBytes * 3};
+
+        REQUIRE(cache.insert("a", oneImage(1)), "first image must be retained");
+        REQUIRE(cache.insert("b", oneImage(2)), "second image must be retained");
+        REQUIRE(cache.insert("c", oneImage(3)), "third image must be retained");
+        REQUIRE(cache.bytes() <= cache.budget(), "history exceeded its byte budget");
+
+        // A hit is a use: after touching `a`, the coldest entry is `b`, so `b` is the one evicted.
+        const cv::Mat held = *cache.find("a");
+        REQUIRE(held.data != nullptr, "a retained image must be readable");
+        REQUIRE(cache.insert("d", oneImage(4)), "a fourth image must be retained by evicting the coldest");
+        REQUIRE(cache.find("a") != nullptr, "a recently used image must survive eviction");
+        REQUIRE(cache.find("b") == nullptr, "the coldest image must be the one evicted");
+        REQUIRE(cache.bytes() <= cache.budget(), "history exceeded its byte budget after eviction");
+
+        // An image larger than the whole budget is returned once by the tool but never retained.
+        DecodedImageCache tight{imageBytes};
+        const cv::Mat     oversized(10, 11, CV_8UC1, cv::Scalar(9));
+        REQUIRE(!tight.insert("big", oversized), "an oversized image must be refused by the history");
+        REQUIRE(tight.bytes() == 0 && tight.size() == 0, "a refused image must not consume budget");
+
+        // A protected batch (the last successful output) is never evicted, and the budget still holds.
+        DecodedImageCache guarded{imageBytes * 2};
+        REQUIRE(guarded.insert("keep", oneImage(5)), "protected candidate must be retained");
+        guarded.protect({"keep"});
+        REQUIRE(guarded.insert("one", oneImage(6)), "a second image fits next to the protected batch");
+        REQUIRE(guarded.insert("two", oneImage(7)), "a third image must evict the unprotected one");
+        REQUIRE(guarded.find("keep") != nullptr, "the protected batch was evicted");
+        REQUIRE(guarded.bytes() <= guarded.budget(), "protected history exceeded its budget");
+
+        // Eviction releases only the cache's own reference.
+        REQUIRE(held.data != nullptr && held.at<uchar>(0, 0) == 1,
+                "an evicted image kept alive by an external Owner must stay readable");
+    }
+
+    // ==========================================
+    // 7. T35-13: 失败不提前清空上次成功批次
+    // ==========================================
+    {
+        const auto atomicDir = directory / "dir_atomic";
+        std::filesystem::create_directories(atomicDir);
+        writePng(atomicDir / "a.png", cv::Mat(8, 8, CV_8UC3, cv::Scalar(11, 11, 11)));
+        writePng(atomicDir / "b.png", cv::Mat(8, 8, CV_8UC3, cv::Scalar(22, 22, 22)));
+        writePng(atomicDir / "c.png", cv::Mat(8, 8, CV_8UC3, cv::Scalar(33, 33, 33)));
+
+        ReadImageTool atomicTool(services);
+        Values inputs = defaultInputs(atomicDir);
+        inputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(2));
+        inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
+
+        auto first = atomicTool.execute(inputs);
+        requireSuccess(first, "the first batch must succeed");
+        const auto firstBatch = std::get<DataRef<Image>>(first.outputs.at(read_ports::out::IMAGES));
+        const auto firstPixels = firstBatch.get()[0].data;
+        const auto firstPaths = std::get<Array>(first.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        REQUIRE(firstPaths.size() == 2, "the first batch must contain two images");
+
+        // A reload batch whose second file is corrupt: the decoded first file must not reach the
+        // cache, the cursor must not advance and the previous batch must stay alive.
+        std::filesystem::remove(atomicDir / "c.png");
+        std::ofstream(atomicDir / "c.png", std::ios::binary).write("broken_image", 12);
+        inputs.insert_or_assign(read_ports::in::RELOAD, true);
+        auto failed = atomicTool.execute(inputs);
+        requireFailure(failed, "图像解码失败", "a corrupt second image must fail the whole batch");
+        REQUIRE(isMissing(failed.outputs.at(read_ports::out::IMAGES)), "a failed batch publishes no images");
+        REQUIRE(firstBatch.get()[0].data == firstPixels && firstBatch.get()[0].at<cv::Vec3b>(0, 0) == cv::Vec3b(11, 11, 11),
+                "a failed batch invalidated the previous Owner");
+
+        // Retry without reload after the file is repaired: the cursor still points at c.png and the
+        // cache still holds the pixels of the last successful attempt, not the failed one.
+        writePng(atomicDir / "c.png", cv::Mat(8, 8, CV_8UC3, cv::Scalar(33, 33, 33)));
+        inputs.insert_or_assign(read_ports::in::RELOAD, false);
+        auto resumed = atomicTool.execute(inputs);
+        requireSuccess(resumed, "the repaired sequence must resume");
+        auto resumedPaths = std::get<Array>(resumed.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        REQUIRE(resumedPaths.size() == 1 && resumedPaths[0].ends_with("c.png"),
+                "the resumed batch must start at the file that failed");
+        const auto &resumedImages = std::get<DataRef<Image>>(resumed.outputs.at(read_ports::out::IMAGES)).get();
+        REQUIRE(resumedImages[0].at<cv::Vec3b>(0, 0) == cv::Vec3b(33, 33, 33), "the resumed batch read the repaired file");
+    }
+
+    // ==========================================
+    // 8. T35-14: 目录尾部被删除后不得重复旧图
+    // ==========================================
+    {
+        const auto tailDir = directory / "dir_tail";
+        const auto rebuildTail = [&]
+        {
+            std::filesystem::remove_all(tailDir);
+            std::filesystem::create_directories(tailDir);
+            writePng(tailDir / "a.png", cv::Mat(4, 4, CV_8UC3, cv::Scalar(1, 1, 1)));
+            writePng(tailDir / "b.png", cv::Mat(4, 4, CV_8UC3, cv::Scalar(2, 2, 2)));
+            writePng(tailDir / "c.png", cv::Mat(4, 4, CV_8UC3, cv::Scalar(3, 3, 3)));
+        };
+        const auto readOne = [&](ReadImageTool &tool, const Values &inputs)
+        {
+            auto res = tool.execute(inputs);
+            requireSuccess(res, "single-step read must succeed");
+            return std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>()[0];
+        };
+
+        // 8.1 forward, non-looping: the next file is deleted and the last delivered file is the tail.
+        {
+            rebuildTail();
+            ReadImageTool tool(services);
+            Values inputs = defaultInputs(tailDir);
+            inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
+            REQUIRE(readOne(tool, inputs).ends_with("a.png"), "step 1 must deliver a.png");
+            REQUIRE(readOne(tool, inputs).ends_with("b.png"), "step 2 must deliver b.png");
+            std::filesystem::remove(tailDir / "c.png");
+            auto res = tool.execute(inputs);
+            requireFailure(res, "图像序列已结束", "a deleted tail must end a non-looping sequence instead of restarting");
+        }
+
+        // 8.2 forward, non-looping: both the next and the last delivered file disappear.
+        {
+            rebuildTail();
+            ReadImageTool tool(services);
+            Values inputs = defaultInputs(tailDir);
+            inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
+            REQUIRE(readOne(tool, inputs).ends_with("a.png"), "step 1 must deliver a.png");
+            REQUIRE(readOne(tool, inputs).ends_with("b.png"), "step 2 must deliver b.png");
+            std::filesystem::remove(tailDir / "b.png");
+            std::filesystem::remove(tailDir / "c.png");
+            auto res = tool.execute(inputs);
+            requireFailure(res, "图像序列已结束", "losing both anchors must end the sequence, not restart it");
+        }
+
+        // 8.3 forward, non-looping: the whole tail after the delivered file disappears.
+        {
+            rebuildTail();
+            writePng(tailDir / "d.png", cv::Mat(4, 4, CV_8UC3, cv::Scalar(4, 4, 4)));
+            ReadImageTool tool(services);
+            Values inputs = defaultInputs(tailDir);
+            inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
+            REQUIRE(readOne(tool, inputs).ends_with("a.png"), "step 1 must deliver a.png");
+            std::filesystem::remove(tailDir / "b.png");
+            std::filesystem::remove(tailDir / "c.png");
+            std::filesystem::remove(tailDir / "d.png");
+            auto res = tool.execute(inputs);
+            requireFailure(res, "图像序列已结束", "deleting the whole tail must end the sequence");
+        }
+
+        // 8.4 reverse, non-looping: deleting the previous file at the head ends the sequence.
+        {
+            rebuildTail();
+            ReadImageTool tool(services);
+            Values inputs = defaultInputs(tailDir);
+            inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
+            inputs.insert_or_assign(read_ports::in::ORDER, std::string("逆序（上一张）"));
+            REQUIRE(readOne(tool, inputs).ends_with("c.png"), "reverse step 1 must deliver c.png");
+            REQUIRE(readOne(tool, inputs).ends_with("b.png"), "reverse step 2 must deliver b.png");
+            std::filesystem::remove(tailDir / "a.png");
+            auto res = tool.execute(inputs);
+            requireFailure(res, "图像序列已结束", "a deleted head must end the reverse sequence");
+        }
+
+        // 8.5 looping mode still wraps, but by an explicit request rather than by falling back.
+        {
+            rebuildTail();
+            ReadImageTool tool(services);
+            Values inputs = defaultInputs(tailDir);
+            inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("循环"));
+            REQUIRE(readOne(tool, inputs).ends_with("a.png"), "loop step 1 must deliver a.png");
+            REQUIRE(readOne(tool, inputs).ends_with("b.png"), "loop step 2 must deliver b.png");
+            std::filesystem::remove(tailDir / "c.png");
+            REQUIRE(readOne(tool, inputs).ends_with("a.png"), "a looping sequence must wrap to the first file");
+        }
+    }
+
     std::filesystem::remove_all(directory);
     std::cout << "[PASS] testReadImageTool passed successfully!" << std::endl;
 }

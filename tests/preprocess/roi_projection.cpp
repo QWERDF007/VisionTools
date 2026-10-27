@@ -1,4 +1,5 @@
 #include "src/preprocess/RoiProjectionTool.h"
+#include "../result_view.h"
 #include "TestSupport.h"
 
 using namespace visionrt;
@@ -41,7 +42,7 @@ void testRoiProjectionTool()
         inputs.erase(projection_ports::in::AXIS);
         auto res = tool.execute(inputs);
         requireFailure(res, "axis", "Missing axis must fail");
-        REQUIRE(res.status.message.find("缺失") != std::string::npos, "Missing value must be Chinese");
+        REQUIRE(testview::status(res).message.find("缺失") != std::string::npos, "Missing value must be Chinese");
     }
     {
         Values inputs = projectionInputs();
@@ -49,7 +50,7 @@ void testRoiProjectionTool()
         inputs.insert_or_assign(projection_ports::in::AXIS, std::string("z"));
         auto res = tool.execute(inputs);
         requireFailure(res, "axis", "Invalid axis must fail");
-        REQUIRE(res.status.message.find("无效") != std::string::npos, "Invalid option must be Chinese");
+        REQUIRE(testview::status(res).message.find("无效") != std::string::npos, "Invalid option must be Chinese");
     }
     {
         Values inputs = projectionInputs();
@@ -64,7 +65,7 @@ void testRoiProjectionTool()
         inputs.insert_or_assign(projection_ports::in::THRESHOLD, std::int64_t(300));
         auto res = tool.execute(inputs);
         requireFailure(res, "threshold", "Out-of-range threshold must fail");
-        REQUIRE(res.status.message.find("[0, 255]") != std::string::npos, "Range must be stated");
+        REQUIRE(testview::status(res).message.find("[0, 255]") != std::string::npos, "Range must be stated");
     }
     for (const auto &[key, value] : std::vector<std::pair<const char *, std::int64_t>>{
              {projection_ports::in::MIN_PIXELS,  0},

@@ -1,6 +1,7 @@
 // Geometry, image transform and metrology contract for the seven-tool delivery.
 // Synthetic fixtures provide analytic ground truth; no model or GPU is involved.
 #include "preprocess/BrightnessTool.h"
+#include "result_view.h"
 #include "preprocess/RotateImageTool.h"
 #include "metrology/CircleFit.h"
 #include "metrology/CircleMeasureKernel.h"
@@ -93,7 +94,7 @@ void rotateTool()
     inputs.emplace("border_value", Array(DataRef<NestedVector<double, 1>>(NestedVector<double, 1>{0.0})));
     inputs.emplace("alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{})));
     const auto result = tool.execute(inputs);
-    REQUIRE(result.status.code == 0, result.status.message);
+    REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     const auto &images = std::get<DataRef<Image>>(result.outputs.at("images")).get();
     REQUIRE(images.size() == 1 && images[0].cols == 2 && images[0].rows == 3,
             "expanded canvas must swap the non-square size");
@@ -117,7 +118,7 @@ void brightnessTool()
     inputs.emplace("alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{})));
     inputs.emplace("emit_mask", true);
     const auto result = tool.execute(inputs);
-    REQUIRE(result.status.code == 0, result.status.message);
+    REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     const auto &output = std::get<DataRef<Image>>(result.outputs.at("images")).get().front();
     const auto  inside = output.at<cv::Vec3b>(15, 15);
     const auto  outside = output.at<cv::Vec3b>(5, 5);
@@ -135,7 +136,7 @@ void brightnessTool()
     floatInputs.emplace("alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{})));
     floatInputs.emplace("emit_mask", false);
     const auto floatResult = tool.execute(floatInputs);
-    REQUIRE(floatResult.status.code == 0, floatResult.status.message);
+    REQUIRE(testview::status(floatResult).code == 0, testview::status(floatResult).message);
     const auto &floats = std::get<DataRef<Image>>(floatResult.outputs.at("images")).get().front();
     REQUIRE(std::abs(floats.at<float>(0, 0) - 400.0F) < 1e-3, "float images must not be clipped to 255");
     REQUIRE(isMissing(floatResult.outputs.at("applied_mask")), "mask must stay missing unless requested");
@@ -172,7 +173,7 @@ void circleMeasurement()
     inputs.emplace("units_per_pixel", 1.0);
     inputs.emplace("unit", std::string("px"));
     const auto result = tool.execute(inputs);
-    REQUIRE(result.status.code == 0, result.status.message);
+    REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     const auto &centers = std::get<Array>(result.outputs.at("centers")).get<NestedVector<double, 3>>();
     const auto &radii   = std::get<Array>(result.outputs.at("radius_px")).get<NestedVector<double, 2>>();
     const auto &valid   = std::get<Array>(result.outputs.at("valid")).get<NestedVector<bool, 2>>();
@@ -188,7 +189,7 @@ void circleMeasurement()
     Values empty = withImages(gray);
     empty.emplace("rois", DataRef<ROI>(ROI{}));
     empty.emplace("alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{})));
-    REQUIRE(tool.execute(empty).status.code != 0, "unconfigured ROI must fail");
+    REQUIRE(testview::status(tool.execute(empty)).code != 0, "unconfigured ROI must fail");
 }
 
 void rowSpacingMeasurement()
@@ -208,7 +209,7 @@ void rowSpacingMeasurement()
     inputs.emplace("units_per_pixel", 1.0);
     inputs.emplace("unit", std::string("px"));
     const auto result = tool.execute(inputs);
-    REQUIRE(result.status.code == 0, result.status.message);
+    REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     const auto &widths    = std::get<Array>(result.outputs.at("width_px")).get<NestedVector<double, 3>>();
     const auto &gaps      = std::get<Array>(result.outputs.at("gap_px")).get<NestedVector<double, 3>>();
     const auto &pitches   = std::get<Array>(result.outputs.at("pitch_px")).get<NestedVector<double, 3>>();
@@ -225,7 +226,7 @@ void rowSpacingMeasurement()
     inputs["width_min"] = 20.0;
     inputs["width_max"] = 40.0;
     const auto rejected = tool.execute(inputs);
-    REQUIRE(rejected.status.code == 0, rejected.status.message);
+    REQUIRE(testview::status(rejected).code == 0, testview::status(rejected).message);
     const auto &rejectedAccepted = std::get<Array>(rejected.outputs.at("accepted")).get<NestedVector<bool, 3>>();
     const auto &rejectedWidths   = std::get<Array>(rejected.outputs.at("width_px")).get<NestedVector<double, 3>>();
     REQUIRE(rejectedWidths[0][0].size() == 5, "unaccepted pairs must stay in the raw result");
@@ -245,7 +246,7 @@ void assistCandidate()
     inputs.emplace("alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{})));
     inputs.emplace("search_extent", std::int64_t{128});
     const auto result = tool.execute(inputs);
-    REQUIRE(result.status.code == 0, result.status.message);
+    REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     REQUIRE(std::get<bool>(result.outputs.at("candidate_valid")), "assist must find the synthetic circle");
     const auto proposal = std::get<DataRef<ROI>>(result.outputs.at("proposal_rois")).get();
     REQUIRE(proposal.size() == 1 && proposal[0].size() == 1 && proposal[0][0].front() == 3.0,
@@ -326,7 +327,7 @@ void circleQualityGate()
     }
     metrology::CircleTool tool(ToolServices{});
     const auto            shortArc = tool.execute(circleInputs(arc, 130.0, 120.0, 40.0));
-    REQUIRE(shortArc.status.code == 0, shortArc.status.message);
+    REQUIRE(testview::status(shortArc).code == 0, testview::status(shortArc).message);
     const auto &arcValid = std::get<Array>(shortArc.outputs.at("valid")).get<NestedVector<bool, 2>>();
     REQUIRE(arcValid.size() == 1 && !arcValid[0][0],
             "short arc with ring-wide outliers must not pass the final inlier gate");
@@ -337,7 +338,7 @@ void circleQualityGate()
     cv::Mat shortClean(240, 240, CV_8UC1, cv::Scalar(20));
     cv::ellipse(shortClean, cv::Point(130, 120), cv::Size(40, 40), 0, -25, 25, cv::Scalar(220), 1, cv::LINE_AA);
     const auto shortCleanResult = tool.execute(circleInputs(shortClean, 130.0, 120.0, 40.0));
-    REQUIRE(shortCleanResult.status.code == 0, shortCleanResult.status.message);
+    REQUIRE(testview::status(shortCleanResult).code == 0, testview::status(shortCleanResult).message);
     const auto &cleanValid = std::get<Array>(shortCleanResult.outputs.at("valid")).get<NestedVector<bool, 2>>();
     REQUIRE(cleanValid.size() == 1 && !cleanValid[0][0], "a 50 degree arc must not count as a circle");
 
@@ -379,7 +380,7 @@ void assistLocalWindow()
     inputs.emplace("alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{})));
     inputs.emplace("search_extent", std::int64_t{80});
     const auto outside = tool.execute(inputs);
-    REQUIRE(outside.status.code == 0, outside.status.message);
+    REQUIRE(testview::status(outside).code == 0, testview::status(outside).message);
     REQUIRE(!std::get<bool>(outside.outputs.at("candidate_valid")),
             "a circle outside the cursor window must not become a candidate");
 
@@ -389,7 +390,7 @@ void assistLocalWindow()
     inputs["cursor"] = Array(DataRef<NestedVector<double, 1>>(NestedVector<double, 1>{240.0, 200.5}));
     inputs["search_extent"] = std::int64_t{160};
     const auto scaled = tool.execute(inputs);
-    REQUIRE(scaled.status.code == 0, scaled.status.message);
+    REQUIRE(testview::status(scaled).code == 0, testview::status(scaled).message);
     REQUIRE(std::get<bool>(scaled.outputs.at("candidate_valid")), "odd-sized images must still be searched");
     const auto scaledProposal = std::get<DataRef<ROI>>(scaled.outputs.at("proposal_rois")).get();
     REQUIRE(std::abs(scaledProposal[0][0][1] - 200.5) <= 0.8 && std::abs(scaledProposal[0][0][2] - 200.5) <= 0.8,
@@ -401,7 +402,7 @@ void assistLocalWindow()
     inputs["search_extent"] = std::int64_t{50};
     inputs["seed_rois"]     = DataRef<ROI>(ROI{{{3, 200.5, 200.5, 40.0}}});
     const auto seeded = tool.execute(inputs);
-    REQUIRE(seeded.status.code == 0, seeded.status.message);
+    REQUIRE(testview::status(seeded).code == 0, testview::status(seeded).message);
     REQUIRE(std::get<bool>(seeded.outputs.at("candidate_valid")), "seed geometry must not depend on contour search");
     const auto seededProposal = std::get<DataRef<ROI>>(seeded.outputs.at("proposal_rois")).get();
     REQUIRE(std::abs(seededProposal[0][0][3] - 40.0) <= 0.8, "seeded radius must survive refinement");

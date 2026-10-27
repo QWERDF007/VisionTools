@@ -1,4 +1,5 @@
 #include "TestRegistry.h"
+#include "result_view.h"
 #include <visionrt/contracts/Module.h>
 
 #include <array>
@@ -11,7 +12,7 @@ int main()
 try
 {
     using namespace visionrt;
-    static_assert(MODULE_ABI_MAJOR == 4);
+    static_assert(MODULE_ABI_MAJOR == 5);
     const auto *api = visiontoolsModuleApi();
     assert(api && api->abi_major == MODULE_ABI_MAJOR);
     TestRegistry registry;
@@ -41,7 +42,7 @@ try
              {"rect", DataRef<ROI>(ROI{{{2, 1, 0, 2, 2, 0}}})}
         };
         result = instance->execute(inputs);
-        assert(result.status.code == 0);
+        assert(testview::status(result).code == 0);
         const auto &images = std::get<DataRef<Image>>(result.outputs.at("images")).get();
         assert(images.size() == 2);
         assert(images[0].data == original + 1 && images[1].data == original + 1);

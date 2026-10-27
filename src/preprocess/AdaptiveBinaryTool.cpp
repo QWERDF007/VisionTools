@@ -1,6 +1,7 @@
 #include "AdaptiveBinaryTool.h"
 
 #include "common/InputValues.h"
+#include "common/UpstreamStatus.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -28,8 +29,18 @@ visionrt::ToolStatus AdaptiveBinaryTool::initialize(const visionrt::Values &para
     return {};
 }
 
+namespace {
+visionrt::Values missingOutputs()
+{
+    return {{p::out::IMAGES, visionrt::Missing{}}};
+}
+} // namespace
+
 visionrt::ToolResult AdaptiveBinaryTool::execute(const visionrt::Values &inputs)
 {
+    // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
+    if (const auto upstream = upstreamStatus(inputs); upstream != 0)
+        return skippedByUpstream(upstream, missingOutputs());
     try
     {
         const auto &images
@@ -40,7 +51,7 @@ visionrt::ToolResult AdaptiveBinaryTool::execute(const visionrt::Values &inputs)
         {
             visionrt::Values outputs;
             outputs.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(visionrt::Image{}));
-            return {visionrt::executionSuccess(), std::move(outputs)};
+            return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
         }
 
         const auto blockSize = requireIntInRange(inputs, p::in::BLOCK_SIZE, 3, 999);
@@ -79,22 +90,19 @@ visionrt::ToolResult AdaptiveBinaryTool::execute(const visionrt::Values &inputs)
 
         visionrt::Values outputs;
         outputs.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(std::move(outputImages)));
-        return {visionrt::executionSuccess(), std::move(outputs)};
+        return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &error)
     {
-        return {{1, error.what()}, {{p::out::IMAGES, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {1, error.what()});
     }
     catch (const std::exception &error)
     {
-        return {
-            {1, "自适应二值化失败", error.what()},
-            {{p::out::IMAGES, visionrt::Missing{}}}
-        };
+        return visionrt::toolResult(missingOutputs(), {1, "自适应二值化失败", error.what()});
     }
     catch (...)
     {
-        return {{-1, "自适应二值化失败：未知异常"}, {{p::out::IMAGES, visionrt::Missing{}}}};
+        return visionrt::toolResult(missingOutputs(), {-1, "自适应二值化失败：未知异常"});
     }
 }
 

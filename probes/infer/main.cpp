@@ -1,4 +1,5 @@
 #include <cuda_runtime.h>
+#include "../../tests/result_view.h"
 #include <visionrt/contracts/Module.h>
 #include <visionrt/contracts/ROI.h>
 #include <visionrt/contracts/Tool.h>
@@ -233,7 +234,8 @@ void success(const ToolStatus &status)
 
 void allMissing(const ToolResult &result)
 {
-    require(!result.status && result.outputs.size() == 5, "Expected whole-invocation failure with five outputs");
+    require(!testview::status(result) && testview::businessCount(result) == 5,
+            "Expected whole-invocation failure with five business outputs");
     for (const auto &[name, value] : result.outputs)
         require(isMissing(value), "Partial output escaped after failure: " + name);
 }
@@ -381,8 +383,8 @@ struct PublicDetection
 
 std::vector<std::vector<PublicDetection>> outputContract(const ToolResult &result, const DataRef<Image> &images)
 {
-    success(result.status);
-    require(result.outputs.size() == 5, "Public detection output contract must expose 5 outputs");
+    success(testview::status(result));
+    require(testview::businessCount(result) == 5, "Public detection output contract must expose 5 business outputs");
     const auto *rois     = std::get_if<DataRef<ROI>>(&result.outputs.at("rois"));
     const auto *scores   = std::get_if<Array>(&result.outputs.at("scores"));
     const auto *classes  = std::get_if<Array>(&result.outputs.at("classes"));
@@ -690,7 +692,7 @@ int main(int argc, char **argv)
 
         auto stricter              = batchInputs;
         stricter["conf_threshold"] = 1.0;
-        success(built->execute(stricter).status);
+        success(testview::status(built->execute(stricter)));
 
         // Snapshot persistence across release and destroy
         success(built->release());

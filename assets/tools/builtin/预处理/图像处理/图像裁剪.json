@@ -12,14 +12,14 @@
       "id": "images",
       "name": "图像",
       "type": "Image",
-      "required": true
+      "required": false
     },
     {
       "id": "rect",
       "name": "矩形区域",
       "type": "ROI",
       "image_input": "images",
-      "required": true,
+      "required": false,
       "editor": "rect"
     }
   ],

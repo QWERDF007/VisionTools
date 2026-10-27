@@ -1,6 +1,7 @@
 #include "BrightnessTool.h"
 
 #include "common/GeometryTransform.h"
+#include "common/UpstreamStatus.h"
 #include "common/ImageSupport.h"
 #include "common/InputValues.h"
 #include "common/RoiSupport.h"
@@ -61,6 +62,9 @@ visionrt::ToolStatus BrightnessTool::initialize(const visionrt::Values &paramete
 
 visionrt::ToolResult BrightnessTool::execute(const visionrt::Values &inputs)
 {
+    // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
+    if (const auto upstream = upstreamStatus(inputs); upstream != 0)
+        return skippedByUpstream(upstream, missingOutputs());
     try
     {
         const auto &images = requireImages(inputs, p::in::IMAGES);
@@ -134,23 +138,23 @@ visionrt::ToolResult BrightnessTool::execute(const visionrt::Values &inputs)
             outputs.emplace(p::out::APPLIED_MASK, visionrt::DataRef<visionrt::Image>(std::move(appliedMasks)));
         else
             outputs.emplace(p::out::APPLIED_MASK, visionrt::Missing{});
-        return {visionrt::executionSuccess(), std::move(outputs)};
+        return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &error)
     {
-        return {{1, error.what()}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {1, error.what()});
     }
     catch (const cv::Exception &error)
     {
-        return {{1, "调整亮度失败", error.what()}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {1, "调整亮度失败", error.what()});
     }
     catch (const std::exception &error)
     {
-        return {{1, "调整亮度失败", error.what()}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {1, "调整亮度失败", error.what()});
     }
     catch (...)
     {
-        return {{-1, "调整亮度失败：未知异常"}, missingOutputs()};
+        return visionrt::toolResult(missingOutputs(), {-1, "调整亮度失败：未知异常"});
     }
 }
 

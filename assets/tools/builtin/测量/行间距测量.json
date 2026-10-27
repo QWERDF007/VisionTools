@@ -13,7 +13,7 @@
       "name": "图像",
       "type": "Image",
       "tab": "基本输入",
-      "required": true
+      "required": false
     },
     {
       "id": "rois",

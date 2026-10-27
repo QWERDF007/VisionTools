@@ -73,10 +73,51 @@ install(TARGETS ${VISIONTOOLS_BUILT_MODULES}
     LIBRARY DESTINATION bin COMPONENT VisionToolsRuntime
 )
 if(VISIONTOOLS_BUILD_INFER AND WIN32)
-    install(DIRECTORY "${TRT_ROOT}/bin/"
-        DESTINATION bin COMPONENT VisionToolsRuntime
-        FILES_MATCHING PATTERN "nvinfer_builder_resource*.dll"
-    )
+    # TensorRT 10 splits builder resources per architecture. Install only the selected partitions:
+    # copying every `nvinfer_builder_resource*` would ship tensors for GPUs the profile does not
+    # support. An unrecognised layout stops the configure instead of silently falling back.
+    set(VISIONTOOLS_TRT_TARGET_SMS "89" CACHE STRING
+        "TensorRT builder 资源目标 SM（逗号分隔，例如 89 或 89,86）；空表示不安装构建资源")
+    option(VISIONTOOLS_TRT_INCLUDE_PTX
+        "安装 PTX 硬件前向兼容资源（仅在发行承诺前向兼容时开启）" OFF)
+    set(_trt_sms "")
+    if(VISIONTOOLS_TRT_TARGET_SMS)
+        string(REPLACE "," ";" _trt_sms "${VISIONTOOLS_TRT_TARGET_SMS}")
+    endif()
+    file(GLOB _trt_builder_all "${TRT_ROOT}/bin/nvinfer_builder_resource*.dll")
+    set(_trt_selected "")
+    set(_trt_unknown "")
+    foreach(_trt_file IN LISTS _trt_builder_all)
+        get_filename_component(_trt_name "${_trt_file}" NAME)
+        if(_trt_name MATCHES "_ptx")
+            if(VISIONTOOLS_TRT_INCLUDE_PTX)
+                list(APPEND _trt_selected "${_trt_file}")
+            endif()
+            continue()
+        endif()
+        set(_trt_matched FALSE)
+        foreach(_trt_sm IN LISTS _trt_sms)
+            if(_trt_name MATCHES "_sm${_trt_sm}([_.-]|$)")
+                set(_trt_matched TRUE)
+            endif()
+        endforeach()
+        if(_trt_matched)
+            list(APPEND _trt_selected "${_trt_file}")
+        elseif(NOT _trt_name MATCHES "_sm[0-9]+")
+            # No architecture marker at all: either a monolithic SDK or an unknown partition scheme.
+            list(APPEND _trt_unknown "${_trt_name}")
+        endif()
+    endforeach()
+    if(_trt_unknown)
+        message(FATAL_ERROR
+            "无法识别的 TensorRT builder 资源布局，拒绝按通配复制：${_trt_unknown}\n"
+            "请升级到按架构分区的 TensorRT 10 布局，或为该版本补充显式选择规则。")
+    endif()
+    if(_trt_selected)
+        install(FILES ${_trt_selected} DESTINATION bin COMPONENT VisionToolsRuntime)
+        list(LENGTH _trt_selected _trt_count)
+        message(STATUS "TensorRT builder 资源：安装 ${_trt_count} 个文件，目标 SM=${VISIONTOOLS_TRT_TARGET_SMS}，PTX=${VISIONTOOLS_TRT_INCLUDE_PTX}")
+    endif()
 endif()
 
 # 包含契约与单元测试
