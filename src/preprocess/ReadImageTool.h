@@ -38,6 +38,10 @@ inline constexpr char END_REACHED[]   = "end_reached";
 class ReadImageTool final : public visionrt::IToolInstance
 {
 public:
+    // Per-instance budget for the decoded history. It bounds the cache, not the process: the batch
+    // being returned and anything a downstream owner still references live outside it.
+    static constexpr std::size_t kCacheBudgetBytes = std::size_t{512} * 1024 * 1024;
+
     explicit ReadImageTool(const visionrt::ToolServices &services);
     ~ReadImageTool() override = default;
 
@@ -81,7 +85,7 @@ private:
     std::optional<Catalog>  catalog_;
     SequenceCursor          cursor_;
     bool                    reverse_ = false;
-    DecodedImageCache       cache_{std::size_t{512} * 1024 * 1024};
+    DecodedImageCache       cache_{kCacheBudgetBytes};
     std::vector<std::string>                          lastPlannedPaths_;
     std::optional<visionrt::DataRef<visionrt::Image>> lastBatchRef_;
 };

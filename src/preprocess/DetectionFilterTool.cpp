@@ -1,6 +1,7 @@
 #include "DetectionFilterTool.h"
 
 #include "common/InputValues.h"
+#include "common/ToolOutputs.h"
 #include "common/UpstreamStatus.h"
 
 #include <algorithm>
@@ -34,12 +35,8 @@ visionrt::ToolStatus DetectionFilterTool::initialize(const visionrt::Values &par
 namespace {
 visionrt::Values missingOutputs()
 {
-    return {{p::out::IMAGES, visionrt::Missing{}},
-            {p::out::ROIS, visionrt::Missing{}},
-            {p::out::SCORES, visionrt::Missing{}},
-            {p::out::CLASSES, visionrt::Missing{}},
-            {p::out::CLASS_NAMES, visionrt::Missing{}},
-            {p::out::COUNTS, visionrt::Missing{}}};
+    return missingPorts({p::out::IMAGES, p::out::ROIS, p::out::SCORES, p::out::CLASSES, p::out::CLASS_NAMES,
+                         p::out::COUNTS});
 }
 } // namespace
 

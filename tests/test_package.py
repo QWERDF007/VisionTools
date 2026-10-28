@@ -71,21 +71,40 @@ class TestPackageTransaction(PackageFixture):
         with zipfile.ZipFile(archive) as bundle:
             self.assertNotIn(package.MARKER_NAME, bundle.namelist())
 
-    def test_build_info_is_packaged_if_present(self):
+    def test_build_info_is_packaged_from_the_single_build_source(self):
         build_info = {
             "schema_version": 1,
             "component": "VisionTools",
             "version": "0.1.0",
             "commit": "testcommit0123456789abcdef0123456789abcdef",
-            "build_time_utc": "2026-10-27 12:00:00 UTC",
+            "branch": "dev",
+            "built_at_epoch": 1793148779,
         }
         self.build.mkdir(parents=True, exist_ok=True)
         (self.build / "build_info.json").write_text(json.dumps(build_info), encoding="utf-8")
+        # A stale per-config file must not win over the real build metadata.
+        (self.build / "Release").mkdir(parents=True, exist_ok=True)
+        (self.build / "Release" / "build_info.json").write_text(
+            json.dumps({"schema_version": 1, "component": "VisionTools", "version": "0.0.0",
+                        "commit": "stale", "build_time_utc": "2026-10-27 12:00:00 UTC"}),
+            encoding="utf-8",
+        )
         archive = self.publish()
         self.assertTrue((self.output / "build_info.json").is_file())
         with zipfile.ZipFile(archive) as bundle:
             self.assertIn("build_info.json", bundle.namelist())
             self.assertEqual(json.loads(bundle.read("build_info.json")), build_info)
+
+    def test_old_build_info_format_is_rejected(self):
+        self.publish()
+        (self.build / "build_info.json").write_text(
+            json.dumps({"schema_version": 1, "component": "VisionTools", "version": "0.1.0",
+                        "commit": "abc", "build_time_utc": "2026-10-27 12:00:00 UTC"}),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(package.PackagingError, r"built_at_epoch"):
+            package.package_tools(self.build, self.output, project_root=self.project,
+                                  validator=self.validator)
 
     def test_backend_label_does_not_require_vendor_modules(self):
         self.manifest["variant"] = "gpu"

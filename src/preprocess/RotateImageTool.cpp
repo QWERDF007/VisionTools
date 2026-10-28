@@ -136,12 +136,10 @@ visionrt::ToolResult RotateImageTool::execute(const visionrt::Values &inputs)
             output.push_back(std::move(rotated));
             outputAlignments.push_back(transform * alignments[index]);
         }
+        // warpAffine allocates every output plane, so the result owns its pixels. Keeping the
+        // upstream owner would only pin the reader's decoded cache for as long as this result lives.
         visionrt::Values outputs;
-        outputs.emplace(p::out::IMAGES,
-                        visionrt::DataRef<visionrt::Image>(visionrt::Image(std::move(output)),
-                                                           {std::get<visionrt::DataRef<visionrt::Image>>(
-                                                                requireInput(inputs, p::in::IMAGES))
-                                                                .owner()}));
+        outputs.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(visionrt::Image(std::move(output))));
         outputs.emplace(p::out::ALIGNMENT, geometry::alignmentArray(outputAlignments));
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }

@@ -58,10 +58,18 @@ if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
         set(VISIONTOOLS_COMMIT "${_vt_commit}")
     endif()
 endif()
-string(TIMESTAMP VISIONTOOLS_BUILD_TIME_UTC "%Y-%m-%d %H:%M:%S UTC" UTC)
-set(_build_info_content "{\n  \"schema_version\": 1,\n  \"component\": \"VisionTools\",\n  \"version\": \"${PROJECT_VERSION}\",\n  \"commit\": \"${VISIONTOOLS_COMMIT}\",\n  \"build_time_utc\": \"${VISIONTOOLS_BUILD_TIME_UTC}\"\n}\n")
-file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/build_info.json" CONTENT "${_build_info_content}")
-file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/build_info.json" CONTENT "${_build_info_content}")
+if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse --abbrev-ref HEAD
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE _vt_branch
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(_vt_branch)
+        set(VISIONTOOLS_BRANCH "${_vt_branch}")
+    endif()
+endif()
 set(_devenv_dirs "${VISIONTOOLS_OPENCV_BIN}")
 if(VISIONTOOLS_BUILD_INFER)
     list(APPEND _devenv_dirs "${INFERRT_BIN_DIR}" "${VISIONTOOLS_CUDA_BIN}" "${TRT_ROOT}/bin")
@@ -145,6 +153,19 @@ if(VISIONTOOLS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# 工具包构建元数据：时刻取自模块产物，配置时刻不能冒充构建时刻（Ticket VT-01）。
+add_custom_target(visiontools_build_info ALL
+    COMMAND ${CMAKE_COMMAND}
+        -DCOMPONENT=VisionTools
+        -DVERSION=${PROJECT_VERSION}
+        -DCOMMIT=${VISIONTOOLS_COMMIT}
+        -DBRANCH=${VISIONTOOLS_BRANCH}
+        -DSCAN_DIR=${CMAKE_CURRENT_BINARY_DIR}
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/build_info.json
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/WriteBuildInfo.cmake
+    COMMENT "记录 VisionTools 构建完成时刻"
+    VERBATIM)
 
 # 打印构建配置摘要
 visiontools_print_summary()

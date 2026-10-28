@@ -4,6 +4,7 @@
 #include "RowSpacingKernel.h"
 
 #include "common/GeometryTransform.h"
+#include "common/ToolOutputs.h"
 #include "common/UpstreamStatus.h"
 #include "common/ImageSupport.h"
 #include "common/InputValues.h"
@@ -21,13 +22,10 @@ constexpr double kPi = 3.14159265358979323846;
 
 visionrt::Values missingOutputs()
 {
-    visionrt::Values outputs;
-    for (const auto *id : {p::out::IMAGES, p::out::VALID_ROI, p::out::REASONS, p::out::PAIR_COUNT,
-                           p::out::ACCEPTED_COUNT, p::out::UNPAIRED_COUNT, p::out::ACCEPTED, p::out::WIDTH_PX,
-                           p::out::GAP_PX, p::out::PITCH_PX, p::out::WIDTH, p::out::GAP, p::out::PITCH,
-                           p::out::PAIR_POINTS, p::out::OVERLAY_SEGMENTS, p::out::UNIT})
-        outputs.emplace(id, visionrt::Missing{});
-    return outputs;
+    return missingPorts({p::out::IMAGES, p::out::VALID_ROI, p::out::REASONS, p::out::PAIR_COUNT,
+                         p::out::ACCEPTED_COUNT, p::out::UNPAIRED_COUNT, p::out::ACCEPTED, p::out::WIDTH_PX,
+                         p::out::GAP_PX, p::out::PITCH_PX, p::out::WIDTH, p::out::GAP, p::out::PITCH,
+                         p::out::PAIR_POINTS, p::out::OVERLAY_SEGMENTS, p::out::UNIT});
 }
 } // namespace
 

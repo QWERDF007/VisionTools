@@ -496,11 +496,20 @@ def package_tools(
         final_index = _collect_package(metadata, index, payloads, staging_dir, build_dir, config)
         save_json(final_index, staging_dir / "module_index.json")
 
-        # 将构建元数据包含在发行包中 (Ticket AT-02)
-        for candidate in [build_dir / config / "build_info.json", build_dir / "build_info.json"]:
-            if candidate.is_file():
-                shutil.copy2(candidate, staging_dir / "build_info.json")
-                break
+        # 构建元数据只有一个来源：构建结束目标写出的 <build-dir>/build_info.json。多配置目录
+        # （<build-dir>/<config>/）里的同名文件属于旧流程，会掩盖真实构建时刻，必须忽略。
+        build_metadata_path = build_dir / "build_info.json"
+        if build_metadata_path.is_file():
+            try:
+                build_metadata = json.loads(build_metadata_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as error:
+                raise PackagingError(f"构建元数据不可读：{error}") from error
+            epoch = build_metadata.get("built_at_epoch") if isinstance(build_metadata, dict) else None
+            if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch <= 0:
+                raise PackagingError(
+                    f"{build_metadata_path} 缺少有效的 built_at_epoch，旧格式不得冒充构建时间"
+                )
+            shutil.copy2(build_metadata_path, staging_dir / "build_info.json")
 
         _write_marker(staging_dir, targets.group)
         if not verify_package(staging_dir, build_validator):

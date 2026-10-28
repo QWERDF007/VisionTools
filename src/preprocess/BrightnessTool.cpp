@@ -144,8 +144,9 @@ visionrt::ToolResult brightnessTool(const visionrt::Values &values, const vision
             output.push_back(std::move(destination));
             appliedMasks.push_back(region);
         }
-        outputs.images = visionrt::DataRef<visionrt::Image>(
-            std::move(output), std::vector<visionrt::Owner>{inputs.images.owner()});
+        // clone() allocates every output plane, so the result owns its pixels and must not pin the
+        // reader's decoded cache through the input owner.
+        outputs.images = visionrt::DataRef<visionrt::Image>(std::move(output));
         if (inputs.emitMask)
             outputs.appliedMask = visionrt::DataRef<visionrt::Image>(std::move(appliedMasks));
         return outputs.pack();

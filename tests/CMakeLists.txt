@@ -41,6 +41,23 @@ visiontools_add_test(test_preprocess_contract
     DEFINITIONS VISIONTOOLS_TESTING
 )
 
+# VT-02: measured read-cache residency. It compiles ReadImageTool.cpp itself so the decode counter
+# (VISIONTOOLS_TESTING) is the one the test drives.
+visiontools_add_test(test_read_cache_contract
+    SOURCES
+        test_read_cache_contract.cpp
+        "${CMAKE_SOURCE_DIR}/src/preprocess/ReadImageTool.cpp"
+    LIBRARIES visiontools_preprocess VisionRT::Contracts ${OpenCV_LIBS}
+    DEFINITIONS VISIONTOOLS_TESTING
+    COMMAND_ARGS "${CMAKE_BINARY_DIR}/evidence"
+)
+
+# VT-03: proof that rotate/brightness allocate their own pixels before dropping the input owner.
+visiontools_add_test(test_output_ownership_contract
+    SOURCES test_output_ownership_contract.cpp
+    LIBRARIES visiontools_preprocess VisionRT::Contracts ${OpenCV_LIBS}
+)
+
 visiontools_add_test(test_geometry_contract
     SOURCES test_geometry_contract.cpp
     LIBRARIES visiontools_metrology visiontools_preprocess visiontools_common VisionRT::Contracts ${OpenCV_LIBS}

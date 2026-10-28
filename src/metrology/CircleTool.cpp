@@ -3,6 +3,7 @@
 #include "CircleMeasureKernel.h"
 
 #include "common/GeometryTransform.h"
+#include "common/ToolOutputs.h"
 #include "common/UpstreamStatus.h"
 #include "common/ImageSupport.h"
 #include "common/InputValues.h"
@@ -18,12 +19,9 @@ namespace p = ports::measure_circle;
 
 visionrt::Values missingOutputs()
 {
-    visionrt::Values outputs;
-    for (const auto *id : {p::out::IMAGES, p::out::VALID, p::out::REASONS, p::out::VALID_COUNT,
-                           p::out::SOURCE_ROI_INDICES, p::out::CIRCLES, p::out::CENTERS, p::out::RADIUS_PX,
-                           p::out::RADIUS, p::out::RMS, p::out::COMPLETENESS, p::out::USED_EDGES, p::out::UNIT})
-        outputs.emplace(id, visionrt::Missing{});
-    return outputs;
+    return missingPorts({p::out::IMAGES, p::out::VALID, p::out::REASONS, p::out::VALID_COUNT,
+                         p::out::SOURCE_ROI_INDICES, p::out::CIRCLES, p::out::CENTERS, p::out::RADIUS_PX,
+                         p::out::RADIUS, p::out::RMS, p::out::COMPLETENESS, p::out::USED_EDGES, p::out::UNIT});
 }
 
 EdgePolarity parsePolarity(const std::string &value)
