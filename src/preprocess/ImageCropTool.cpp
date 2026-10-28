@@ -189,6 +189,10 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
         results.emplace(p::out::ORIGINS, visionrt::Array(std::move(origins)));
         return visionrt::toolResult(std::move(results), visionrt::executionSuccess());
     }
+    catch (const visionrt::ContractError &)
+    {
+        throw;
+    }
     catch (const ToolFailure &error)
     {
         return failureResult(missingOutputs(), error);

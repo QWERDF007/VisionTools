@@ -92,28 +92,29 @@ visionrt::ToolResult brightnessTool(const visionrt::Values &values, const vision
 {
     BrightnessInputs  inputs;
     BrightnessOutputs outputs;
+
+    const auto parsed = inputs.parse(values);
+    if (!parsed)
+    {
+        outputs.status = parsed;
+        return outputs.pack();
+    }
+    // An unselected upstream branch is not an error: no algorithm runs and nothing is written,
+    // and the missing image is not consulted at all. Declared-optional input first, policy
+    // second - the order the declaration promises.
+    if (inputs.upstreamStatus != 0)
+    {
+        outputs.status = {inputs.upstreamStatus, "上游未选中本分支，工具未执行"};
+        return outputs.pack();
+    }
+    if (!inputs.images)
+    {
+        outputs.status = status(CommonToolError::InputMissing, p::in::IMAGES);
+        return outputs.pack();
+    }
+
     try
     {
-        const auto parsed = inputs.parse(values);
-        if (!parsed)
-        {
-            outputs.status = parsed;
-            return outputs.pack();
-        }
-        // An unselected upstream branch is not an error: no algorithm runs and nothing is written,
-        // and the missing image is not consulted at all. Declared-optional input first, policy
-        // second - the order the declaration promises.
-        if (inputs.upstreamStatus != 0)
-        {
-            outputs.status = {inputs.upstreamStatus, "上游未选中本分支，工具未执行"};
-            return outputs.pack();
-        }
-        if (!inputs.images)
-        {
-            outputs.status = status(CommonToolError::InputMissing, p::in::IMAGES);
-            return outputs.pack();
-        }
-
         const auto &images = inputs.images->get();
         const auto  records = roi::groups(inputs.rois, images.size(), "rois");
         const auto  alignments = geometry::alignmentsFromValue(inputs.alignment, images.size());
@@ -173,29 +174,30 @@ visionrt::ToolResult brightnessTool(const visionrt::Values &values, const vision
         outputs.images = visionrt::DataRef<visionrt::Image>(std::move(output));
         if (inputs.emitMask)
             outputs.appliedMask = visionrt::DataRef<visionrt::Image>(std::move(appliedMasks));
-        return outputs.pack();
+    }
+    catch (const visionrt::ContractError &)
+    {
+        throw;
     }
     catch (const ToolFailure &error)
     {
         outputs.images.reset();
         outputs.appliedMask.reset();
         outputs.status = status(error);
-        return outputs.pack();
     }
     catch (const std::exception &error)
     {
         outputs.images.reset();
         outputs.appliedMask.reset();
         outputs.status = status(CommonToolError::OperatorFailed, "调整亮度失败", error.what());
-        return outputs.pack();
     }
     catch (...)
     {
         outputs.images.reset();
         outputs.appliedMask.reset();
         outputs.status = status(CommonToolError::OperatorFailed, "调整亮度失败：未知异常");
-        return outputs.pack();
     }
+    return outputs.pack();
 }
 
 } // namespace visiontools::preprocess

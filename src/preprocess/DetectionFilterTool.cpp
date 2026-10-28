@@ -148,6 +148,10 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
         outputs.emplace(p::out::COUNTS, visionrt::Array(std::move(counts)));
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
+    catch (const visionrt::ContractError &)
+    {
+        throw;
+    }
     catch (const ToolFailure &error)
     {
         return failureResult(missingOutputs(), error);

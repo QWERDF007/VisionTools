@@ -1,8 +1,8 @@
 """Status envelope shared by the Python tools.
 
-execute() answers ``{"status": {...}, "outputs": {...}}``; initialize() and release() answer a
-bare status. Codes are the tool's own positive business codes: the host turns the status into the
-two status output ports and never reads a status key out of ``outputs``.
+execute() answers ``{"outputs": {..., "__status_code": code, "__status_message": message}, "detail": detail}``;
+initialize() and release() answer a bare status dict (``{"code": code, "message": message, "detail": detail}``).
+Codes are the tool's own positive business codes.
 """
 
 from __future__ import annotations
@@ -19,11 +19,11 @@ def success(message: str = "运行成功") -> dict:
 
 
 def failure(code: int, message: str, detail: str = "") -> dict:
-    return {"code": int(code), "message": message, "detail": detail}
+    return {"code": code, "message": message, "detail": detail}
 
 
 def executed(status: dict, outputs: dict) -> dict:
     res = dict(outputs)
-    res["__status_code"] = int(status.get("code", 0))
-    res["__status_message"] = str(status.get("message", ""))
-    return {"outputs": res, "detail": str(status.get("detail", ""))}
+    res["__status_code"] = status["code"]
+    res["__status_message"] = status["message"]
+    return {"outputs": res, "detail": status["detail"]}

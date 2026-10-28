@@ -454,6 +454,10 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         return commit(std::move(batch), plan, std::move(nextCursor), scanned ? &*scanned : nullptr, sourceChanged,
                       isReverse, catalog ? catalog->files.size() : 0);
     }
+    catch (const visionrt::ContractError &)
+    {
+        throw;
+    }
     catch (const ToolFailure &error)
     {
         auto outputs = ReadImageOutputs::missing();

@@ -33,17 +33,17 @@ def load_module_from_file(file_path: pathlib.Path):
 
 
 def status(result):
-    """The one status an execution reports."""
+    """The one status an execution reports. Strict direct indexing."""
     return {
         "code": result["outputs"]["__status_code"],
         "message": result["outputs"]["__status_message"],
-        "detail": result.get("detail", ""),
+        "detail": result["detail"],
     }
 
 
 def outputs(result):
-    """The declared business ports, never the status."""
-    return {k: v for k, v in result["outputs"].items() if not k.startswith("__status_")}
+    """The declared business ports, never the status. Strips only the two exact system ports."""
+    return {k: v for k, v in result["outputs"].items() if k not in ("__status_code", "__status_message")}
 
 
 class TestPythonToolContracts(unittest.TestCase):
@@ -296,7 +296,68 @@ class TestPythonToolContracts(unittest.TestCase):
         self.assertEqual(outputs(result)["sizes"], [[2, 3], [4, 1]])
         self.assertTrue(all(type(value) is int for size in outputs(result)["sizes"] for value in size))
         self.assertEqual(outputs(execute({"images": []}))["sizes"], [])
+    def test_sdk_preserves_raw_status_types_without_coercion(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("vt_sdk", ROOT / "python/author_sdk/visiontools_sdk/__init__.py")
+        sdk = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sdk)
+
+        # bool must not be coerced to int 1
+        res = sdk.result(code=True, message=None, detail=None)
+        self.assertIs(res["outputs"]["__status_code"], True)
+        self.assertIsNone(res["outputs"]["__status_message"])
+        self.assertIsNone(res["detail"])
+
+        # float must not be coerced to int 2
+        res2 = sdk.result(code=2.9)
+        self.assertEqual(res2["outputs"]["__status_code"], 2.9)
+
+        # str must not be coerced to int 7
+        res3 = sdk.result(code="7")
+        self.assertEqual(res3["outputs"]["__status_code"], "7")
+
+    def test_logic_status_executed_requires_complete_status(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("vt_logic_status", ROOT / "python/builtin/logic/common/status.py")
+        logic_status = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(logic_status)
+
+        # Incomplete external status dictionary must raise KeyError instead of silent success
+        with self.assertRaises(KeyError):
+            logic_status.executed({}, {})
+        with self.assertRaises(KeyError):
+            logic_status.executed({"code": 0}, {})
+        with self.assertRaises(KeyError):
+            logic_status.executed({"code": 0, "message": ""}, {})
+
+        # Complete status works
+        complete = logic_status.executed({"code": 0, "message": "ok", "detail": "d"}, {"data": 123})
+        self.assertEqual(complete["outputs"]["__status_code"], 0)
+        self.assertEqual(complete["outputs"]["__status_message"], "ok")
+        self.assertEqual(complete["detail"], "d")
+        self.assertEqual(complete["outputs"]["data"], 123)
+
+    def test_testview_helpers_reject_missing_fields_and_unknown_system_keys(self):
+        # Missing outputs
+        with self.assertRaises(KeyError):
+            status({})
+        # Missing __status_code
+        with self.assertRaises(KeyError):
+            status({"outputs": {"__status_message": ""}, "detail": ""})
+        # Missing __status_message
+        with self.assertRaises(KeyError):
+            status({"outputs": {"__status_code": 0}, "detail": ""})
+        # Missing detail
+        with self.assertRaises(KeyError):
+            status({"outputs": {"__status_code": 0, "__status_message": ""}})
+
+        # outputs() only strips exact system keys, not arbitrary __status_ prefix
+        out = outputs({"outputs": {"__status_code": 0, "__status_message": "", "__status_extra": 42, "normal": 1}})
+        self.assertIn("__status_extra", out)
+        self.assertEqual(out["__status_extra"], 42)
+        self.assertNotIn("__status_code", out)
+        self.assertNotIn("__status_message", out)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

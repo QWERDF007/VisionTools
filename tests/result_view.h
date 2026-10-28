@@ -14,18 +14,12 @@ namespace testview {
 
 inline std::int64_t code(const visionrt::ToolResult &result)
 {
-    const auto it = result.outputs.find(std::string(visionrt::kStatusCodePort));
-    if (it != result.outputs.end())
-        return std::get<std::int64_t>(it->second);
-    return 0;
+    return std::get<std::int64_t>(result.outputs.at(std::string(visionrt::kStatusCodePort)));
 }
 
-inline std::string message(const visionrt::ToolResult &result)
+inline const std::string &message(const visionrt::ToolResult &result)
 {
-    const auto it = result.outputs.find(std::string(visionrt::kStatusMessagePort));
-    if (it != result.outputs.end())
-        return std::get<std::string>(it->second);
-    return {};
+    return std::get<std::string>(result.outputs.at(std::string(visionrt::kStatusMessagePort)));
 }
 
 inline visionrt::ToolStatus status(const visionrt::ToolResult &result)

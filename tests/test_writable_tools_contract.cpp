@@ -67,6 +67,43 @@ try
         assert(released == 0);
     }
     assert(released == 1);
+
+    {
+        // T41-02: testview helpers must be strict: at() + std::get(), no default fallbacks
+        ToolResult incompleteCode{{{"__status_message", std::string("ok")}}, "detail"};
+        bool caught = false;
+        try { testview::code(incompleteCode); }
+        catch (const std::out_of_range &) { caught = true; }
+        assert(caught);
+
+        ToolResult wrongTypeCode{{{"__status_code", std::string("bad")}, {"__status_message", std::string("ok")}}, "detail"};
+        caught = false;
+        try { testview::code(wrongTypeCode); }
+        catch (const std::bad_variant_access &) { caught = true; }
+        assert(caught);
+
+        ToolResult incompleteMsg{{{"__status_code", std::int64_t(0)}}, "detail"};
+        caught = false;
+        try { testview::message(incompleteMsg); }
+        catch (const std::out_of_range &) { caught = true; }
+        assert(caught);
+
+        ToolResult wrongTypeMsg{{{"__status_code", std::int64_t(0)}, {"__status_message", std::int64_t(123)}}, "detail"};
+        caught = false;
+        try { testview::message(wrongTypeMsg); }
+        catch (const std::bad_variant_access &) { caught = true; }
+        assert(caught);
+
+        ToolResult valid{{{"__status_code", std::int64_t(7)}, {"__status_message", std::string("fail")}}, "d"};
+        const auto st = testview::status(valid);
+        assert(st.code == 7);
+        assert(st.message == "fail");
+        assert(st.detail == "d");
+
+        ToolResult withExtra{{{"__status_code", std::int64_t(0)}, {"__status_message", std::string("")}, {"__status_custom", std::int64_t(1)}, {"user_port", std::int64_t(2)}}, ""};
+        assert(testview::businessCount(withExtra) == 2);
+    }
+
     std::cout << "ABI4 crop views retain external owners and share writable pixels\n";
     return 0;
 }

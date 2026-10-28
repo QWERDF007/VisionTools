@@ -13,12 +13,12 @@ nothing is cloned while wrapping.
 
 The host contract this SDK relies on:
 
-* ``execute`` returns ``{"status": {code, message, detail}, "outputs": {port: value}}``;
-* ``initialize`` and ``release`` return the status dict alone, not the envelope;
+* ``execute`` returns ``{"outputs": {port: value, "__status_code": code, "__status_message": message}, "detail": detail}``;
+* ``initialize`` and ``release`` return the status dict alone (``{"code": code, "message": message, "detail": detail}``);
 * a missing key and an explicit ``None`` both mean "no value";
 * ``upstream_status`` is read but never acted on by the SDK;
-* the status channels are host-owned: a tool never writes ``__status_code`` or
-  ``__status_message`` into ``outputs``.
+* the status channels are packed alongside outputs: the tool writes them via ``result()``,
+  never by manually injecting reserved keys into business outputs.
 
 The three module-level helpers (``success``, ``failure``, ``result``) are the whole
 protocol: a functional tool returns them directly, and a class tool uses
@@ -45,9 +45,9 @@ def status(code=0, message="", detail=""):
 def result(outputs=None, code=0, message="", detail=""):
     """The envelope ``execute`` returns: business outputs plus the one status."""
     res = {} if outputs is None else dict(outputs)
-    res["__status_code"] = int(code)
-    res["__status_message"] = str(message)
-    return {"outputs": res, "detail": str(detail)}
+    res["__status_code"] = code
+    res["__status_message"] = message
+    return {"outputs": res, "detail": detail}
 
 
 def success(outputs=None, message="运行成功"):

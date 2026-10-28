@@ -149,6 +149,10 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
         outputs.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(std::move(output)));
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
+    catch (const visionrt::ContractError &)
+    {
+        throw;
+    }
     catch (const ToolFailure &error)
     {
         return failureResult(missingOutputs(), error);
