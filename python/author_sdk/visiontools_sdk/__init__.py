@@ -44,7 +44,10 @@ def status(code=0, message="", detail=""):
 
 def result(outputs=None, code=0, message="", detail=""):
     """The envelope ``execute`` returns: business outputs plus the one status."""
-    return {"status": status(code, message, detail), "outputs": {} if outputs is None else dict(outputs)}
+    res = {} if outputs is None else dict(outputs)
+    res["__status_code"] = int(code)
+    res["__status_message"] = str(message)
+    return {"outputs": res, "detail": str(detail)}
 
 
 def success(outputs=None, message="运行成功"):

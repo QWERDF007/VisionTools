@@ -154,11 +154,11 @@ class ToolContracts(unittest.TestCase):
         status = tool.initialize({"variables": variable_rows, "program": program_rows})
         self.assertEqual(status["code"], 0)
         result = tool.execute({"p1": [1.0, 2.0]})
-        self.assertEqual(result["status"]["code"], 0)
+        self.assertEqual(result["outputs"]["__status_code"], 0)
         self.assertEqual(result["outputs"]["p2"], 2)
         self.assertNotIn("p3", result["outputs"])
         failure = tool.execute({"p1": None})
-        self.assertNotEqual(failure["status"]["code"], 0)
+        self.assertNotEqual(failure["outputs"]["__status_code"], 0)
         self.assertIsNone(failure["outputs"]["p2"])
 
     def test_branch_tool_is_mutually_exclusive(self):
@@ -182,7 +182,7 @@ class ToolContracts(unittest.TestCase):
         status = tool.initialize({"variables": variable_rows, "program": program_rows})
         self.assertEqual(status["code"], 0)
         result = tool.execute({"p1": 1})
-        self.assertNotEqual(result["status"]["code"], 0)
+        self.assertNotEqual(result["outputs"]["__status_code"], 0)
         self.assertIsNone(result["outputs"]["on_true"])
         self.assertIsNone(result["outputs"]["on_false"])
 

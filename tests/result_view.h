@@ -1,9 +1,8 @@
 #pragma once
 
-// Test-side view over what a tool or a node actually produced. A tool answers with business ports
-// plus one status; the host is what turns that status into the two published status ports. These
-// helpers read whichever of the two a test is holding, so a test cannot pass on data the host never
-// receives.
+// Test-side view over what a tool or a node actually produced. Tool output packs the two status
+// ports into outputs and carries detail separately. These helpers read whichever of the two a
+// test is holding, so a test cannot pass on data the host never receives.
 
 #include <visionrt/contracts/Tool.h>
 
@@ -15,17 +14,23 @@ namespace testview {
 
 inline std::int64_t code(const visionrt::ToolResult &result)
 {
-    return result.status.code;
+    const auto it = result.outputs.find(std::string(visionrt::kStatusCodePort));
+    if (it != result.outputs.end())
+        return std::get<std::int64_t>(it->second);
+    return 0;
 }
 
 inline std::string message(const visionrt::ToolResult &result)
 {
-    return result.status.message;
+    const auto it = result.outputs.find(std::string(visionrt::kStatusMessagePort));
+    if (it != result.outputs.end())
+        return std::get<std::string>(it->second);
+    return {};
 }
 
 inline visionrt::ToolStatus status(const visionrt::ToolResult &result)
 {
-    return result.status;
+    return {code(result), message(result), result.detail};
 }
 
 // A lifecycle status already is the status itself.
@@ -42,10 +47,14 @@ auto status(const T &value) -> std::decay_t<decltype(value.status)>
     return value.status;
 }
 
-// A tool result already holds business ports only.
+// Filters out the two system status ports so tests can count business ports.
 inline std::size_t businessCount(const visionrt::ToolResult &result)
 {
-    return result.outputs.size();
+    std::size_t count = 0;
+    for (const auto &[key, _] : result.outputs)
+        if (!visionrt::isStatusPort(key))
+            ++count;
+    return count;
 }
 
 } // namespace testview

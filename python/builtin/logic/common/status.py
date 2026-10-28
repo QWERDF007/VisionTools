@@ -23,4 +23,7 @@ def failure(code: int, message: str, detail: str = "") -> dict:
 
 
 def executed(status: dict, outputs: dict) -> dict:
-    return {"status": status, "outputs": outputs}
+    res = dict(outputs)
+    res["__status_code"] = int(status.get("code", 0))
+    res["__status_message"] = str(status.get("message", ""))
+    return {"outputs": res, "detail": str(status.get("detail", ""))}

@@ -21,8 +21,9 @@ class ImageAddInputs(InputParametersBase):
         self.mode = "copy"
 
     def read_fields(self, reader):
-        self.images = reader.array("images")
-        self.mode = reader.text("mode")
+        self.images = reader.optional_array("images")
+        mode = reader.optional_text("mode")
+        self.mode = mode if mode is not None else "copy"
 
 class ImageAddOutputs(OutputParametersBase):
     def __init__(self):
@@ -50,8 +51,7 @@ def execute(values):
         args.parse(values)
     except ContractError as error:
         out = ImageAddOutputs()
-        # A missing port and a mistyped one are different answers for the caller.
-        out.status_code = 1001 if "为空" in str(error) else 1002
+        out.status_code = 1002
         out.status_message = str(error)
         return out.pack()
 
@@ -61,6 +61,11 @@ def execute(values):
         # so, because a non-zero status without a reason is not a usable answer.
         out.status_code = args.upstream_status
         out.status_message = "上游未选中本分支，工具未执行"
+        return out.pack()
+
+    if args.images is None:
+        out.status_code = 1001
+        out.status_message = "输入端口 'images' 缺失"
         return out.pack()
 
     if args.mode not in ("copy", "inplace"):

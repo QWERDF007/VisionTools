@@ -34,12 +34,16 @@ def load_module_from_file(file_path: pathlib.Path):
 
 def status(result):
     """The one status an execution reports."""
-    return result["status"]
+    return {
+        "code": result["outputs"]["__status_code"],
+        "message": result["outputs"]["__status_message"],
+        "detail": result.get("detail", ""),
+    }
 
 
 def outputs(result):
     """The declared business ports, never the status."""
-    return result["outputs"]
+    return {k: v for k, v in result["outputs"].items() if not k.startswith("__status_")}
 
 
 class TestPythonToolContracts(unittest.TestCase):
@@ -262,6 +266,16 @@ class TestPythonToolContracts(unittest.TestCase):
         self.assertTrue(np.array_equal(outputs(recovered)["images"][0], np.full((2, 3), 11, dtype=np.uint8)))
         # A non-integer upstream status is a mistyped port, not a missing one.
         self.assertEqual(status(execute({"images": [source], "upstream_status": True}))["code"], 1002)
+        none_zero = execute({"images": None, "mode": "copy", "upstream_status": 0})
+        self.assertEqual(status(none_zero)["code"], 1001)
+        self.assertIn("缺失", status(none_zero)["message"])
+        none_seven = execute({"images": None, "mode": "copy", "upstream_status": 7})
+        self.assertEqual(status(none_seven)["code"], 7)
+        self.assertEqual(status(none_seven)["message"], "上游未选中本分支，工具未执行")
+        bad_type_zero = execute({"images": 12345, "mode": "copy", "upstream_status": 0})
+        self.assertEqual(status(bad_type_zero)["code"], 1002)
+        bad_type_seven = execute({"images": 12345, "mode": "copy", "upstream_status": 7})
+        self.assertEqual(status(bad_type_seven)["code"], 1002)
 
     def test_mean_keeps_measuring_after_upstream_failure(self):
         instance = load_module_from_file(self.mean_py).ToolInstance()

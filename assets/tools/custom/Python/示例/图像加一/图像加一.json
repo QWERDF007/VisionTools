@@ -17,7 +17,7 @@
       "id": "images",
       "name": "输入图像",
       "type": "Image",
-      "required": true
+      "required": false
     },
     {
       "id": "mode",

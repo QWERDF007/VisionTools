@@ -9,10 +9,18 @@ def execute(inputs):
     images = inputs.get("images")
     if not isinstance(images, list):
         return {
-            "status": {"code": 1002, "message": "输入端口 'images' 需要图像 list", "detail": ""},
-            "outputs": {"sizes": None},
+            "outputs": {
+                "sizes": None,
+                "__status_code": 1002,
+                "__status_message": "输入端口 'images' 需要图像 list",
+            },
+            "detail": "",
         }
     return {
-        "status": {"code": 0, "message": "运行成功", "detail": ""},
-        "outputs": {"sizes": [[int(image.shape[0]), int(image.shape[1])] for image in images]},
+        "outputs": {
+            "sizes": [[int(image.shape[0]), int(image.shape[1])] for image in images],
+            "__status_code": 0,
+            "__status_message": "运行成功",
+        },
+        "detail": "",
     }
