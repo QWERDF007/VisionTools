@@ -57,6 +57,10 @@ class DistributionContract(unittest.TestCase):
         validator = require_validator()
         with tempfile.TemporaryDirectory() as temporary:
             project = Path(temporary)
+            # A project that ships Python tools carries the one author SDK the packager injects.
+            sdk = project / "python/author_sdk/visiontools_sdk"
+            sdk.mkdir(parents=True)
+            (sdk / "__init__.py").write_text("", encoding="utf-8")
             definition = project / "assets/tools/custom/math/arithmetic/add.json"
             definition.parent.mkdir(parents=True)
             document = {
@@ -72,8 +76,9 @@ class DistributionContract(unittest.TestCase):
             code.mkdir(parents=True)
             (code / "add.py").write_text(
                 'from .helper import value\nfrom pathlib import Path\n'
-                'def run(inputs): return {"__status_code": 0, "__status_message": "运行成功", '
-                '"value": value + int(Path(__file__).with_name("bias.dat").read_text())}\n',
+                'def run(inputs):\n'
+                '    return {"status": {"code": 0, "message": "运行成功", "detail": ""},\n'
+                '            "outputs": {"value": value + int(Path(__file__).with_name("bias.dat").read_text())}}\n',
                 encoding="utf-8")
             (code / "helper.py").write_text("value = 37\n", encoding="utf-8")
             (code / "bias.dat").write_text("5", encoding="utf-8")
@@ -113,7 +118,7 @@ class DistributionContract(unittest.TestCase):
                     "pkg = importlib.util.module_from_spec(spec); sys.modules['add_pkg'] = pkg; spec.loader.exec_module(pkg)\n"
                     "spec = importlib.util.spec_from_file_location('add_pkg.add', root / 'add.py')\n"
                     "module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\n"
-                    "print(module.run({})['value'])\n",
+                    "print(module.run({})['outputs']['value'])\n",
                     str(package_root),
                 ], capture_output=True, text=True, encoding="utf-8", errors="replace")
                 self.assertEqual(probe.returncode, 0, probe.stderr)

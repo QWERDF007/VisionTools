@@ -37,7 +37,9 @@ visiontools_add_test(test_preprocess_contract
         "${CMAKE_SOURCE_DIR}/src/preprocess/ImagePreprocessTool.cpp"
         "${CMAKE_SOURCE_DIR}/src/preprocess/DetectionFilterTool.cpp"
         "${CMAKE_SOURCE_DIR}/src/preprocess/AdaptiveBinaryTool.cpp"
-    LIBRARIES visiontools_preprocess VisionRT::Contracts ${OpenCV_LIBS}
+    # The tool sources are compiled here as well, so the shared error vocabulary they call into
+    # has to be linked explicitly: the module links it privately.
+    LIBRARIES visiontools_preprocess visiontools_common VisionRT::Contracts ${OpenCV_LIBS}
     DEFINITIONS VISIONTOOLS_TESTING
 )
 
@@ -47,7 +49,7 @@ visiontools_add_test(test_read_cache_contract
     SOURCES
         test_read_cache_contract.cpp
         "${CMAKE_SOURCE_DIR}/src/preprocess/ReadImageTool.cpp"
-    LIBRARIES visiontools_preprocess VisionRT::Contracts ${OpenCV_LIBS}
+    LIBRARIES visiontools_preprocess visiontools_common VisionRT::Contracts ${OpenCV_LIBS}
     DEFINITIONS VISIONTOOLS_TESTING
     COMMAND_ARGS "${CMAKE_BINARY_DIR}/evidence"
 )

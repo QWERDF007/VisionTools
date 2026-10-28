@@ -194,8 +194,9 @@ int main(int argc, char **argv)
         auto badInputs = inputs;
         badInputs.insert_or_assign("block_size", std::string("not_an_int"));
         auto badRes = inst->execute(badInputs);
-        REQUIRE(testview::status(badRes).code == 1 && testview::status(badRes).message.find("block_size") != std::string::npos,
-                "Invalid block_size must return the operator-owned business error");
+        REQUIRE(testview::status(badRes).code == 1002
+                    && testview::status(badRes).message.find("block_size") != std::string::npos,
+                "Invalid block_size must return the operator-owned type-mismatch error");
 
         REQUIRE(inst->release().code == 0, "Release 1 must succeed");
         REQUIRE(inst->release().code == 0, "Release 2 must succeed (idempotent)");
@@ -275,7 +276,8 @@ int main(int argc, char **argv)
         auto badInputs = inputs;
         badInputs.insert_or_assign("min_score", std::string("not_a_float"));
         auto badRes = inst->execute(badInputs);
-        REQUIRE(testview::status(badRes).code == 1 && testview::status(badRes).message.find("min_score") != std::string::npos,
+        REQUIRE(testview::status(badRes).code == 1002
+                    && testview::status(badRes).message.find("min_score") != std::string::npos,
                 "Invalid min_score must return the operator-owned business error");
 
         REQUIRE(inst->release().code == 0, "Filter release must succeed");

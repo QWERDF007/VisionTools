@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import sys
-
+from ..common import status
 from ..common.engine import EngineError, Program
+from .errors import EVALUATION_FAILED, INITIALIZE_FAILED, NOT_INITIALIZED, PROGRAM_INVALID
 
 
 class ExpressionTool:
@@ -16,36 +16,36 @@ class ExpressionTool:
             self._program = Program.from_tables(params.get("variables", []), params.get("program", []))
         except EngineError as error:
             self._program = None
-            return {"__status_code": 1, "__status_message": str(error)}
-        except Exception as error:  # noqa: BLE001 - surface the real cause once
+            return status.failure(PROGRAM_INVALID, str(error))
+        except Exception as error:  # noqa: BLE001 - the detail carries the technical cause
             self._program = None
-            print(f"expression initialize failed: {error}", file=sys.stderr)
-            return {"__status_code": 1, "__status_message": "表达式初始化失败"}
+            return status.failure(INITIALIZE_FAILED, "表达式初始化失败", str(error))
         if not self._program.results:
-            return {"__status_code": 1, "__status_message": "表达式表为空"}
-        return {"__status_code": 0, "__status_message": "运行成功"}
+            self._program = None
+            return status.failure(PROGRAM_INVALID, "表达式表为空")
+        return status.success()
 
     def execute(self, inputs):
         if self._program is None:
-            return {"__status_code": 1, "__status_message": "表达式未初始化"}
+            return self._failure(status.failure(NOT_INITIALIZED, "表达式未初始化"))
         try:
             values = self._program.evaluate(dict(inputs))
         except EngineError as error:
-            return self._failure(str(error))
+            return self._failure(status.failure(EVALUATION_FAILED, str(error)))
         except Exception as error:  # noqa: BLE001
-            return self._failure(f"表达式求值失败：{error}")
-        result = {"__status_code": 0, "__status_message": "运行成功"}
+            return self._failure(status.failure(EVALUATION_FAILED, "表达式求值失败", str(error)))
+        outputs = {}
         for port in self._program.exposed_ports():
-            result[port] = values.get(port)
-        return result
+            outputs[port] = values.get(port)
+        return status.executed(status.success(), outputs)
 
-    def _failure(self, message: str):
-        result = {"__status_code": 1, "__status_message": message}
+    def _failure(self, failure: dict):
+        outputs = {}
         if self._program is not None:
             for port in self._program.exposed_ports():
-                result[port] = None
-        return result
+                outputs[port] = None
+        return status.executed(failure, outputs)
 
     def release(self):
         self._program = None
-        return {"__status_code": 0, "__status_message": ""}
+        return status.success()

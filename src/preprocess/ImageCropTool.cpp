@@ -2,6 +2,8 @@
 
 #include "common/InputValues.h"
 #include "common/UpstreamStatus.h"
+#include "errors/ImageCropErrors.h"
+#include "common/errors/ToolError.h"
 
 #include <opencv2/core.hpp>
 
@@ -59,7 +61,7 @@ ImageCropTool::ImageCropTool(const visionrt::ToolServices &services)
 visionrt::ToolStatus ImageCropTool::initialize(const visionrt::Values &parameters)
 {
     if (!parameters.empty())
-        return {1, "图像裁剪不接受初始化参数"};
+        return {visionrt::kContractViolationStatus, "图像裁剪不接受初始化参数"};
     return {};
 }
 
@@ -75,27 +77,30 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
     // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
     if (const auto upstream = upstreamStatus(inputs); upstream != 0)
         return skippedByUpstream(upstream, missingOutputs());
+    Readings   readings(inputs);
+    const auto images         = readings.image(p::in::IMAGES);
+    const auto rectangleValue = readings.roi(p::in::RECT);
+    if (readings.failed())
+        return visionrt::toolResult(missingOutputs(),
+                                    readings.status(ImageCropError::RoiStructure, CommonToolError::InputTypeMismatch));
+
+    const auto &groups = rectangleValue.get();
+    if (groups.size() != 1 || groups[0].size() != 1 || groups[0][0][0] != 2)
+        return failure(missingOutputs(), ImageCropError::RoiStructure,
+                       std::string(p::in::RECT) + " 必须包含一组一个矩形 ROI");
+    const auto &rectangle = groups[0][0];
+    std::array<cv::Point2d, 4> corners;
     try
     {
-        const auto &images
-            = requireTypedInput<visionrt::DataRef<visionrt::Image>>(inputs, p::in::IMAGES, {visionrt::Type::Image});
-        const auto &rectangleValue
-            = requireTypedInput<visionrt::DataRef<visionrt::ROI>>(inputs, p::in::RECT, {visionrt::Type::ROI});
-        const auto &groups = rectangleValue.get();
-        if (groups.size() != 1 || groups[0].size() != 1 || groups[0][0][0] != 2)
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::RECT) + "' 必须包含一组一个矩形 ROI");
-        const auto &rectangle = groups[0][0];
-
-        std::array<cv::Point2d, 4> corners;
-        try
-        {
-            corners = visionrt::rectangleCorners(rectangle);
-        }
-        catch (const std::exception &error)
-        {
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::RECT) + "' 的矩形无法解析："
-                                          + error.what());
-        }
+        corners = visionrt::rectangleCorners(rectangle);
+    }
+    catch (const std::exception &error)
+    {
+        return failure(missingOutputs(), ImageCropError::RoiStructure,
+                       std::string(p::in::RECT) + " 的矩形无法解析", error.what());
+    }
+    try
+    {
         double minimumX = corners[0].x, maximumX = corners[0].x;
         double minimumY = corners[0].y, maximumY = corners[0].y;
         for (const auto &corner : corners)
@@ -125,7 +130,7 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
         for (std::size_t index = 0; index < images.get().size(); ++index)
         {
             const auto       &image   = images.get()[index];
-            const std::string context = "图像索引 " + std::to_string(index) + "：";
+            const std::string context = "图像索引 " + std::to_string(index);
             const int         left
                 = static_cast<int>(std::clamp(std::floor(snap(minimumX)), 0.0, static_cast<double>(image.cols)));
             const int top
@@ -135,7 +140,7 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
             const int bottom
                 = static_cast<int>(std::clamp(std::ceil(snap(maximumY)), 0.0, static_cast<double>(image.rows)));
             if (left >= right || top >= bottom)
-                throw visionrt::ContractError(context + "裁剪矩形超出图像范围");
+                fail(ImageCropError::OutOfBounds, context);
             const cv::Rect bounds(left, top, right - left, bottom - top);
             const bool coversEveryPixelCenter = axisAligned && left + 0.5 >= minimumX - epsilon
                                              && right - 0.5 <= maximumX + epsilon && top + 0.5 >= minimumY - epsilon
@@ -172,7 +177,7 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
                     entry = masks.emplace(key, std::move(built)).first;
                 }
                 if (!entry->second.any)
-                    throw visionrt::ContractError(context + "裁剪区域没有有效像素中心");
+                    fail(ImageCropError::EmptyRegion, context);
                 cv::Mat cropped;
                 image(bounds).copyTo(cropped, entry->second.mask);
                 output.push_back(std::move(cropped));
@@ -184,17 +189,17 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
         results.emplace(p::out::ORIGINS, visionrt::Array(std::move(origins)));
         return visionrt::toolResult(std::move(results), visionrt::executionSuccess());
     }
-    catch (const visionrt::ContractError &error)
+    catch (const ToolFailure &error)
     {
-        return visionrt::toolResult(missingOutputs(), {1, error.what()});
+        return failureResult(missingOutputs(), error);
     }
     catch (const std::exception &error)
     {
-        return visionrt::toolResult(missingOutputs(), {1, "图像裁剪失败", error.what()});
+        return failure(missingOutputs(), CommonToolError::OperatorFailed, "图像裁剪失败", error.what());
     }
     catch (...)
     {
-        return visionrt::toolResult(missingOutputs(), {-1, "图像裁剪失败：未知异常"});
+        return failure(missingOutputs(), CommonToolError::OperatorFailed, "图像裁剪失败：未知异常");
     }
 }
 

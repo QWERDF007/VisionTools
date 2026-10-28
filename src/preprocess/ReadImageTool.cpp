@@ -3,6 +3,8 @@
 #include "ReadImageParameters.h"
 #include "common/InputValues.h"
 #include "common/UpstreamStatus.h"
+#include "errors/ReadImageErrors.h"
+#include "common/errors/ToolError.h"
 
 #include <opencv2/imgcodecs.hpp>
 
@@ -87,27 +89,24 @@ std::vector<std::filesystem::path> scanDirectory(const std::filesystem::path &ro
     return files;
 }
 
-// A read failure keeps the user-facing message short and carries the decoder's
-// technical text separately, so callers can show a precise reason without
-// leaking library internals into the primary message.
-struct ImageFailure
-{
-    std::string message;
-    std::string detail;
-};
-
 } // namespace
 
 // ---- Parameter subclasses -------------------------------------------------
 
-void ReadImageInputs::readFields(visionrt::InputReader &reader)
+visionrt::ToolStatus ReadImageInputs::readFields(visionrt::InputReader &reader)
 {
-    path      = reader.text(p::in::PATH);
-    recursive = reader.boolean(p::in::RECURSIVE);
-    traversal = reader.text(p::in::TRAVERSAL);
-    order     = reader.text(p::in::ORDER);
-    count     = reader.integer(p::in::COUNT);
-    reload    = reader.boolean(p::in::RELOAD);
+    Readings readings(reader);
+    path      = readings.text(p::in::PATH);
+    recursive = readings.boolean(p::in::RECURSIVE);
+    traversal = readings.text(p::in::TRAVERSAL);
+    order     = readings.text(p::in::ORDER);
+    count     = readings.integer(p::in::COUNT);
+    reload    = readings.boolean(p::in::RELOAD);
+    if (readings.failed())
+        return readings.status(ReadImageError::PathNotFound, CommonToolError::InputTypeMismatch);
+    if (path.empty())
+        return status(ReadImageError::PathNotFound, std::string(p::in::PATH) + " 不能为空");
+    return {};
 }
 
 void ReadImageOutputs::writeFields(visionrt::OutputWriter &writer)
@@ -150,7 +149,7 @@ ReadImageTool::ReadImageTool(const visionrt::ToolServices &services)
 visionrt::ToolStatus ReadImageTool::initialize(const visionrt::Values &parameters)
 {
     if (!parameters.empty())
-        return {1, "图像读取不接受初始化参数"};
+        return {visionrt::kContractViolationStatus, "图像读取不接受初始化参数"};
     return {};
 }
 
@@ -186,23 +185,22 @@ ReadImageTool::DecodedBatch ReadImageTool::decode(const Catalog &catalog, const 
 
         std::ifstream stream(file, std::ios::binary | std::ios::ate);
         if (!stream.is_open())
-            throw visionrt::ContractError("无法打开图像文件：" + pathStr);
+            fail(ReadImageError::FileReadFailed, pathStr);
         const auto endPosition = stream.tellg();
         if (endPosition == std::streampos(-1) || !stream)
-            throw visionrt::ContractError("无法读取图像文件长度：" + pathStr);
+            fail(ReadImageError::FileReadFailed, pathStr, "无法读取文件长度");
         const auto fileSize = static_cast<std::streamoff>(endPosition);
         if (fileSize <= 0)
-            throw visionrt::ContractError("图像文件为空：" + pathStr);
+            fail(ReadImageError::FileReadFailed, pathStr, "文件为空");
         if (static_cast<std::uintmax_t>(fileSize) > std::numeric_limits<std::size_t>::max()
             || fileSize > std::numeric_limits<std::streamsize>::max()
             || fileSize > std::numeric_limits<int>::max())
-            throw visionrt::ContractError("图像文件大小 " + std::to_string(fileSize)
-                                          + " 字节超出可表示范围：" + pathStr);
+            fail(ReadImageError::FileTooLarge, pathStr, "文件大小 " + std::to_string(fileSize) + " 字节超出可表示范围");
 
         std::vector<char> buffer(static_cast<std::size_t>(fileSize));
         stream.seekg(0, std::ios::beg);
         if (!stream)
-            throw visionrt::ContractError("无法定位图像文件读取位置：" + pathStr);
+            fail(ReadImageError::FileReadFailed, pathStr, "无法定位读取位置");
 
 #ifdef VISIONTOOLS_TESTING
         if (testing::beforeRead)
@@ -213,8 +211,8 @@ ReadImageTool::DecodedBatch ReadImageTool::decode(const Catalog &catalog, const 
         stream.read(buffer.data(), static_cast<std::streamsize>(fileSize));
         const auto readBytes = stream.gcount();
         if (readBytes != static_cast<std::streamsize>(fileSize) || stream.bad())
-            throw visionrt::ContractError("读取图像文件不完整：" + pathStr + "（期望 " + std::to_string(fileSize)
-                                          + " 字节，实际 " + std::to_string(readBytes) + " 字节）");
+            fail(ReadImageError::FileReadFailed, pathStr,
+                 "期望 " + std::to_string(fileSize) + " 字节，实际 " + std::to_string(readBytes) + " 字节");
 
         cv::Mat decoded;
         try
@@ -224,13 +222,10 @@ ReadImageTool::DecodedBatch ReadImageTool::decode(const Catalog &catalog, const 
         }
         catch (const cv::Exception &error)
         {
-            throw ImageFailure{"图像解码失败：文件 " + pathStr + "（批次索引 " + std::to_string(i) + "）",
-                               error.what()};
+            fail(ReadImageError::DecodeFailed, pathStr + "（批次索引 " + std::to_string(i) + "）", error.what());
         }
         if (decoded.empty())
-            throw ImageFailure{"图像解码失败：文件 " + pathStr + "（批次索引 " + std::to_string(i)
-                                   + "）：无法解码图像",
-                               {}};
+            fail(ReadImageError::DecodeFailed, pathStr + "（批次索引 " + std::to_string(i) + "）", "无法解码图像");
 
 #ifdef VISIONTOOLS_TESTING
         if (testing::afterDecode)
@@ -321,7 +316,7 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         const auto &rawPath = args.path;
         visionrt::validateUtf8(rawPath);
         if (rawPath.empty())
-            throw visionrt::ContractError("图像路径输入为空");
+            fail(ReadImageError::PathNotFound, std::string(p::in::PATH) + " 不能为空");
         const bool recursive = args.recursive;
         const bool reload    = args.reload;
 
@@ -332,7 +327,7 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         else if (traversal == "不循环" || traversal == "once")
             isLoop = false;
         else
-            throw visionrt::ContractError("输入端口 'traversal' 的取值无效：" + traversal + "（允许 循环/不循环）");
+            fail(CommonToolError::InputOutOfRange, std::string(p::in::TRAVERSAL) + " 只接受 循环/不循环，实际值：" + traversal);
 
         const auto &order     = args.order;
         bool       isReverse = false;
@@ -341,21 +336,24 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         else if (order.find("顺序") != std::string::npos || order == "forward")
             isReverse = false;
         else
-            throw visionrt::ContractError("输入端口 'order' 的取值无效：" + order
-                                          + "（允许 顺序（下一张）/逆序（上一张））");
+            fail(CommonToolError::InputOutOfRange,
+                 std::string(p::in::ORDER) + " 只接受 顺序（下一张）/逆序（上一张），实际值：" + order);
 
         const auto count = args.count;
         if (count < 1 || count > kMaxCount)
-            throw visionrt::ContractError("输入端口 'count' 必须在 1–" + std::to_string(kMaxCount)
-                                          + " 之间，实际值：" + std::to_string(count));
+            fail(CommonToolError::InputOutOfRange,
+                 std::string(p::in::COUNT) + " 必须在 1–" + std::to_string(kMaxCount) + " 之间，实际值：" + std::to_string(count));
 
-        const auto resolved = services_.paths.resolve(rawPath);
+        const auto resolution = services_.paths.tryResolve(rawPath);
+        if (!resolution)
+            fail(ReadImageError::PathNotFound, resolution.issue().field, resolution.issue().text);
+        const auto &resolved = resolution.value();
         if (!std::filesystem::exists(resolved))
-            throw visionrt::ContractError("图像路径不存在：" + utf8Path(resolved));
+            fail(ReadImageError::PathNotFound, utf8Path(resolved));
         const bool isDir  = std::filesystem::is_directory(resolved);
         const bool isFile = std::filesystem::is_regular_file(resolved);
         if (!isDir && !isFile)
-            throw visionrt::ContractError("图像路径既非文件也非目录：" + utf8Path(resolved));
+            fail(ReadImageError::PathNotFound, utf8Path(resolved), "路径既非文件也非目录");
 
         const bool sourceChanged = !catalog_ || catalog_->rawPath != rawPath || catalog_->recursive != recursive
                                 || catalog_->isDirectory != isDir;
@@ -376,7 +374,7 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
             else
                 candidate.files = scanDirectory(resolved, recursive);
             if (candidate.files.empty())
-                throw visionrt::ContractError("没有可用图像文件");
+                fail(ReadImageError::NoImagesFound, utf8Path(resolved));
             scanned = std::move(candidate);
             catalog = &*scanned;
         }
@@ -456,28 +454,24 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         return commit(std::move(batch), plan, std::move(nextCursor), scanned ? &*scanned : nullptr, sourceChanged,
                       isReverse, catalog ? catalog->files.size() : 0);
     }
-    catch (const ImageFailure &error)
+    catch (const ToolFailure &error)
     {
         auto outputs = ReadImageOutputs::missing();
-        outputs.markFailed(1, error.message, error.detail);
-        return outputs.pack();
-    }
-    catch (const visionrt::ContractError &error)
-    {
-        auto outputs = ReadImageOutputs::missing();
-        outputs.markFailed(1, error.what());
+        outputs.markFailed(error.code, error.message, error.detail);
         return outputs.pack();
     }
     catch (const std::exception &error)
     {
         auto outputs = ReadImageOutputs::missing();
-        outputs.markFailed(1, "图像读取失败", error.what());
+        const auto failure = status(CommonToolError::OperatorFailed, "图像读取失败", error.what());
+        outputs.markFailed(failure.code, failure.message, failure.detail);
         return outputs.pack();
     }
     catch (...)
     {
         auto outputs = ReadImageOutputs::missing();
-        outputs.markFailed(-1, "图像读取失败：未知异常");
+        const auto failure = status(CommonToolError::OperatorFailed, "图像读取失败：未知异常");
+        outputs.markFailed(failure.code, failure.message, failure.detail);
         return outputs.pack();
     }
 }

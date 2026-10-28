@@ -104,9 +104,23 @@ class SelectionTests(unittest.TestCase):
         selection = package_profile.select_dependencies(
             [entry("nvinfer_builder_resource.dll")], self.profiles["rtx40-build"]
         )
-        self.assertEqual(1, len(selection.errors))
-        self.assertIn("未知布局", selection.errors[0])
+        self.assertTrue(any("未知布局" in error for error in selection.errors), selection.errors)
         self.assertEqual([], selection.kept)
+
+    def test_build_profile_refuses_a_missing_target_resource(self):
+        # An engine build needs the partition of the architecture it targets; shipping only another
+        # architecture must fail the profile instead of producing a package that cannot build.
+        selection = package_profile.select_dependencies(
+            [entry("nvinfer_10.dll"), entry("nvinfer_builder_resource_10.14.1_sm86.dll")],
+            self.profiles["rtx40-build"],
+        )
+        self.assertTrue(any("sm89" in error for error in selection.errors), selection.errors)
+
+    def test_runtime_profile_needs_no_builder_resource(self):
+        selection = package_profile.select_dependencies(
+            [entry("nvinfer_10.dll")], self.profiles["rtx40-runtime"]
+        )
+        self.assertEqual([], selection.errors)
 
     def test_real_partitioned_sdk_layout_selects_one_architecture(self):
         # The installed TensorRT 10 layout names its partitions `_sm89_`, `_sm120_`, `_ptx_`.

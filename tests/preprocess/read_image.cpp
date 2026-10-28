@@ -75,7 +75,7 @@ void testReadImageTool()
         // 1.1 空路径必须失败
         Values inputs = defaultInputs("");
         auto   res    = tool.execute(inputs);
-        requireFailure(res, "图像路径输入为空", "Empty path must fail");
+        requireFailure(res, "不能为空", "Empty path must fail");
 
         // 1.2 不存在的路径必须报错
         inputs = defaultInputs(filesDir / "nonexistent.png");
@@ -97,7 +97,7 @@ void testReadImageTool()
         // 1.5 空目录明确失败
         inputs = defaultInputs(emptyDir);
         res    = tool.execute(inputs);
-        requireFailure(res, "没有可用图像文件", "Empty directory must fail");
+        requireFailure(res, "没有可用图像", "Empty directory must fail");
     }
 
     // ==========================================

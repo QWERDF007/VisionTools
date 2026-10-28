@@ -2,6 +2,8 @@
 
 #include "common/InputValues.h"
 #include "common/UpstreamStatus.h"
+#include "common/errors/GeometryErrors.h"
+#include "common/errors/ToolError.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -20,8 +22,8 @@ cv::Mat toGray(const cv::Mat &image, std::size_t index)
     if (image.empty() || CV_MAT_DEPTH(image.type()) != CV_8U
         || (image.channels() != 1 && image.channels() != 3 && image.channels() != 4))
     {
-        throw visionrt::ContractError("批次索引 " + std::to_string(index)
-                                      + " 的图像必须是非空 uint8 灰度/BGR/BGRA 图像");
+        fail(CommonToolError::UnsupportedImage, "批次索引 " + std::to_string(index)
+                                                   + " 的图像必须是非空 uint8 灰度/BGR/BGRA 图像");
     }
     if (image.channels() == 1)
         return image;
@@ -41,7 +43,7 @@ visionrt::ToolStatus RoiProjectionTool::initialize(const visionrt::Values &param
 {
     if (!parameters.empty())
     {
-        return {1, "投影ROI不接受初始化参数"};
+        return {visionrt::kContractViolationStatus, "投影ROI不接受初始化参数"};
     }
     return {};
 }
@@ -58,47 +60,63 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
     // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
     if (const auto upstream = upstreamStatus(inputs); upstream != 0)
         return skippedByUpstream(upstream, missingOutputs());
+    Readings   readings(inputs);
+    const auto imgBatchRef = readings.image(p::in::IMAGES);
+    const auto axis          = readings.text(p::in::AXIS);
+    const auto polarity      = readings.text(p::in::POLARITY);
+    const auto threshold     = readings.integer(p::in::THRESHOLD);
+    const auto minimumPixels = readings.integer(p::in::MIN_PIXELS);
+    const auto minimumExtent = readings.integer(p::in::MIN_EXTENT);
+    const auto mergeGap      = readings.integer(p::in::MERGE_GAP);
+    const auto padding       = readings.integer(p::in::PADDING);
+    if (readings.failed())
+        return visionrt::toolResult(missingOutputs(),
+                                    readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
+    if (axis != "x" && axis != "y")
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                       std::string(p::in::AXIS) + " 只接受 x/y，实际值：" + axis);
+    if (polarity != "bright" && polarity != "dark")
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                       std::string(p::in::POLARITY) + " 只接受 bright/dark，实际值：" + polarity);
+    if (threshold < 0 || threshold > 255)
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                       std::string(p::in::THRESHOLD) + " 必须在 [0, 255] 内，实际值：" + std::to_string(threshold));
+    if (minimumPixels < 1)
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                       std::string(p::in::MIN_PIXELS) + " 必须为正整数，实际值：" + std::to_string(minimumPixels));
+    if (minimumExtent < 1 || minimumExtent > std::numeric_limits<int>::max())
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                       std::string(p::in::MIN_EXTENT) + " 超出整数范围，实际值：" + std::to_string(minimumExtent));
+    if (mergeGap < 0 || mergeGap > std::numeric_limits<int>::max())
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                       std::string(p::in::MERGE_GAP) + " 超出整数范围，实际值：" + std::to_string(mergeGap));
+    if (padding < 0 || padding > std::numeric_limits<int>::max())
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                       std::string(p::in::PADDING) + " 超出整数范围，实际值：" + std::to_string(padding));
     try
     {
-        const auto &imgBatch
-            = requireTypedInput<visionrt::DataRef<visionrt::Image>>(inputs, p::in::IMAGES, {visionrt::Type::Image});
+        const auto &imgBatch = imgBatchRef.get();
 
-        const auto axis = requireString(inputs, p::in::AXIS);
-        const auto polarity = requireString(inputs, p::in::POLARITY);
-        if (axis != "x" && axis != "y")
-        {
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::AXIS) + "' 的取值无效：" + axis
-                                          + "（允许 x/y）");
-        }
-        if (polarity != "bright" && polarity != "dark")
-        {
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::POLARITY) + "' 的取值无效：" + polarity
-                                          + "（允许 bright/dark）");
-        }
+        const bool horizontal = (axis == "x");
+        const bool bright     = (polarity == "bright");
+        const int  gap        = static_cast<int>(mergeGap);
+        const int  extentMin  = static_cast<int>(minimumExtent);
+        const int  paddingPx  = static_cast<int>(padding);
 
-        const bool        horizontal = (axis == "x");
-        const bool        bright = (polarity == "bright");
-        const std::int64_t threshold = requireIntInRange(inputs, p::in::THRESHOLD, 0, 255);
-        const std::int64_t minimumPixels = requireIntInRange(inputs, p::in::MIN_PIXELS, 1,
-                                                             std::numeric_limits<std::int64_t>::max());
-        const int minimumExtent = requireInt32(inputs, p::in::MIN_EXTENT, 1, std::numeric_limits<int>::max());
-        const int gap = requireInt32(inputs, p::in::MERGE_GAP, 0, std::numeric_limits<int>::max());
-        const int padding = requireInt32(inputs, p::in::PADDING, 0, std::numeric_limits<int>::max());
-
-        if (imgBatch.get().empty())
+        if (imgBatch.empty())
         {
             visionrt::Values outputs;
-            outputs.emplace(p::out::IMAGES, imgBatch);
+            outputs.emplace(p::out::IMAGES, imgBatchRef);
             outputs.emplace(p::out::ROIS, visionrt::DataRef<visionrt::ROI>(visionrt::ROI{}));
             return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
         }
 
         visionrt::ROI output;
-        output.reserve(imgBatch.get().size());
+        output.reserve(imgBatch.size());
 
-        for (std::size_t index = 0; index < imgBatch.get().size(); ++index)
+        for (std::size_t index = 0; index < imgBatch.size(); ++index)
         {
-            const auto               &image     = imgBatch.get()[index];
+            const auto               &image     = imgBatch[index];
             const auto  grayscale = toGray(image, index);
             const int                 length    = horizontal ? image.cols : image.rows;
             std::vector<std::int64_t> counts(static_cast<std::size_t>(length), 0);
@@ -118,10 +136,10 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
             std::vector<std::vector<double>> rois;
             const auto append = [&](int start, int end)
             {
-                if (end - start < minimumExtent)
+                if (end - start < extentMin)
                     return;
-                const int left = start - std::min(padding, start);
-                const int right = end + std::min(padding, length - end);
+                const int left = start - std::min(paddingPx, start);
+                const int right = end + std::min(paddingPx, length - end);
                 rois.push_back(
                     horizontal ? std::vector<double>{2, static_cast<double>(left), 0, static_cast<double>(right - left),
                                                      static_cast<double>(image.rows), 0}
@@ -150,21 +168,21 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
         }
 
         visionrt::Values outputs;
-        outputs.emplace(p::out::IMAGES, imgBatch);
+        outputs.emplace(p::out::IMAGES, imgBatchRef);
         outputs.emplace(p::out::ROIS, visionrt::DataRef<visionrt::ROI>(std::move(output)));
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
-    catch (const visionrt::ContractError &error)
+    catch (const ToolFailure &error)
     {
-        return visionrt::toolResult(missingOutputs(), {1, error.what()});
+        return failureResult(missingOutputs(), error);
     }
     catch (const std::exception &error)
     {
-        return visionrt::toolResult(missingOutputs(), {1, "投影ROI失败", error.what()});
+        return failure(missingOutputs(), CommonToolError::OperatorFailed, "投影ROI失败", error.what());
     }
     catch (...)
     {
-        return visionrt::toolResult(missingOutputs(), {-1, "投影ROI失败：未知异常"});
+        return failure(missingOutputs(), CommonToolError::OperatorFailed, "投影ROI失败：未知异常");
     }
 }
 

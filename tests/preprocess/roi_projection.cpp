@@ -50,7 +50,7 @@ void testRoiProjectionTool()
         inputs.insert_or_assign(projection_ports::in::AXIS, std::string("z"));
         auto res = tool.execute(inputs);
         requireFailure(res, "axis", "Invalid axis must fail");
-        REQUIRE(testview::status(res).message.find("无效") != std::string::npos, "Invalid option must be Chinese");
+        REQUIRE(testview::status(res).message.find("只接受") != std::string::npos, "Invalid option must be Chinese");
     }
     {
         Values inputs = projectionInputs();

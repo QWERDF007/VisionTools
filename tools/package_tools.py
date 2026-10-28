@@ -316,13 +316,16 @@ def _collect_package(metadata: dict, index: dict, payloads: dict[str, ToolPayloa
         "runtime_files": [],
     }
     module_files = {}
+    # A profile without inference ships neither the infer module nor anything that belongs to it:
+    # the module entry, the module library and every tool that depends on it are one decision.
+    excluded_modules: dict[str, str] = {}
     runtime_install = metadata.get("runtime_install")
-    # A profile without inference ships neither the infer module nor the tools that need it.
     infer_allowed = profile is None or profile.infer_enabled
     for module_name, module in metadata.get("modules", {}).items():
-        if not infer_allowed and "infer" in module_name.lower():
-            continue
         source = Path(module["source"]).resolve()
+        if not infer_allowed and "infer" in module_name.lower():
+            excluded_modules[module_name] = source.name
+            continue
         relative = f"bin/{source.name}"
         module_files[module_name] = relative
         final_index["modules"][module_name] = {"library": relative}
@@ -339,30 +342,46 @@ def _collect_package(metadata: dict, index: dict, payloads: dict[str, ToolPayloa
         payload.add_to(plan)
         entry["definition"] = payload.destination.as_posix()
 
-    runtime_entries = []
+    # The install directory is created before anything can fail and removed in one place: an
+    # install, a selection or a copy that raises must not leave a runtime tree behind.
     runtime_stage = None
-    if runtime_install:
-        # CMake installs into an isolated directory first. Nothing lands in the package until the
-        # single profile policy has decided the final set.
-        runtime_stage = staging_dir.parent / f".runtime-{uuid.uuid4().hex}"
-        installed_files = _run_runtime_install(runtime_stage, build_dir, config, runtime_install)
-        runtime_entries = [
-            {"source": str((runtime_stage / relative).resolve()), "destination": relative}
-            for relative in installed_files
-        ]
-        kept, dropped = _select_runtime(runtime_entries, profile)
-        for entry in kept:
-            plan.add(Path(entry["source"]), Path(entry["destination"]))
-    else:
-        runtime_entries = [
-            {"source": str(Path(runtime["source"]).resolve()), "destination": runtime["destination"]}
-            for runtime in metadata.get("runtime_files", [])
-        ]
-        kept, dropped = _select_runtime(runtime_entries, profile)
-        for entry in kept:
-            plan.add(Path(entry["source"]), Path(entry["destination"]))
-
     try:
+        if runtime_install:
+            # CMake installs into an isolated directory first. Nothing lands in the package until
+            # the single profile policy has decided the final set.
+            runtime_stage = staging_dir.parent / f".runtime-{uuid.uuid4().hex}"
+            installed_files = _run_runtime_install(runtime_stage, build_dir, config, runtime_install)
+            runtime_entries = [
+                {"source": str((runtime_stage / relative).resolve()), "destination": relative}
+                for relative in installed_files
+            ]
+        else:
+            runtime_entries = [
+                {"source": str(Path(runtime["source"]).resolve()), "destination": runtime["destination"]}
+                for runtime in metadata.get("runtime_files", [])
+            ]
+        kept, dropped = _select_runtime(runtime_entries, profile)
+
+        # A module that the profile dropped must not reappear through the runtime set: the name
+        # based component table cannot know that `vst_infer.dll` belongs to the infer module, so
+        # the module decision is applied to the final list here, with its reason.
+        excluded_libraries = set(excluded_modules.values())
+        if excluded_libraries:
+            still_kept = []
+            for entry in kept:
+                if Path(entry["destination"]).name in excluded_libraries:
+                    dropped.append({
+                        "source": entry["source"],
+                        "destination": entry["destination"],
+                        "component": "tools-module",
+                        "reason": "所属模块未随该 profile 安装",
+                    })
+                    continue
+                still_kept.append(entry)
+            kept = still_kept
+
+        for entry in kept:
+            plan.add(Path(entry["source"]), Path(entry["destination"]))
         plan.copy_to(staging_dir)
     finally:
         if runtime_stage is not None:
@@ -372,8 +391,10 @@ def _collect_package(metadata: dict, index: dict, payloads: dict[str, ToolPayloa
         if not (staging_dir / relative).is_file():
             raise PackagingError(f"模块未进入安装目录：{module_name} -> {relative}")
     module_libraries = set(module_files.values())
+    # The report and the index describe what really landed, not what the manifest claimed.
     final_index["runtime_files"] = sorted(
-        entry["destination"] for entry in kept if entry["destination"] not in module_libraries
+        entry["destination"] for entry in kept
+        if entry["destination"] not in module_libraries and (staging_dir / entry["destination"]).is_file()
     )
     final_index["modules"] = [{"id": name, **module} for name, module in sorted(final_index["modules"].items())]
     final_index["tools"] = [{"tool_id": identifier, **entry} for identifier, entry in sorted(final_index["tools"].items())]

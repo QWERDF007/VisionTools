@@ -24,7 +24,7 @@ struct ReadImageInputs final : visionrt::InputParametersBase
     bool         reload = false;
 
 protected:
-    void readFields(visionrt::InputReader &reader) override;
+    visionrt::ToolStatus readFields(visionrt::InputReader &reader) override;
 };
 
 // Typed view of the read tool's outputs. All five declared ports are written explicitly: a failed

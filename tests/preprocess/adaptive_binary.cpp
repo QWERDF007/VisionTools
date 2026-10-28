@@ -32,7 +32,7 @@ void testAdaptiveBinaryTool()
         Values inputs;
         inputs.emplace(ab::in::IMAGES, std::int64_t(42));
         auto res = tool.execute(inputs);
-        requireFailure(res, "Image", "Non-Image must fail");
+        requireFailure(res, "图像", "Non-Image must fail");
         REQUIRE(testview::status(res).message.find("images") != std::string::npos, "Error must mention port 'images'");
     }
 

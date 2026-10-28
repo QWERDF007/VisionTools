@@ -8,6 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
+import package_profile
 import package_tools as package
 
 
@@ -38,6 +39,10 @@ class PackageFixture(unittest.TestCase):
             "resources": ["bias.dat"], "init_params": [], "inputs": [],
             "outputs": [{"id": "value", "name": "Value", "type": "Int"}],
         }
+        # Every project that ships Python tools carries the one author SDK the packager injects.
+        sdk = self.project / "python/author_sdk/visiontools_sdk"
+        sdk.mkdir(parents=True)
+        (sdk / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
         self.code = self.project / "python/custom/examples/math"
         self.code.mkdir(parents=True)
         (self.code / "tool.py").write_text(
@@ -56,12 +61,12 @@ class PackageFixture(unittest.TestCase):
     def targets(self):
         return package.resolve_targets(self.output, self.project)
 
-    def publish(self, install_dir=None, zip_output=None):
+    def publish(self, install_dir=None, zip_output=None, profile=None):
         package.save_json(self.document, self.declaration)
         package.save_json(self.index, self.project / "tools/package_catalog.json")
         package.save_json(self.manifest, self.build / "Release/resolved_dependencies.json")
         return package.package_tools(self.build, install_dir or self.output, project_root=self.project,
-                                     validator=self.validator, zip_output=zip_output)
+                                     validator=self.validator, zip_output=zip_output, profile=profile)
 
     def state(self):
         targets = self.targets

@@ -15,6 +15,7 @@ target_include_directories(visiontools_infer PUBLIC
 )
 
 target_link_libraries(visiontools_infer PRIVATE
+    visiontools_common
     VisionRT::Contracts
     InferRT::model
     CUDA::cudart

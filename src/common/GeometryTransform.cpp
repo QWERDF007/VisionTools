@@ -1,5 +1,8 @@
 #include "GeometryTransform.h"
 
+#include "common/errors/GeometryErrors.h"
+#include "common/errors/ToolError.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -139,7 +142,7 @@ std::vector<Alignment> alignmentsFromValue(const visionrt::PortValue &value, std
     }
     const auto &array = std::get<visionrt::Array>(value);
     if (array.type() != visionrt::TypeSpec{visionrt::Type::Array, visionrt::DType::Float64, 3})
-        throw visionrt::ContractError("alignment 必须是 Array(float64, rank=3)");
+        fail(CommonToolError::InputTypeMismatch, "alignment 必须是 Array(float64, rank=3)");
     const auto &matrices = array.get<visionrt::NestedVector<double, 3>>();
     if (matrices.empty())
     {
@@ -151,15 +154,15 @@ std::vector<Alignment> alignmentsFromValue(const visionrt::PortValue &value, std
     {
         auto alignment = decodeMatrix(rows);
         if (!alignment || !alignment->isAffine())
-            throw visionrt::ContractError("alignment 每个元素必须是有限仿射矩阵，最后一行为 [0,0,1]");
+            fail(GeometryError::AlignmentInvalid, "每个元素必须是有限仿射矩阵，最后一行为 [0,0,1]");
         if (!alignment->invertible())
-            throw visionrt::ContractError("alignment 线性部分必须可逆");
+            fail(GeometryError::AlignmentInvalid, "线性部分不可逆");
         result.push_back(*alignment);
     }
     if (result.size() == 1 && imageCount > 1)
         result.resize(imageCount, result.front());
     else if (imageCount != 0 && result.size() != imageCount)
-        throw visionrt::ContractError("alignment 数量必须为 1 或与图像数量一致");
+        fail(CommonToolError::InputOutOfRange, "alignment 数量必须为 1 或与图像数量一致");
     return result;
 }
 

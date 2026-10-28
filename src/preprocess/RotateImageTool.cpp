@@ -4,6 +4,8 @@
 #include "common/UpstreamStatus.h"
 #include "common/ImageSupport.h"
 #include "common/InputValues.h"
+#include "common/errors/GeometryErrors.h"
+#include "common/errors/ToolError.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -24,22 +26,24 @@ int interpolationFlag(const std::string &value)
         return cv::INTER_LINEAR;
     if (value == "cubic")
         return cv::INTER_CUBIC;
-    throw visionrt::ContractError("输入端口 'interpolation' 的取值无效：" + value + "（允许 nearest/linear/cubic）");
+    fail(CommonToolError::InputOutOfRange, "interpolation 只接受 nearest/linear/cubic，实际值：" + value);
 }
 
 std::optional<cv::Point2d> requestedCenter(const visionrt::Values &inputs)
 {
-    const auto &value = requireInput(inputs, p::in::CENTER);
-    const auto &array = std::get<visionrt::Array>(value);
-    if (array.type() != visionrt::TypeSpec{visionrt::Type::Array, visionrt::DType::Float64, 1})
-        throw visionrt::ContractError("center 必须是 Array(float64, rank=1)");
-    const auto &values = array.get<visionrt::NestedVector<double, 1>>();
+    const auto found = inputs.find(p::in::CENTER);
+    if (found == inputs.end() || visionrt::isMissing(found->second))
+        return std::nullopt;
+    const auto *array = std::get_if<visionrt::Array>(&found->second);
+    if (!array || array->type() != visionrt::TypeSpec{visionrt::Type::Array, visionrt::DType::Float64, 1})
+        fail(CommonToolError::InputTypeMismatch, std::string(p::in::CENTER) + " 必须是 Array(float64, rank=1)");
+    const auto &values = array->get<visionrt::NestedVector<double, 1>>();
     if (values.empty())
         return std::nullopt;
     if (values.size() != 2)
-        throw visionrt::ContractError("center 必须为空或恰好两个有限值");
+        fail(CommonToolError::InputOutOfRange, std::string(p::in::CENTER) + " 必须为空或恰好两个有限值");
     if (!std::isfinite(values[0]) || !std::isfinite(values[1]))
-        throw visionrt::ContractError("center 必须为有限数值");
+        fail(CommonToolError::InputOutOfRange, std::string(p::in::CENTER) + " 必须为有限数值");
     return cv::Point2d{values[0], values[1]};
 }
 
@@ -64,7 +68,7 @@ visionrt::Values missingOutputs()
 visionrt::ToolStatus RotateImageTool::initialize(const visionrt::Values &parameters)
 {
     if (!parameters.empty())
-        return {1, "旋转图像不接受初始化参数"};
+        return {visionrt::kContractViolationStatus, "旋转图像不接受初始化参数"};
     return {};
 }
 
@@ -75,14 +79,32 @@ visionrt::ToolResult RotateImageTool::execute(const visionrt::Values &inputs)
         return skippedByUpstream(upstream, missingOutputs());
     try
     {
-        const auto &images        = requireImages(inputs, p::in::IMAGES);
-        const auto  angle         = requireFloatInRange(inputs, p::in::ANGLE_DEG, -1.0e9, 1.0e9);
-        const auto  canvas        = requireString(inputs, p::in::CANVAS);
-        const auto  interpolation = interpolationFlag(requireString(inputs, p::in::INTERPOLATION));
-        const auto  center        = requestedCenter(inputs);
-        const auto  alignments    = geometry::alignmentsFromValue(requireInput(inputs, p::in::ALIGNMENT), images.size());
+        Readings   readings(inputs);
+        const auto imagesRef     = readings.image(p::in::IMAGES);
+        const auto angle         = readings.real(p::in::ANGLE_DEG);
+        const auto canvas        = readings.text(p::in::CANVAS);
+        const auto interpolationName = readings.text(p::in::INTERPOLATION);
+        const auto alignmentValue = readings.find(p::in::ALIGNMENT);
+        const auto borderValue    = readings.find(p::in::BORDER_VALUE);
+        if (readings.failed())
+            return visionrt::toolResult(missingOutputs(),
+                                        readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
+        const auto &images = imagesRef.get();
+        if (images.empty())
+            return failure(missingOutputs(), CommonToolError::InputMissing, std::string(p::in::IMAGES) + " 没有图像");
+        if (!std::isfinite(angle) || angle < -1.0e9 || angle > 1.0e9)
+            return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                           std::string(p::in::ANGLE_DEG) + " 必须在 [-1e9, 1e9] 内，实际值：" + std::to_string(angle));
         if (canvas != "keep" && canvas != "expand")
-            throw visionrt::ContractError("输入端口 'canvas' 的取值无效：" + canvas + "（允许 keep/expand）");
+            return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                           std::string(p::in::CANVAS) + " 只接受 keep/expand，实际值：" + canvas);
+        if (!alignmentValue)
+            return failure(missingOutputs(), CommonToolError::InputMissing, std::string(p::in::ALIGNMENT));
+        if (!borderValue)
+            return failure(missingOutputs(), CommonToolError::InputMissing, std::string(p::in::BORDER_VALUE));
+        const auto interpolation = interpolationFlag(interpolationName);
+        const auto center        = requestedCenter(inputs);
+        const auto alignments    = geometry::alignmentsFromValue(*alignmentValue, images.size());
 
         const double normalized = std::fmod(angle, 360.0);
         std::vector<cv::Mat>         output;
@@ -93,8 +115,7 @@ visionrt::ToolResult RotateImageTool::execute(const visionrt::Values &inputs)
         {
             const auto &image = images[index];
             requireSupportedImage(image, "旋转图像");
-            const auto border = borderScalar(requireInput(inputs, p::in::BORDER_VALUE), image.channels(),
-                                             image.depth());
+            const auto border = borderScalar(*borderValue, image.channels(), image.depth());
             const cv::Point2d pivot = center.value_or(cv::Point2d{(image.cols - 1) / 2.0, (image.rows - 1) / 2.0});
             const auto rotation = geometry::rotationAround(pivot.x, pivot.y, normalized);
             geometry::Alignment transform = rotation;
@@ -143,21 +164,17 @@ visionrt::ToolResult RotateImageTool::execute(const visionrt::Values &inputs)
         outputs.emplace(p::out::ALIGNMENT, geometry::alignmentArray(outputAlignments));
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
-    catch (const visionrt::ContractError &error)
+    catch (const ToolFailure &error)
     {
-        return visionrt::toolResult(missingOutputs(), {1, error.what()});
-    }
-    catch (const cv::Exception &error)
-    {
-        return visionrt::toolResult(missingOutputs(), {1, "旋转图像失败", error.what()});
+        return failureResult(missingOutputs(), error);
     }
     catch (const std::exception &error)
     {
-        return visionrt::toolResult(missingOutputs(), {1, "旋转图像失败", error.what()});
+        return failure(missingOutputs(), CommonToolError::OperatorFailed, "旋转图像失败", error.what());
     }
     catch (...)
     {
-        return visionrt::toolResult(missingOutputs(), {-1, "旋转图像失败：未知异常"});
+        return failure(missingOutputs(), CommonToolError::OperatorFailed, "旋转图像失败：未知异常");
     }
 }
 

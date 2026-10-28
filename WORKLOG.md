@@ -4,7 +4,7 @@
 
 ## ⏳ 待你裁决
 
-- 2026-10-18: 外部 GPU .wts 真实权重依赖与外部真实主机联调执行仍属外部环境前置阻塞，等待外部真实权重提供或部署环境具备后进行端到端实测。
+- （已解除 2026-10-27）外部 GPU .wts 真实权重依赖：用户已提供 `F:/models/yolov8/yolov8n/yolov8n.wts`，VisionRT 侧 `gpu_tools_contract` 在 RTX 4060（sm89）双阶段端到端通过（build_wts 204.4s + engine 0.049s，5 检测与 PyTorch 参考匹配）。
 
 ---
 
@@ -29,6 +29,112 @@
 **下一步**
 - ...
 -->
+
+### 2026-10-28 — 亮度可空输入、出包集合完整性与 Python 作者 SDK 单源
+
+**目标**
+- 执行三仓审核包 T39-02（亮度可空图像）、T39-05（profile 最终集合与失败事务）、T39-07（Python 作者 SDK 单源）。
+
+**当前状态**
+- 已完成（亮度，[BrightnessTool.cpp](src/preprocess/BrightnessTool.cpp)、[BrightnessParameters.h](src/preprocess/BrightnessParameters.h)）：`images` 改为可空读取，先执行工具自身的上游状态策略、再在确实需要图像时报 1001；声明 `required:false` 与实现顺序一致。
+- 已完成（出包，[package_tools.py](tools/package_tools.py)、[package_profile.py](tools/package_profile.py)）：被 profile 排除的模块，其库文件与依赖工具同批剔除并在 `dependencies.json` 写明原因；运行时安装目录从创建起纳入 `finally`；`runtime_files` 只记录真正落地的文件；`engine_build` profile 缺目标架构 builder 资源时直接失败；新增 `inferrt_*` 分类，CPU 包不再夹带推理运行时。
+- 已完成（SDK，[python/author_sdk/visiontools_sdk](python/author_sdk/visiontools_sdk/__init__.py)、[package_payload.py](tools/package_payload.py)、四个示例）：仓库只保留一份 SDK，出包时注入每个 Python 工具包；示例改用普通相对导入，删除 `sys.path` 兜底与四份手写副本。
+- 已完成（测试）：`test_upstream_status_contract` 增加“缺图 + 非零上游仍跳过”；`test_package_profile` 增加缺 SM 资源拒绝与 runtime profile 不要求 builder；`test_package` 增加安装失败不留 `.runtime-*` 与 CPU profile 剔除被排除模块库；`test_python_tools` 改为按宿主形态（包根 + 子模块）加载，SDK 从唯一源解析。
+- 未验证：GPU 设备侧未复跑（本次不涉及推理代码路径）；`dist/visiontools-deploy` 已按 rtx40-build 重新出包，未见运行态回归证据。
+
+**验证证据**
+- `ctest --test-dir build -R "test_python_tools|test_package|test_logic_engine|test_installation_consumer"` → **6/6 通过**；
+- `python tests/test_package.py`（真实校验器）→ **46/46 通过**；`python -m unittest tests.test_package_profile` → **15/15 通过**；
+- `ctest -R "test_upstream_status_contract|test_preprocess_contract"` → **2/2 通过**；
+- 真实 CPU 出包 `package_tools.py --profile cpu` → 21 工具、2 模块，`bin/` 仅 opencv + vst_image + vst_metrology，`vst_infer.dll`/`inferrt_*`/`nvinfer_*`/`cudart*` 均被排除并记入报告；
+- 真实 rtx40-build 出包 → 22 工具、3 模块，保留 `nvinfer_builder_resource_sm89_10.dll`；
+- `dist/visiontools-deploy` 重新出包后每个 Python 工具包内含 `visiontools_sdk/`；VisionRT 侧 `python_contract`、`cpu_tools_contract`、`installed_python_author_contract`、`examples_contract` 4/4 通过。
+
+**下一步**
+- 若继续 T39-12：在真实安装目录复跑七工具与 EasyTouch 交互回归；
+- 出包夹具已可从 `--profile cpu` 直接生成，`dist/cpu-fixture` 保留为 VisionRT 测试包来源。
+
+### 2026-10-28 — 工具错误目录与 Python 信封迁移（配合 VisionRT Contracts ABI 6）
+
+**目标**
+- 对齐 `VisionRT/docs/VisionRT_错误处理重构_最终版/`：工具只返回一个 `status`，业务码按固定域分配，Python 工具改用 `{status, outputs}` 信封；不再向 `outputs` 写 `__status_code` / `__status_message`。
+
+**当前状态**
+- 已完成（错误目录）：新增 [ToolErrorDomains.h](src/common/errors/ToolErrorDomains.h) 作为唯一域表（1001–1999 公共、101xxx 读图、102xxx 裁剪、103xxx 几何、104xxx 计量、301xxx 推理、401/402 Python 逻辑）；[ToolError.h](src/common/errors/ToolError.h) 只留 `ToolFailure` / `status()` / `fail()` 等词汇，`ToolError.cpp` 负责目录文本。
+- 已完成（各工具）：`ReadImageTool`、`ImageCropTool`、`DetectionFilterTool`、`ImagePreprocessTool`、`RotateImageTool`、`RoiProjectionTool`、`BrightnessTool`、`CircleTool`、`RowSpacingTool`、`AssistTools`、`AdaptiveBinaryTool`、`YoloModel` 全部改为返回式错误；读图码严格按方案 101001 路径、101002 没有可用图像、101003 文件读取失败、101004 解码失败、101005 超出大小限制；YOLO 恢复 301001–301005 语义。
+- 已完成（消息用词）：Contracts 增加 `typeLabel()`，参数读取的失败消息改用中文类型名（期望整数/浮点数/…），测试同步。
+- 已完成（Python）：`visiontools_sdk` 增加 `status()/result()/success()/failure()/skipped()`，`OutputParametersBase.pack()` 返回信封、`status()` 返回生命周期状态；`builtin/logic/common/status.py` 与 expression/branch 工具沿用同一信封；四个 custom 示例与 builtin 示例全部迁移，`errors.py` 定义域内业务码。
+- 未完成：`tests/test_distribution.py` 需外部 `VISIONTOOLS_VALIDATOR` 才能跑（环境依赖，非代码问题）。
+
+**验证证据**
+- `ctest --test-dir build --output-on-failure` → **17/17 通过**（含 preprocess、geometry、read cache、output ownership、module、installation consumer、infer、package 与 python 用例）；
+- `python -m unittest tests.test_python_tools tests.test_logic_engine` → 32/32 通过；
+- `cmake --build build` → 退出码 0，`vst_image.dll` / `vst_metrology.dll` / `vst_infer.dll` 重新产出并同步到 `dist/visiontools-deploy` 与 VisionRT 的 `build/tools-package`、`build/bin/tools-package`；
+- VisionRT 侧 `ctest -L backend` 37/37 通过（真实工具包链路）。
+
+**下一步**
+- 无。工具仓库侧改动已全部通过自身契约测试。
+
+### 2026-10-28 — 出包：构建元数据单一来源，发行包带上真实构建时刻
+
+**目标**
+- 让 `dist/visiontools-deploy.zip` 的 `build_info.json` 与真实构建一致，避免关于弹窗显示旧时间或“构建信息不可用”。
+
+**当前状态**
+- 已修复：`tools/package_tools.py` 原来优先读 `<build-dir>/<config>/build_info.json`，那是旧流程 `file(GENERATE)` 留下的文件（commit `5a69d2b`、`build_time_utc` 格式），会把新的 `build/build_info.json` 挡住。现在只认 `<build-dir>/build_info.json`，且要求存在正整数 `built_at_epoch`，旧格式直接拒绝出包。
+- 已清理：删除 `build/Release/build_info.json` 这个陈旧副本（构建产物，可再生）。
+- 已完成：按 `--profile rtx40-build` 重新出包，22 工具，目录与 ZIP 内的 `build_info.json` 一致（commit `077706f`，`built_at_epoch` 1793148779）。
+
+**验证证据**
+- `python test_package.py`（设 `VISIONTOOLS_VALIDATOR` 与 OpenCV bin 在 PATH）→ 45 个用例全部通过，含新增“旧格式被拒绝”和“配置子目录旧文件不得覆盖”两个用例；
+- `python tools/package_tools.py --build-dir build --install-dir dist/visiontools-deploy --profile rtx40-build` → `已打包 22 个工具`，退出码 0；
+- `dist/visiontools-deploy/build_info.json` 与 ZIP 内同名文件均为 `commit 077706f… / built_at_epoch 1793148779`。
+
+**后续（同日完成）**
+- `dist/` 下 15 项出包备份（5 个目录、5 个 ZIP、5 个 module_index 副本，合计约 13.9 GB）已清理；`visiontools-deploy`（22 工具 / 3 模块）与 `visiontools-deploy.zip` 保留，清理后重新校验模块索引与文件数正常。
+
+### 2026-10-28 — VT-02/03/04：读图缓存实测、输出所有权收敛、missing 端口 helper 归并
+
+**目标**
+- VT-02：用实测替代“512 MiB 缓存”的推断，量化预算、驻留、命中率、冷热延迟与多实例影响；
+- VT-03：先证明 `RotateImageTool`/`BrightnessTool` 的输出不共享输入缓冲，再去掉多余的 owner 保留链；
+- VT-04：把长端口列表的 `missingOutputs()` 手写循环收敛到公共 helper。
+
+**当前状态**
+- 已完成（VT-02）：新增 `tests/test_read_cache_contract.cpp`。`DecodedImageCache` 预算强制（8 MiB 预算下 3 MiB 图像、LRU 淘汰、`protect` 保护、超预算图像拒绝且不改变已驻留字节）；工具级 12 张 1600×900 图冷/热两轮、120 帧循环、双实例隔离。`ReadImageTool::kCacheBudgetBytes` 取代头文件里的魔法数，测试与实现共用同一常量。
+- 已完成（VT-03）：新增 `tests/test_output_ownership_contract.cpp`，断言输出每个平面与输入 `data`/`ptr(0)` 均不相同，并在丢弃输入后校验输入 owner 令牌已释放、输出仍可读。两工具先跑红（保留 owner），去掉 `DataRef` 的 keepAlive 后转绿；临时把 Brightness 改回保留 owner 可再次复现失败，证明门槛有效。
+- 已完成（VT-04）：新增 `common/ToolOutputs.h` 的 `missingPorts({...})`，`CircleTool`、`RowSpacingTool`、`DetectionFilterTool` 三处长端口列表改用它；一两个端口的工具保留内联写法。
+- 已完成（VT-01 复核）：完整构建后 `build/build_info.json` 的 `built_at_epoch` 由 1793082712 前进到 1793148757，确认“取产物 mtime”在真实重链时才更新，不在无改动构建时伪造时间。
+- 未做：VT-02 未在 GPU 上采样（缓存是主机内存，与显存无关）；未在干净机器验证打包产物的运行态依赖。
+
+**验证证据**
+- `cmake --build build` → 退出码 0，无 `error C/error LNK`；`build_info.json` 时间戳随真实重链前进；
+- `ctest -R "^(test_preprocess_contract|test_geometry_contract|test_upstream_status_contract|test_writable_tools_contract|test_module_contract|test_read_cache_contract|test_output_ownership_contract)$"` → **7/7 通过（1.18 s）**；
+- VT-02 实测（`build/evidence/read_cache_evidence.json`）：预算 536870912 B；12 张 4.32 MB 解码帧，冷 113.6 ms / 10 帧，热 0.19 ms / 12 帧，120 帧循环 1.66 ms；工作集 12.3 → 62.7 MiB（+50.4，与 51.8 MB 解码帧相符），循环后不再增长；第二个实例冷启动重新解码 12 帧、热轮 0 次；
+- VT-03 门槛自检：恢复 owner 保留时测试报 `the output retained the input owner although it allocated its own pixels: brightness must return pixels it owns`。
+
+**下一步**
+- 若继续：在干净机器验证 `dist` 包安装/加载，并补一次 GPU 路径的读图+推理组合采样（与本票的主机内存结论分开记录）。
+
+### 2026-10-27 — T36-18 参数 SDK 迁移（ReadImageTool 参数子类、Python visiontools_sdk）
+
+**目标**
+- 完成 T36-18：ReadImageTool 保持类并复用参数子类；Python 函数（image_add）与计数器类（counter）接入统一参数 SDK 并随包安装；在真实安装目录复验。
+
+**当前状态**
+- 已完成：新增 `src/preprocess/ReadImageParameters.h`（`ReadImageInputs`/`ReadImageOutputs`，复用 Contracts 的 `InputParametersBase`/`OutputParametersBase`）；`ReadImageTool.cpp` 的输入解析、commit、同批次快速路径与全部异常路径改走参数子类，失败输出为五端口显式 Missing，upstream 类型错误保持原传播语义，缓存/事务行为不变。
+- 已完成：新增 Python 作者 SDK `visiontools_sdk`（InputReader/OutputWriter + InputParametersBase/OutputParametersBase，状态键归基类、图像与列表零拷贝），作为包内子目录随 image_add 与 call_counter 安装；直接以文件加载（测试）时回退同目录导入。
+- 已完成：`image_add/tool.py` 迁移为 `ImageAddInputs/ImageAddOutputs`（upstream 非 0 原样转发、inplace 保持 ndarray 对象同一性、错误显式 Missing）；`counter.py` 保持类入口，execute 用 `CounterOutputs`，initialize/release 用 `LifecycleStatus`（宿主要求生命周期返回恰好两个状态键）。
+- 已完成：`dist/visiontools-deploy`（rtx40-build）与 zip 重新打包（22 工具，含 SDK 子包）；VisionRT `build/tools-package` 精简夹具由新版部署包重建（21 工具、preprocess+metrology、剔除 yolo）。
+- 未完成：无（T36-19 联合发布在 VisionRT 侧推进）。
+
+**验证证据**
+- `ctest -R "test_preprocess_contract|test_upstream_status_contract|test_python_tools"` → 3/3 Passed；`python tests/test_python_tools.py` → 14/14 OK。
+- 安装目录导入冒烟：dist 内 `visiontools_sdk` 直接导入，InputReader/OutputWriter/状态键守卫行为正确，不依赖开发机 PYTHONPATH。
+- 宿主复验（VisionRT）：`python_contract`（完整 dist 包）与 `installed_python_author_contract`、`installed_pipeline_contract`、`cpu_tools_contract` 等 7/7 Passed；`python_shutdown_contract`、`runtime_python_lazy_contract` 等 6/6 Passed。
+
+**下一步**
+- 无新增动作；GPU 真实权重端到端联调仍受外部权重阻塞（见顶部待裁决）。
 
 ### 2026-10-26 — 工具声明升 schema 4、条件分支双模式、读图序列化与旋转/亮度工厂注册
 

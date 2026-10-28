@@ -12,7 +12,7 @@ int main()
 try
 {
     using namespace visionrt;
-    static_assert(MODULE_ABI_MAJOR == 5);
+    static_assert(MODULE_ABI_MAJOR == 6);
     const auto *api = visiontoolsModuleApi();
     assert(api && api->abi_major == MODULE_ABI_MAJOR);
     TestRegistry registry;

@@ -152,27 +152,27 @@ class ToolContracts(unittest.TestCase):
             ("p3", "hidden", "sum(radii)", "Float", "", -1, False),
         ])
         status = tool.initialize({"variables": variable_rows, "program": program_rows})
-        self.assertEqual(status["__status_code"], 0)
+        self.assertEqual(status["code"], 0)
         result = tool.execute({"p1": [1.0, 2.0]})
-        self.assertEqual(result["__status_code"], 0)
-        self.assertEqual(result["p2"], 2)
-        self.assertNotIn("p3", result)
+        self.assertEqual(result["status"]["code"], 0)
+        self.assertEqual(result["outputs"]["p2"], 2)
+        self.assertNotIn("p3", result["outputs"])
         failure = tool.execute({"p1": None})
-        self.assertNotEqual(failure["__status_code"], 0)
-        self.assertIsNone(failure["p2"])
+        self.assertNotEqual(failure["status"]["code"], 0)
+        self.assertIsNone(failure["outputs"]["p2"])
 
     def test_branch_tool_is_mutually_exclusive(self):
         tool = BranchTool()
         variable_rows, program_rows = tables([("p1", "count", "Int", "", -1, False)], [
             ("p2", "ok", "count > 3", "Bool", "", -1, False),
         ])
-        self.assertEqual(tool.initialize({"variables": variable_rows, "program": program_rows})["__status_code"], 0)
+        self.assertEqual(tool.initialize({"variables": variable_rows, "program": program_rows})["code"], 0)
         yes = tool.execute({"p1": 5})
-        self.assertTrue(yes["on_true"])
-        self.assertFalse(yes["on_false"])
+        self.assertTrue(yes["outputs"]["on_true"])
+        self.assertFalse(yes["outputs"]["on_false"])
         no = tool.execute({"p1": 1})
-        self.assertFalse(no["on_true"])
-        self.assertTrue(no["on_false"])
+        self.assertFalse(no["outputs"]["on_true"])
+        self.assertTrue(no["outputs"]["on_false"])
 
     def test_branch_accepts_only_true_bool(self):
         tool = BranchTool()
@@ -180,17 +180,17 @@ class ToolContracts(unittest.TestCase):
             ("p2", "ok", "count", "Bool", "", -1, False),
         ])
         status = tool.initialize({"variables": variable_rows, "program": program_rows})
-        self.assertEqual(status["__status_code"], 0)
+        self.assertEqual(status["code"], 0)
         result = tool.execute({"p1": 1})
-        self.assertNotEqual(result["__status_code"], 0)
-        self.assertIsNone(result["on_true"])
-        self.assertIsNone(result["on_false"])
+        self.assertNotEqual(result["status"]["code"], 0)
+        self.assertIsNone(result["outputs"]["on_true"])
+        self.assertIsNone(result["outputs"]["on_false"])
 
     def test_branch_requires_single_hidden_result(self):
         tool = BranchTool()
         variable_rows, program_rows = tables([], [("p1", "ok", "True", "Bool", "", -1, True)])
         status = tool.initialize({"variables": variable_rows, "program": program_rows})
-        self.assertNotEqual(status["__status_code"], 0)
+        self.assertNotEqual(status["code"], 0)
 
 
 if __name__ == "__main__":

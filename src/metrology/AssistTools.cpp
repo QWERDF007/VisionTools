@@ -7,6 +7,8 @@
 #include "common/ImageSupport.h"
 #include "common/InputValues.h"
 #include "common/RoiSupport.h"
+#include "errors/MetrologyErrors.h"
+#include "common/errors/ToolError.h"
 
 #include <utility>
 #include <vector>
@@ -24,31 +26,43 @@ struct AssistInputs
 AssistRequest readRequest(const visionrt::Values &inputs)
 {
     AssistRequest request;
-    const auto   &cursor = requireInput(inputs, p::in::CURSOR);
-    const auto   *array  = std::get_if<visionrt::Array>(&cursor);
+    const auto found = inputs.find(p::in::CURSOR);
+    if (found == inputs.end() || visionrt::isMissing(found->second))
+        fail(CommonToolError::InputMissing, p::in::CURSOR);
+    const auto *array = std::get_if<visionrt::Array>(&found->second);
     if (!array || array->type() != visionrt::TypeSpec{visionrt::Type::Array, visionrt::DType::Float64, 1})
-        throw visionrt::ContractError("cursor 必须是 Array(float64, rank=1)");
+        fail(CommonToolError::InputTypeMismatch, std::string(p::in::CURSOR) + " 必须是 Array(float64, rank=1)");
     const auto &values = array->get<visionrt::NestedVector<double, 1>>();
     if (values.size() != 2 || !std::isfinite(values[0]) || !std::isfinite(values[1]))
-        throw visionrt::ContractError("cursor 必须恰好包含两个有限像素坐标");
+        fail(CommonToolError::InputOutOfRange, std::string(p::in::CURSOR) + " 必须恰好包含两个有限像素坐标");
     request.cursor = {values[0], values[1]};
-    const auto phase = requireString(inputs, p::in::PHASE);
-    if (phase != "hover" && phase != "learn")
-        throw visionrt::ContractError("输入端口 'phase' 的取值无效：" + phase + "（允许 hover/learn）");
-    request.learn        = phase == "learn";
-    request.searchExtent = requireInt32(inputs, p::in::SEARCH_EXTENT, 16, 2048);
 
-    const auto &images = requireImages(inputs, p::in::IMAGES);
-    if (images.size() != 1)
-        throw visionrt::ContractError("辅助工具只接受单张图像");
-    const auto groups
-        = roi::groups(requireInput(inputs, p::in::SEED_ROIS), 1, "seed_rois");
+    Readings   readings(inputs);
+    const auto phase        = readings.text(p::in::PHASE);
+    const auto searchExtent = readings.integer(p::in::SEARCH_EXTENT);
+    const auto imagesRef    = readings.image(p::in::IMAGES);
+    const auto seedValue    = readings.find(p::in::SEED_ROIS);
+    const auto alignValue   = readings.find(p::in::ALIGNMENT);
+    if (readings.failed())
+        fail(CommonToolError::InputMissing, readings.issue()->describe());
+    if (phase != "hover" && phase != "learn")
+        fail(CommonToolError::InputOutOfRange, std::string(p::in::PHASE) + " 只接受 hover/learn，实际值：" + phase);
+    if (searchExtent < 16 || searchExtent > 2048)
+        fail(CommonToolError::InputOutOfRange,
+             std::string(p::in::SEARCH_EXTENT) + " 必须在 [16, 2048] 内，实际值：" + std::to_string(searchExtent));
+    if (!seedValue || !alignValue)
+        fail(CommonToolError::InputMissing, !seedValue ? p::in::SEED_ROIS : p::in::ALIGNMENT);
+    request.learn        = phase == "learn";
+    request.searchExtent = static_cast<int>(searchExtent);
+    if (imagesRef.get().size() != 1)
+        fail(CommonToolError::InputOutOfRange, "辅助工具只接受单张图像");
+    const auto groups = roi::groups(*seedValue, 1, "seed_rois");
     if (!groups.empty())
         request.seeds = groups.front();
-    const auto alignments = geometry::alignmentsFromValue(requireInput(inputs, p::in::ALIGNMENT), 1);
+    const auto alignments = geometry::alignmentsFromValue(*alignValue, 1);
     request.alignment     = alignments.front();
     if (!request.alignment.isSimilarity())
-        throw visionrt::ContractError("辅助工具仅接受保向相似变换的 alignment");
+        fail(MetrologyError::RoiKindMismatch, "alignment 必须是保向相似变换");
     return request;
 }
 
@@ -95,7 +109,7 @@ visionrt::Values missingRowOutputs()
 visionrt::ToolStatus AssistCircleTool::initialize(const visionrt::Values &parameters)
 {
     if (!parameters.empty())
-        return {1, "圆智能点选辅助工具不接受初始化参数"};
+        return {visionrt::kContractViolationStatus, "圆智能点选辅助工具不接受初始化参数"};
     return {};
 }
 
@@ -109,17 +123,17 @@ visionrt::ToolResult AssistCircleTool::execute(const visionrt::Values &inputs)
         outputs.emplace(p::out::SUGGESTED_SEARCH, result.searchHalfWidth);
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
-    catch (const visionrt::ContractError &error)
+    catch (const ToolFailure &error)
     {
-        return visionrt::toolResult(missingCircleOutputs(), {1, error.what()});
+        return failureResult(missingCircleOutputs(), error);
     }
     catch (const std::exception &error)
     {
-        return visionrt::toolResult(missingCircleOutputs(), {1, "圆智能点选失败", error.what()});
+        return failure(missingCircleOutputs(), MetrologyError::MeasurementFailed, "圆智能点选失败", error.what());
     }
     catch (...)
     {
-        return visionrt::toolResult(missingCircleOutputs(), {-1, "圆智能点选失败：未知异常"});
+        return failure(missingCircleOutputs(), MetrologyError::MeasurementFailed, "圆智能点选失败：未知异常");
     }
 }
 
@@ -131,7 +145,7 @@ visionrt::ToolStatus AssistCircleTool::release()
 visionrt::ToolStatus AssistRowSpacingTool::initialize(const visionrt::Values &parameters)
 {
     if (!parameters.empty())
-        return {1, "行间距智能点选辅助工具不接受初始化参数"};
+        return {visionrt::kContractViolationStatus, "行间距智能点选辅助工具不接受初始化参数"};
     return {};
 }
 
@@ -146,17 +160,17 @@ visionrt::ToolResult AssistRowSpacingTool::execute(const visionrt::Values &input
         outputs.emplace(p::out::SUGGESTED_WIDTH_MAX, result.widthMax);
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
-    catch (const visionrt::ContractError &error)
+    catch (const ToolFailure &error)
     {
-        return visionrt::toolResult(missingRowOutputs(), {1, error.what()});
+        return failureResult(missingRowOutputs(), error);
     }
     catch (const std::exception &error)
     {
-        return visionrt::toolResult(missingRowOutputs(), {1, "行间距智能点选失败", error.what()});
+        return failure(missingRowOutputs(), MetrologyError::MeasurementFailed, "行间距智能点选失败", error.what());
     }
     catch (...)
     {
-        return visionrt::toolResult(missingRowOutputs(), {-1, "行间距智能点选失败：未知异常"});
+        return failure(missingRowOutputs(), MetrologyError::MeasurementFailed, "行间距智能点选失败：未知异常");
     }
 }
 

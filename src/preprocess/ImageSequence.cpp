@@ -1,5 +1,8 @@
 #include "ImageSequence.h"
 
+#include "errors/ReadImageErrors.h"
+#include "common/errors/ToolError.h"
+
 #include <visionrt/contracts/Tool.h>
 
 #include <algorithm>
@@ -79,16 +82,16 @@ SequencePlan planSequence(const std::vector<std::filesystem::path> &catalog, con
 
     const std::size_t total = catalog.size();
     if (total == 0)
-        throw visionrt::ContractError("没有可用图像文件");
+        fail(ReadImageError::NoImagesFound);
     if (request.count < 1)
-        throw visionrt::ContractError("输入端口 'count' 必须为正整数");
+        fail(CommonToolError::InputOutOfRange, "count 必须为正整数");
 
     if (!request.loop && cursor.exhausted)
-        throw visionrt::ContractError("图像序列已结束");
+        fail(ReadImageError::FileReadFailed, "图像序列已结束");
 
     const auto position = startPosition(plan.keys, cursor, request.reverse, request.loop);
     if (position.kind == SequenceStart::End)
-        throw visionrt::ContractError("图像序列已结束");
+        fail(ReadImageError::FileReadFailed, "图像序列已结束");
     const std::size_t start = position.kind == SequenceStart::RestartRequested ? 0 : position.step;
 
     // Looping may legitimately deliver the same file more than once in one batch, so `count` is

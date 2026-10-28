@@ -9,16 +9,9 @@ The tool uses the packaged ``visiontools_sdk`` parameter subclasses: the shared 
 are carried by reference — ``inplace`` mutates the caller's ndarray, ``copy`` builds new arrays.
 """
 
-import sys
-from pathlib import Path
-
 import numpy as np
 
-try:
-    from .visiontools_sdk import ContractError, InputParametersBase, OutputParametersBase
-except ImportError:  # Direct file loading (tests / debugging) has no package context.
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from visiontools_sdk import ContractError, InputParametersBase, OutputParametersBase
+from .visiontools_sdk import ContractError, InputParametersBase, OutputParametersBase
 
 
 class ImageAddInputs(InputParametersBase):
@@ -31,7 +24,6 @@ class ImageAddInputs(InputParametersBase):
         self.images = reader.array("images")
         self.mode = reader.text("mode")
 
-
 class ImageAddOutputs(OutputParametersBase):
     def __init__(self):
         super().__init__()
@@ -43,7 +35,6 @@ class ImageAddOutputs(OutputParametersBase):
         else:
             writer.array("images", self.images)
 
-
 def _validate_batch(images):
     """Returns the per-image problem, or None when the whole batch is valid."""
     for index, image in enumerate(images):
@@ -53,30 +44,31 @@ def _validate_batch(images):
             return f"输入端口 'images' 批次索引 {index} 需要 uint8 像素"
     return None
 
-
 def execute(values):
     args = ImageAddInputs()
     try:
         args.parse(values)
     except ContractError as error:
         out = ImageAddOutputs()
-        out.status_code = 1
+        # A missing port and a mistyped one are different answers for the caller.
+        out.status_code = 1001 if "为空" in str(error) else 1002
         out.status_message = str(error)
         return out.pack()
 
     out = ImageAddOutputs()
     if args.upstream_status != 0:
-        # The tool's own decision: a failed branch is forwarded, never processed.
+        # The tool's own decision: a failed branch is forwarded, never processed. The message says
+        # so, because a non-zero status without a reason is not a usable answer.
         out.status_code = args.upstream_status
-        out.status_message = ""
+        out.status_message = "上游未选中本分支，工具未执行"
         return out.pack()
 
     if args.mode not in ("copy", "inplace"):
-        out.status_code = 1
+        out.status_code = 1003
         out.status_message = "输入端口 'mode' 只能是 copy 或 inplace"
         return out.pack()
     if (problem := _validate_batch(args.images)) is not None:
-        out.status_code = 1
+        out.status_code = 1002
         out.status_message = problem
         return out.pack()
 

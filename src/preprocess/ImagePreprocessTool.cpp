@@ -2,6 +2,7 @@
 
 #include "common/InputValues.h"
 #include "common/UpstreamStatus.h"
+#include "common/errors/ToolError.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -18,8 +19,8 @@ void requireU8(const cv::Mat &image, std::size_t index)
     if (image.empty() || CV_MAT_DEPTH(image.type()) != CV_8U
         || (image.channels() != 1 && image.channels() != 3 && image.channels() != 4))
     {
-        throw visionrt::ContractError("批次索引 " + std::to_string(index)
-                                      + " 的图像必须是非空 uint8 灰度/BGR/BGRA 图像");
+        fail(CommonToolError::UnsupportedImage, "批次索引 " + std::to_string(index)
+                                                   + " 的图像必须是非空 uint8 灰度/BGR/BGRA 图像");
     }
 }
 
@@ -44,7 +45,7 @@ visionrt::ToolStatus ImagePreprocessTool::initialize(const visionrt::Values &par
 {
     if (!parameters.empty())
     {
-        return {1, "图像预处理不接受初始化参数"};
+        return {visionrt::kContractViolationStatus, "图像预处理不接受初始化参数"};
     }
     return {};
 }
@@ -61,35 +62,49 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
     // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
     if (const auto upstream = upstreamStatus(inputs); upstream != 0)
         return skippedByUpstream(upstream, missingOutputs());
+    // Only the parameter the chosen operation consumes is read: asking for a threshold while
+    // running `identity` would reject a batch that never needed one.
+    Readings   readings(inputs);
+    const auto images    = readings.image(p::in::IMAGES);
+    const auto operation = readings.text(p::in::OPERATION);
+    if (readings.failed())
+        return visionrt::toolResult(missingOutputs(),
+                                    readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
+    if (operation != "identity" && operation != "gray" && operation != "gaussian" && operation != "threshold")
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                       std::string(p::in::OPERATION) + " 只接受 identity/gray/gaussian/threshold，实际值：" + operation);
+
+    int                kernel    = 0;
+    std::int64_t       threshold = 0;
+    if (operation == "gaussian")
+    {
+        const auto kernelValue = readings.integer(p::in::KERNEL);
+        if (readings.failed())
+            return visionrt::toolResult(missingOutputs(),
+                                        readings.status(CommonToolError::InputMissing,
+                                                        CommonToolError::InputTypeMismatch));
+        if (kernelValue < 1 || kernelValue > std::numeric_limits<int>::max() || kernelValue % 2 == 0)
+            return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                           std::string(p::in::KERNEL) + " 必须为正的奇数（高斯核），实际值："
+                               + std::to_string(kernelValue));
+        kernel = static_cast<int>(kernelValue);
+    }
+    else if (operation == "threshold")
+    {
+        const auto thresholdRaw = readings.integer(p::in::THRESHOLD);
+        if (readings.failed())
+            return visionrt::toolResult(missingOutputs(),
+                                        readings.status(CommonToolError::InputMissing,
+                                                        CommonToolError::InputTypeMismatch));
+        if (thresholdRaw < 0 || thresholdRaw > 255)
+            return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                           std::string(p::in::THRESHOLD) + " 必须在 [0, 255] 内，实际值："
+                               + std::to_string(thresholdRaw));
+        threshold = thresholdRaw;
+    }
+
     try
     {
-        const auto &images
-            = requireTypedInput<visionrt::DataRef<visionrt::Image>>(inputs, p::in::IMAGES, {visionrt::Type::Image});
-
-        const auto operation = requireString(inputs, p::in::OPERATION);
-        if (operation != "identity" && operation != "gray" && operation != "gaussian" && operation != "threshold")
-        {
-            throw visionrt::ContractError("输入端口 '" + std::string(p::in::OPERATION) + "' 的取值无效："
-                                          + operation + "（允许 identity/gray/gaussian/threshold）");
-        }
-
-        int kernel = 0;
-        if (operation == "gaussian")
-        {
-            kernel = requireInt32(inputs, p::in::KERNEL, 1, std::numeric_limits<int>::max());
-            if (kernel % 2 == 0)
-            {
-                throw visionrt::ContractError("输入端口 '" + std::string(p::in::KERNEL)
-                                              + "' 必须为奇数（高斯核），实际值：" + std::to_string(kernel));
-            }
-        }
-
-        std::int64_t threshold = 0;
-        if (operation == "threshold")
-        {
-            threshold = requireIntInRange(inputs, p::in::THRESHOLD, 0, 255);
-        }
-
         if (images.get().empty())
         {
             visionrt::Values outputs;
@@ -134,17 +149,17 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
         outputs.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(std::move(output)));
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
-    catch (const visionrt::ContractError &error)
+    catch (const ToolFailure &error)
     {
-        return visionrt::toolResult(missingOutputs(), {1, error.what()});
+        return failureResult(missingOutputs(), error);
     }
     catch (const std::exception &error)
     {
-        return visionrt::toolResult(missingOutputs(), {1, "图像预处理失败", error.what()});
+        return failure(missingOutputs(), CommonToolError::OperatorFailed, "图像预处理失败", error.what());
     }
     catch (...)
     {
-        return visionrt::toolResult(missingOutputs(), {-1, "图像预处理失败：未知异常"});
+        return failure(missingOutputs(), CommonToolError::OperatorFailed, "图像预处理失败：未知异常");
     }
 }
 

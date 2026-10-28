@@ -1,6 +1,7 @@
 add_library(visiontools_common STATIC
     GeometryTransform.cpp
     RoiSupport.cpp
+    errors/ToolError.cpp
 )
 
 target_include_directories(visiontools_common PUBLIC

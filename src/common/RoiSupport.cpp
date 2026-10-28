@@ -1,5 +1,8 @@
 #include "RoiSupport.h"
 
+#include "common/errors/GeometryErrors.h"
+#include "common/errors/ToolError.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -35,10 +38,10 @@ std::vector<std::vector<Record>> groups(const visionrt::PortValue &value, std::s
         return result;
     const auto *reference = std::get_if<visionrt::DataRef<visionrt::ROI>>(&value);
     if (!reference)
-        throw visionrt::ContractError(name + " 必须是 ROI");
+        fail(CommonToolError::InputTypeMismatch, name + " 必须是 ROI");
     const auto &images = reference->get();
     if (!images.empty() && images.size() != imageCount)
-        throw visionrt::ContractError(name + " 外层长度必须为 " + std::to_string(imageCount) + " 张图像，实际 "
+        fail(CommonToolError::InputOutOfRange, name + " 外层长度必须为 " + std::to_string(imageCount) + " 张图像，实际 "
                                       + std::to_string(images.size()));
     result.resize(images.size());
     for (std::size_t image = 0; image < images.size(); ++image)
@@ -46,12 +49,12 @@ std::vector<std::vector<Record>> groups(const visionrt::PortValue &value, std::s
         for (const auto &record : images[image])
         {
             if (record.empty())
-                throw visionrt::ContractError(name + " 含空 ROI 记录");
+                fail(GeometryError::RoiOutOfImage, name + " 含空 ROI 记录");
             const int kind = static_cast<int>(record.front());
             if (kind < 0 || kind > 5)
-                throw visionrt::ContractError(name + " 的 ROI kind 超出 0-5");
+                fail(CommonToolError::InputOutOfRange, name + " 的 ROI kind 超出 0-5");
             if (std::any_of(record.begin(), record.end(), [](double v) { return !std::isfinite(v); }))
-                throw visionrt::ContractError(name + " 的 ROI 值必须有限");
+                fail(CommonToolError::InputOutOfRange, name + " 的 ROI 值必须有限");
             Record decoded;
             decoded.kind = static_cast<visionrt::RoiKind>(kind);
             decoded.values.assign(record.begin() + 1, record.end());
@@ -85,7 +88,7 @@ bool contains(const Record &record, double currentX, double currentY, const geom
     case visionrt::RoiKind::Rectangle:
     {
         if (record.values.size() != 5)
-            throw visionrt::ContractError("矩形 ROI 需要 5 个值");
+            fail(GeometryError::RoiOutOfImage, "矩形 ROI 需要 5 个值");
         const double cx = record.values[0] + record.values[2] / 2.0;
         const double cy = record.values[1] + record.values[3] / 2.0;
         const double angle = record.values[4] * 3.14159265358979323846 / 180.0;
@@ -99,14 +102,14 @@ bool contains(const Record &record, double currentX, double currentY, const geom
     case visionrt::RoiKind::Circle:
     {
         if (record.values.size() != 3)
-            throw visionrt::ContractError("圆 ROI 需要 3 个值");
+            fail(GeometryError::RoiOutOfImage, "圆 ROI 需要 3 个值");
         const double dx = x - record.values[0], dy = y - record.values[1];
         return std::sqrt(dx * dx + dy * dy) <= record.values[2] + kBoundaryTolerance;
     }
     case visionrt::RoiKind::Polygon:
         return pointInPolygon(record.values, 0, x, y);
     default:
-        throw visionrt::ContractError("面积选择只接受旋转矩形、圆和多边形 ROI");
+        fail(CommonToolError::InputTypeMismatch, "面积选择只接受旋转矩形、圆和多边形 ROI");
     }
 }
 
@@ -117,7 +120,7 @@ cv::Mat regionMask(const std::vector<Record> &records, cv::Size size, const geom
         return mask;
     const auto forward = toReference.inverse();
     if (!forward)
-        throw visionrt::ContractError("alignment 线性部分必须可逆");
+        fail(GeometryError::AlignmentInvalid, "线性部分不可逆");
     for (const auto &record : records)
     {
         // Bounding box in current image coordinates: transform the reference
@@ -162,7 +165,7 @@ cv::Mat regionMask(const std::vector<Record> &records, cv::Size size, const geom
                 extend(record.values[index], record.values[index + 1]);
             break;
         default:
-            throw visionrt::ContractError("面积选择只接受旋转矩形、圆和多边形 ROI");
+            fail(CommonToolError::InputTypeMismatch, "面积选择只接受旋转矩形、圆和多边形 ROI");
         }
         const int x0 = std::clamp(static_cast<int>(std::floor(minX - 1.0)), 0, size.width);
         const int y0 = std::clamp(static_cast<int>(std::floor(minY - 1.0)), 0, size.height);

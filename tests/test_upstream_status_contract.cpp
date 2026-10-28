@@ -77,6 +77,16 @@ void unselectedBranchDoesNothing()
     assert(testview::status(brightness).code == -3);
     assert(isMissing(brightness.outputs.at("images")));
 
+    // `images` is declared optional, so an unselected branch without an image must still be skipped
+    // instead of failing on the missing input before the tool's own policy runs.
+    auto skipped        = brightnessInputs;
+    skipped["upstream_status"] = std::int64_t{9};
+    skipped["images"]          = Missing{};
+    const auto branch = runBrightness(skipped, {"images", "applied_mask"});
+    assert(testview::status(branch).code == 9);
+    assert(testview::status(branch).message.find("未选中") != std::string::npos);
+    assert(isMissing(branch.outputs.at("images")));
+
     // The same tool with a zero status runs normally, so the gate is the status alone.
     brightnessInputs["upstream_status"] = std::int64_t{0};
     const auto processed = runBrightness(brightnessInputs, {"images", "applied_mask"});

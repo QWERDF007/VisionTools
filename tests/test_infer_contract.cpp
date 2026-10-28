@@ -29,8 +29,8 @@ void testYoloMissingInitParameters()
     YoloTool               tool(services);
 
     auto empty = tool.initialize({});
-    REQUIRE(empty.code == 1, "Missing init parameters must fail before any GPU work");
-    REQUIRE(empty.message.find("缺少参数") != std::string::npos, "Missing init error must be Chinese");
+    REQUIRE(empty.code == 1001, "Missing init parameters must fail before any GPU work");
+    REQUIRE(empty.message.find("输入缺失") != std::string::npos, "Missing init error must be Chinese");
     REQUIRE(empty.message.find("model_name") != std::string::npos, "Missing init error must name the port");
 
     visionrt::Values partial;
@@ -44,7 +44,8 @@ void testYoloMissingInitParameters()
     partial.emplace("input_height", std::int64_t(640));
     partial.emplace("num_classes", std::int64_t(80));
     auto missingLabels = tool.initialize(partial);
-    REQUIRE(missingLabels.code == 1, "Missing labels_path must fail before GPU work");
+    // labels_path is a required initialization parameter, so its absence is a missing input.
+    REQUIRE(missingLabels.code == 1001, "Missing labels_path must fail before GPU work");
     REQUIRE(missingLabels.message.find("labels_path") != std::string::npos,
             "Missing labels_path must be named");
     std::cout << "[PASS] testYoloMissingInitParameters passed." << std::endl;

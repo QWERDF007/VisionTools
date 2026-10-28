@@ -1,0 +1,9 @@
+"""Condition tool business codes (domain 402)."""
+
+from __future__ import annotations
+
+MODE_INVALID = 402001
+INITIALIZE_FAILED = 402002
+NOT_INITIALIZED = 402003
+CONDITION_NOT_BOOLEAN = 402004
+EVALUATION_FAILED = 402005

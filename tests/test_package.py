@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
-from package_support import PackageFixture, ROOT, package
+from package_support import PackageFixture, ROOT, package, package_profile
 
 
 class TestPackageTransaction(PackageFixture):
@@ -336,6 +336,38 @@ class TestTargetProtection(PackageFixture):
         self.assertTrue(other_targets.index_output.is_file())
 
 
+class TestProfileCollection(PackageFixture):
+    def test_cpu_profile_filters_the_runtime_copy_of_a_dropped_module(self):
+        # The module decision and the runtime-file decision are one decision: a module library that
+        # is also declared as a runtime file must not reappear after its module was dropped.
+        infer = self.build / "vst_infer.dll"
+        image = self.build / "vst_image.dll"
+        infer.parent.mkdir(parents=True, exist_ok=True)
+        infer.write_bytes(b"infer module")
+        image.write_bytes(b"image module")
+        cpu = package_profile.load_profiles(ROOT / "tools/package_profiles.json")["cpu"]
+        metadata = {
+            "__profile": cpu,
+            "modules": {"visiontools_infer": {"source": str(infer)},
+                        "visiontools_preprocess": {"source": str(image)}},
+            "runtime_files": [
+                {"source": str(infer), "destination": "bin/vst_infer.dll"},
+                {"source": str(image), "destination": "bin/vst_image.dll"},
+            ],
+        }
+        staging = self.project / "staging"
+        staging.mkdir()
+        final = package._collect_package(metadata, {"variant": "cpu-package", "tools": {}}, {}, staging,
+                                         self.build, "Release")
+
+        self.assertNotIn("visiontools_infer", [module["id"] for module in final["modules"]])
+        self.assertFalse((staging / "bin/vst_infer.dll").exists())
+        self.assertTrue((staging / "bin/vst_image.dll").is_file())
+        report = json.loads((staging / "dependencies.json").read_text(encoding="utf-8"))
+        excluded = {item["destination"]: item["reason"] for item in report["excluded"]}
+        self.assertIn("所属模块未随该 profile 安装", excluded["bin/vst_infer.dll"])
+
+
 class TestFailureRollback(PackageFixture):
     def setUp(self):
         super().setUp()
@@ -401,6 +433,10 @@ class TestFailureRollback(PackageFixture):
             with self.assertRaisesRegex(RuntimeError, "安装"):
                 self.publish()
         self.assert_previous_package_usable()
+        # The isolated install tree is created before the install runs, so a failing install must
+        # still remove it; otherwise every failed attempt leaves a full runtime copy behind.
+        self.assertEqual([], [path for path in self.output.parent.iterdir()
+                              if path.name.startswith(".runtime-")])
 
     def test_marker_is_not_created_for_a_failed_new_package(self):
         fresh = self.project / "dist/Fresh"

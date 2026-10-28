@@ -28,6 +28,9 @@ _SM_IN_NAME = re.compile(r"(?:^|[_.-])sm[_.-]?(\d{2,3})(?:[_.-]|$)", re.IGNORECA
 
 _TRT_CORE = ("nvinfer_", "nvinfer_plugin", "nvonnxparser", "nvinfer_lean", "nvinfer_dispatch")
 _CUDA_RUNTIME = ("cudart", "cublas", "cufft", "curand", "cudnn", "nvrtc")
+# The inference stack's own libraries: they are only reachable through the infer module, so a
+# profile without inference must not ship them either.
+_INFERENCE = ("inferrt_",)
 
 
 @dataclass(frozen=True)
@@ -157,6 +160,8 @@ def _component_of(name: str) -> str:
         return "tensorrt-builder-resource"
     if lowered.startswith(_TRT_CORE):
         return "tensorrt"
+    if lowered.startswith(_INFERENCE):
+        return "inference-runtime"
     if lowered.startswith(_CUDA_RUNTIME):
         return "cuda-runtime"
     if lowered.startswith("opencv"):
@@ -177,6 +182,8 @@ def _reason_for(component: str, profile: Profile, sm: int | None = None) -> str:
         return "TensorRT 运行时（PE 导入闭包）"
     if component == "cuda-runtime":
         return "CUDA 运行库（PE 导入闭包）"
+    if component == "inference-runtime":
+        return "推理运行时（infer 模块的导入闭包）"
     if component == "tools-module":
         return "工具模块入口"
     if component == "opencv":
@@ -242,7 +249,8 @@ def select_dependencies(entries: Iterable[dict], profile: Profile) -> Selection:
                     f"无法从文件名判断 TensorRT builder 资源的目标架构：{name}；未知布局拒绝打包")
                 continue
 
-        if not profile.infer_enabled and component in ("tensorrt", "cuda-runtime", "tensorrt-builder-resource"):
+        if not profile.infer_enabled and component in ("tensorrt", "cuda-runtime", "tensorrt-builder-resource",
+                                                       "inference-runtime"):
             selection.dropped.append({"source": source, "destination": entry["destination"],
                                       "component": component, "reason": "该 profile 不包含 GPU 推理"})
             continue
@@ -265,6 +273,17 @@ def select_dependencies(entries: Iterable[dict], profile: Profile) -> Selection:
         })
         selection.kept.append(kept)
 
+    # A build profile that promises on-site engine building must ship a builder resource for every
+    # architecture it targets: a package that cannot build the engine it advertises is incomplete,
+    # and until now an empty resource set passed the filter without a word.
+    if selection.profile.engine_build and selection.profile.infer_enabled:
+        shipped = {sm for item in selection.kept
+                   if item["component"] == "tensorrt-builder-resource" for sm in item["target_sm"]}
+        for architecture in selection.profile.gpu_architectures:
+            if architecture not in shipped:
+                selection.errors.append(
+                    f"profile {selection.profile.name} 缺少 {architecture} 的 TensorRT builder 资源；"
+                    "无法在现场构建引擎")
     return selection
 
 

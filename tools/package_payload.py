@@ -209,6 +209,14 @@ class ToolPayload:
             source, destination = self.python_package
             for path in _files(source, source, True):
                 plan.add(path, destination / path.relative_to(source))
+            # The author SDK has one source file in the repository; the packager is the only writer
+            # that puts it inside a tool package, so every shipped tool imports the same code and
+            # no example carries a hand-maintained copy.
+            sdk = self.project_root / "python/author_sdk/visiontools_sdk"
+            if not sdk.is_dir():
+                raise PackagingError(f"作者 SDK 缺失：{sdk}")
+            for path in _files(sdk, sdk, True):
+                plan.add(path, destination / "visiontools_sdk" / path.relative_to(sdk))
         resources = self.resources()
         for source, destination, boundary in resources:
             if source.is_dir():

@@ -2,7 +2,11 @@
 
 #include "InferProtocol.h"
 
+#include "common/InputValues.h"
 #include "common/UpstreamStatus.h"
+#include "common/errors/ToolError.h"
+
+#include "errors/YoloErrors.h"
 
 #include <inferrt/model/Buffers.hpp>
 #include <inferrt/model/ModelFactory.hpp>
@@ -17,6 +21,14 @@
 #include <stdexcept>
 
 namespace visionrt::infer {
+
+// This module keeps its historical visionrt::infer namespace; the shared tool error vocabulary
+// lives in visiontools, so the names it uses are bound once instead of at every call site.
+using visiontools::CommonToolError;
+using visiontools::ToolFailure;
+using visiontools::fail;
+using visiontools::status;
+
 namespace {
 namespace yolo_ports = ports::yolo;
 constexpr std::array                  strides{8, 16, 32};
@@ -27,17 +39,18 @@ T requiredParameter(const Values &values, const char *name)
 {
     const auto found = values.find(name);
     if (found == values.end() || isMissing(found->second))
-        throw ContractError(std::string("缺少参数：") + name);
+        fail(CommonToolError::InputMissing, std::string("初始化参数 ") + name);
     if (const auto *value = std::get_if<T>(&found->second))
         return *value;
-    throw ContractError(std::string("参数类型错误：") + name);
+    fail(CommonToolError::InputTypeMismatch, std::string("初始化参数 ") + name);
 }
 
 int integer(const Values &values, const char *name, int minimum)
 {
     const auto value = requiredParameter<std::int64_t>(values, name);
     if (value < minimum || value > std::numeric_limits<int>::max())
-        throw ContractError(std::string(name) + " 的值 " + std::to_string(value) + " 超出整数范围");
+        fail(CommonToolError::InputOutOfRange,
+             std::string(name) + " 的值 " + std::to_string(value) + " 超出整数范围");
     return static_cast<int>(value);
 }
 
@@ -68,20 +81,20 @@ irt::PreprocessSpec preprocessingSpec(int width, int height)
     return spec;
 }
 
-void cudaCheck(cudaError_t code, const char *operation)
+void cudaCheck(cudaError_t code, const char *operation, YoloError failure = YoloError::InferenceFailed)
 {
     if (code != cudaSuccess)
-        throw std::runtime_error(std::string("CUDA ") + operation + " 失败：" + cudaGetErrorString(code));
+        fail(failure, operation, cudaGetErrorString(code));
 }
 
 void verifyTensor(const irt::TensorInfo &tensor, const char *name, const irt::Shape &shape, irt::TensorIOMode mode)
 {
     if (tensor.name != name || tensor.mode != mode || tensor.desc.data_type != irt::TensorDataType::F32
         || tensor.desc.layout != irt::TensorLayout::Opaque || tensor.desc.shape != shape)
-        throw ContractError(std::string("InferRT 原生 yolov8n 张量不匹配：") + name
-                            + "；期望 float32/Opaque " + irt::model::dimsToString(shape) + "，实际 " + tensor.name
-                            + " " + irt::model::dataTypeToString(tensor.desc.data_type) + " "
-                            + irt::model::dimsToString(tensor.desc.shape));
+        fail(YoloError::TensorMismatch, name,
+             "期望 float32/Opaque " + irt::model::dimsToString(shape) + "，实际 " + tensor.name + " "
+                 + irt::model::dataTypeToString(tensor.desc.data_type) + " "
+                 + irt::model::dimsToString(tensor.desc.shape));
 }
 
 std::vector<std::string> labels(const Values &values, const PathResolver &paths, int count)
@@ -90,9 +103,12 @@ std::vector<std::string> labels(const Values &values, const PathResolver &paths,
     const auto               path = text(values, yolo_ports::init::LABELS_PATH);
     if (!path.empty())
     {
-        std::ifstream file(paths.resolve(path), std::ios::binary);
+        const auto resolution = paths.tryResolve(path);
+        if (!resolution)
+            fail(YoloError::LabelFileInvalid, path, resolution.issue().text);
+        std::ifstream file(resolution.value(), std::ios::binary);
         if (!file)
-            throw ContractError("无法打开 labels_path：" + path);
+            fail(YoloError::LabelFileInvalid, path, "无法打开文件");
         std::string line;
         while (std::getline(file, line))
         {
@@ -104,7 +120,7 @@ std::vector<std::string> labels(const Values &values, const PathResolver &paths,
             result.push_back(std::move(line));
         }
         if (file.bad() || result.size() != static_cast<std::size_t>(count))
-            throw ContractError("labels_path 必须包含 num_classes 行 UTF-8 文本");
+            fail(YoloError::LabelFileInvalid, path, "必须包含 num_classes 行 UTF-8 文本");
     }
     else
     {
@@ -161,11 +177,11 @@ struct YoloTool::State
         {
             try
             {
-                return {-4, "YOLO 释放失败", cudaGetErrorString(first)};
+                return status(YoloError::ReleaseFailed, {}, cudaGetErrorString(first));
             }
             catch (...)
             {
-                return {-4, "YOLO 释放失败：无法读取 CUDA 错误文本"};
+                return status(YoloError::ReleaseFailed, "无法读取 CUDA 错误文本");
             }
         }
         return {};
@@ -198,31 +214,31 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         const auto modelPath  = text(parameters, yolo_ports::init::MODEL_PATH);
         const auto outputPath = text(parameters, yolo_ports::init::ENGINE_OUTPUT_PATH);
         if (modelName != "yolov8n")
-            throw ContractError("仅支持原生 yolov8n，实际模型：" + modelName);
+            fail(YoloError::ModelUnsupported, "仅支持原生 yolov8n，实际模型：" + modelName);
         if (mode != "engine" && mode != "build_wts")
-            throw ContractError("load_mode 必须为 engine 或 build_wts，实际值：" + mode);
+            fail(CommonToolError::InputOutOfRange, std::string(yolo_ports::init::LOAD_MODE) + " 只接受 engine/build_wts，实际值：" + mode);
         if (precision != "fp32" && precision != "fp16")
-            throw ContractError("precision 必须为 fp32 或 fp16，实际值：" + precision);
+            fail(CommonToolError::InputOutOfRange, std::string(yolo_ports::init::PRECISION) + " 只接受 fp32/fp16，实际值：" + precision);
         if (modelPath.empty())
-            throw ContractError("model_path 为空");
+            fail(CommonToolError::InputMissing, yolo_ports::init::MODEL_PATH);
         state->device  = integer(parameters, yolo_ports::init::GPU_INDEX, 0);
         state->width   = integer(parameters, yolo_ports::init::INPUT_WIDTH, 32);
         state->height  = integer(parameters, yolo_ports::init::INPUT_HEIGHT, 32);
         state->classes = integer(parameters, yolo_ports::init::NUM_CLASSES, 1);
         if (state->width % 32 || state->height % 32 || state->classes > std::numeric_limits<int>::max() - 4)
-            throw ContractError("原生 yolov8n 输入尺寸必须为 32 的倍数；num_classes 必须满足 4+C 的整数范围");
+            fail(CommonToolError::InputOutOfRange, "原生 yolov8n 输入尺寸必须为 32 的倍数；num_classes 必须满足 4+C 的整数范围");
         state->names      = labels(parameters, paths_, state->classes);
         int  deviceCount  = 0;
         auto deviceStatus = cudaGetDeviceCount(&deviceCount);
         if (deviceStatus != cudaSuccess)
-            return {-3, "YOLO CUDA 不可用", cudaGetErrorString(deviceStatus)};
+            return status(YoloError::DeviceUnavailable, cudaGetErrorString(deviceStatus));
         if (deviceCount == 0 || state->device >= deviceCount)
-            return {-3, "YOLO CUDA 设备不可用：gpu_index=" + std::to_string(state->device)};
+            return status(YoloError::DeviceInvalid, "gpu_index=" + std::to_string(state->device));
         deviceStatus = cudaSetDevice(state->device);
         if (deviceStatus != cudaSuccess)
-            return {-3, "YOLO CUDA 设备不可用", cudaGetErrorString(deviceStatus)};
+            return status(YoloError::DeviceInvalid, cudaGetErrorString(deviceStatus));
         if (!irt::model::isSupportedModel(modelName))
-            return {-3, "InferRT 未注册 yolov8n"};
+            return status(YoloError::ModelUnsupported, "InferRT 未注册 yolov8n");
         auto config = std::make_unique<irt::model::IModelConfig>();
         config->setRuntime(irt::model::ModelRuntime(irt::model::ModelRuntime::Backend::TensorRT,
                                                     irt::model::ModelRuntime::Device::GPU, state->device));
@@ -234,20 +250,28 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         config->setPrecision(precision == "fp16" ? irt::model::ModelPrecision::FP16 : irt::model::ModelPrecision::FP32);
         state->model = irt::model::CreateModel(modelName, std::move(config));
         if (!state->model)
-            return {-3, "InferRT CreateModel(yolov8n) 返回空"};
-        const auto resolved = utf8Path(paths_.resolve(modelPath));
+            return status(YoloError::ModelLoadFailed, "InferRT CreateModel(yolov8n) 返回空");
+        const auto modelResolution = paths_.tryResolve(modelPath);
+        if (!modelResolution)
+            fail(YoloError::ModelLoadFailed, modelPath, modelResolution.issue().text);
+        const auto resolved = utf8Path(modelResolution.value());
         if (mode == "engine")
             state->model->load(resolved);
         else
         {
             state->model->build(resolved);
             if (!outputPath.empty())
-                state->model->save(utf8Path(paths_.resolve(outputPath)));
+            {
+                const auto outputResolution = paths_.tryResolve(outputPath);
+                if (!outputResolution)
+                    fail(YoloError::ModelLoadFailed, outputPath, outputResolution.issue().text);
+                state->model->save(utf8Path(outputResolution.value()));
+            }
         }
         auto inputs  = state->model->inputs();
         auto outputs = state->model->outputs();
         if (inputs.size() != 1 || outputs.size() != 3)
-            throw ContractError("原生 yolov8n 需要 1 个输入和 3 个 stride 输出");
+            fail(YoloError::TensorMismatch, "原生 yolov8n 需要 1 个输入和 3 个 stride 输出");
         verifyTensor(inputs[0], "input", {1, 3, state->height, state->width}, irt::TensorIOMode::Input);
         state->descriptors.push_back(inputs[0]);
         for (std::size_t branch = 0; branch < strides.size(); ++branch)
@@ -255,7 +279,7 @@ ToolStatus YoloTool::initialize(const Values &parameters)
             const auto found = std::find_if(outputs.begin(), outputs.end(),
                                             [branch](const auto &value) { return value.name == outputNames[branch]; });
             if (found == outputs.end())
-                throw ContractError(std::string("缺少原生输出：") + outputNames[branch]);
+                fail(YoloError::TensorMismatch, std::string("缺少原生输出：") + outputNames[branch]);
             const auto grid
                 = static_cast<std::int64_t>(state->width / strides[branch]) * (state->height / strides[branch]);
             verifyTensor(*found, outputNames[branch], {1, 4 + state->classes, grid}, irt::TensorIOMode::Output);
@@ -263,8 +287,9 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         }
         state->session = state->model->createSession();
         if (!state->session)
-            throw std::runtime_error("InferRT 返回空执行会话");
-        cudaCheck(cudaStreamCreateWithFlags(&state->stream, cudaStreamNonBlocking), "cudaStreamCreateWithFlags");
+            fail(YoloError::SessionFailed, "InferRT 返回空执行会话");
+        cudaCheck(cudaStreamCreateWithFlags(&state->stream, cudaStreamNonBlocking), "cudaStreamCreateWithFlags",
+                  YoloError::SessionFailed);
         const auto inputElements = inputs[0].desc.shape.elementCount();
         state->deviceInput.resize(inputElements);
         state->hostInput.resize(inputElements);
@@ -288,17 +313,17 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         state_               = std::move(state);
         return {};
     }
-    catch (const ContractError &error)
+    catch (const visiontools::ToolFailure &error)
     {
-        return {1, error.what()};
+        return visiontools::status(error);
     }
     catch (const std::exception &error)
     {
-        return {1, "YOLO 初始化失败", error.what()};
+        return visiontools::status(YoloError::ModelLoadFailed, {}, error.what());
     }
     catch (...)
     {
-        return {-1, "YOLO 初始化失败：未知异常"};
+        return visiontools::status(YoloError::ModelLoadFailed, "未知异常");
     }
 }
 
@@ -318,15 +343,17 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
     try
     {
         if (!state_)
-            return missingResult({-3, "YOLO 执行失败：模型未初始化"});
+            return missingResult(status(YoloError::ModelLoadFailed, "模型尚未初始化"));
         // A branch the condition tool did not select must not load a model or touch the device.
         if (const auto upstream = visiontools::upstreamStatus(inputs); upstream != 0)
             return missingResult({upstream, "上游未选中本分支，工具未执行"});
         const auto found = inputs.find(yolo_ports::in::IMAGES);
         if (found == inputs.end() || isMissing(found->second))
-            throw ContractError("输入端口 'images' 缺失");
-        validateValue({Type::Image}, found->second);
-        const auto               &images = std::get<DataRef<Image>>(found->second);
+            fail(CommonToolError::InputMissing, yolo_ports::in::IMAGES);
+        const auto *imagesPtr = std::get_if<DataRef<Image>>(&found->second);
+        if (!imagesPtr)
+            fail(CommonToolError::InputTypeMismatch, std::string(yolo_ports::in::IMAGES) + " 必须是图像");
+        const auto               &images = *imagesPtr;
         const DetectionParameters parameters{requiredParameter<double>(inputs, yolo_ports::in::CONF_THRESHOLD),
                                              requiredParameter<double>(inputs, yolo_ports::in::NMS_THRESHOLD),
                                              requiredParameter<std::int64_t>(inputs, yolo_ports::in::MAX_DETECTIONS)};
@@ -335,7 +362,7 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
         {
             if (image.empty() || image.depth() != CV_8U
                 || (image.channels() != 1 && image.channels() != 3 && image.channels() != 4))
-                throw ContractError("输入端口 'images' 必须包含非空 uint8 灰度/BGR/BGRA 图像");
+                fail(CommonToolError::UnsupportedImage, "images 必须包含非空 uint8 灰度/BGR/BGRA 图像");
         }
         auto &state = *state_;
         cudaCheck(cudaSetDevice(state.device), "cudaSetDevice");
@@ -362,7 +389,7 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             const auto preprocessed = irt::model::ImageNetUtil::preprocessWithGeometry(*bgr, state.preprocessing);
             if (preprocessed.image.type() != CV_32FC3 || preprocessed.image.cols != state.width
                 || preprocessed.image.rows != state.height)
-                throw ContractError("InferRT 预处理返回了不兼容的图像");
+                fail(YoloError::PreprocessFailed, "InferRT 返回了不兼容的图像");
             cv::split(preprocessed.image, state.planes.data());
             cudaCheck(cudaMemcpyAsync(state.deviceInput.data(), state.hostInput.data(), state.hostInput.sizeBytes(),
                                       cudaMemcpyHostToDevice, state.stream),
@@ -372,8 +399,8 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             for (std::size_t branch = 0; branch < strides.size(); ++branch)
                 cudaCheck(cudaMemcpyAsync(state.hostOutputs[branch].data(), state.deviceOutputs[branch].data(),
                                           state.hostOutputs[branch].sizeBytes(), cudaMemcpyDeviceToHost, state.stream),
-                          "YOLO D2H");
-            cudaCheck(cudaStreamSynchronize(state.stream), "YOLO stream completion");
+                          "D2H 拷贝");
+            cudaCheck(cudaStreamSynchronize(state.stream), "stream completion");
             const auto             &actual = preprocessed.geometry;
             const LetterboxGeometry geometry{actual.original_width, actual.original_height, state.width,
                                              state.height,          actual.resized_width,   actual.resized_height,
@@ -429,13 +456,13 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
                            {yolo_ports::out::CLASS_NAMES, Array(std::move(names))}},
                           executionSuccess());
     }
-    catch (const ContractError &error)
+    catch (const visiontools::ToolFailure &error)
     {
         if (state_ && state_->stream)
             cudaStreamSynchronize(state_->stream);
         if (traces)
             traces->clear();
-        return missingResult({1, error.what()});
+        return missingResult(visiontools::status(error));
     }
     catch (const std::exception &error)
     {
@@ -443,7 +470,7 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             cudaStreamSynchronize(state_->stream);
         if (traces)
             traces->clear();
-        return missingResult({1, "YOLO 执行失败", error.what()});
+        return missingResult(visiontools::status(YoloError::InferenceFailed, {}, error.what()));
     }
     catch (...)
     {
@@ -451,7 +478,7 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             cudaStreamSynchronize(state_->stream);
         if (traces)
             traces->clear();
-        return missingResult({-1, "YOLO 执行失败：未知异常"});
+        return missingResult(visiontools::status(YoloError::InferenceFailed, "未知异常"));
     }
 }
 

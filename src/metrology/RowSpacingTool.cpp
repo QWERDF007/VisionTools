@@ -1,5 +1,9 @@
 #include "RowSpacingTool.h"
 
+#include "common/InputValues.h"
+#include "errors/MetrologyErrors.h"
+#include "common/errors/ToolError.h"
+
 #include "EdgeProfile.h"
 #include "RowSpacingKernel.h"
 
@@ -32,7 +36,7 @@ visionrt::Values missingOutputs()
 visionrt::ToolStatus RowSpacingTool::initialize(const visionrt::Values &parameters)
 {
     if (!parameters.empty())
-        return {1, "行间距测量不接受初始化参数"};
+        return {visionrt::kContractViolationStatus, "行间距测量不接受初始化参数"};
     return {};
 }
 
@@ -41,29 +45,48 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
     // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
     if (const auto upstream = upstreamStatus(inputs); upstream != 0)
         return skippedByUpstream(upstream, missingOutputs());
+    Readings   readings(inputs);
+    const auto imagesRef = readings.image(p::in::IMAGES);
+    RowOptions options;
+    options.sigma        = readings.real(p::in::SIGMA);
+    options.minGradient  = readings.real(p::in::MIN_GRADIENT);
+    const auto polarity  = readings.text(p::in::OBJECT_POLARITY);
+    options.widthMin     = readings.real(p::in::WIDTH_MIN);
+    options.widthMax     = readings.real(p::in::WIDTH_MAX);
+    const auto unitsPerPixel = readings.real(p::in::UNITS_PER_PIXEL);
+    const auto unit          = readings.text(p::in::UNIT);
+    const auto alignmentValue = readings.find(p::in::ALIGNMENT);
+    const auto roiValue       = readings.find(p::in::ROIS);
+    if (readings.failed())
+        return visionrt::toolResult(missingOutputs(),
+                                    readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
+    const auto &images = imagesRef.get();
+    if (!std::isfinite(options.sigma) || options.sigma < 0.1 || options.sigma > 20.0)
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                       std::string(p::in::SIGMA) + " 必须在 [0.1, 20] 内，实际值：" + std::to_string(options.sigma));
+    if (!std::isfinite(options.minGradient) || options.minGradient < 0.0 || options.minGradient > 255.0)
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                       std::string(p::in::MIN_GRADIENT) + " 必须在 [0, 255] 内，实际值："
+                           + std::to_string(options.minGradient));
+    if (polarity != "bright" && polarity != "dark")
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange,
+                       std::string(p::in::OBJECT_POLARITY) + " 只接受 bright/dark，实际值：" + polarity);
+    if (!std::isfinite(options.widthMin) || options.widthMin < 0.0 || !std::isfinite(options.widthMax)
+        || options.widthMax < 0.0 || options.widthMax < options.widthMin)
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange, "width 范围不合法：需满足 0 ≤ width_min ≤ width_max");
+    if (!std::isfinite(unitsPerPixel) || unitsPerPixel < 1.0e-9 || unitsPerPixel > 1.0e9)
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange, std::string(p::in::UNITS_PER_PIXEL) + " 超出允许范围");
+    if (unit.empty())
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange, std::string(p::in::UNIT) + " 不能为空");
+    if (!alignmentValue || !roiValue)
+        return failure(missingOutputs(), CommonToolError::InputMissing, !alignmentValue ? p::in::ALIGNMENT : p::in::ROIS);
+    options.brightObject = polarity == "bright";
     try
     {
-        const auto &images = requireImages(inputs, p::in::IMAGES);
-        RowOptions options;
-        options.sigma          = requireFloatInRange(inputs, p::in::SIGMA, 0.1, 20.0);
-        options.minGradient    = requireFloatInRange(inputs, p::in::MIN_GRADIENT, 0.0, 255.0);
-        const auto polarity     = requireString(inputs, p::in::OBJECT_POLARITY);
-        if (polarity != "bright" && polarity != "dark")
-            throw visionrt::ContractError("输入端口 'object_polarity' 的取值无效：" + polarity + "（允许 bright/dark）");
-        options.brightObject = polarity == "bright";
-        options.widthMin     = requireFloatInRange(inputs, p::in::WIDTH_MIN, 0.0, 1.0e9);
-        options.widthMax     = requireFloatInRange(inputs, p::in::WIDTH_MAX, 0.0, 1.0e9);
-        if (options.widthMax < options.widthMin)
-            throw visionrt::ContractError("width_max 必须不小于 width_min");
-        const double unitsPerPixel = requireFloatInRange(inputs, p::in::UNITS_PER_PIXEL, 1.0e-9, 1.0e9);
-        const auto   unit          = requireString(inputs, p::in::UNIT);
-        if (unit.empty())
-            throw visionrt::ContractError("unit 不能为空");
-
-        const auto alignments = geometry::alignmentsFromValue(requireInput(inputs, p::in::ALIGNMENT), images.size());
-        const auto records    = roi::groups(requireInput(inputs, p::in::ROIS), images.size(), "rois");
+        const auto alignments = geometry::alignmentsFromValue(*alignmentValue, images.size());
+        const auto records    = roi::groups(*roiValue, images.size(), "rois");
         if (!roi::anyRecord(records))
-            throw visionrt::ContractError("行间距 ROI 未配置");
+            fail(MetrologyError::RoiNotConfigured);
 
         visionrt::NestedVector<bool, 2>        validRoi;
         visionrt::NestedVector<std::string, 2> reasons;
@@ -82,7 +105,7 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
             const auto &matrix   = alignments[image];
             const auto  inverse  = matrix.inverse();
             if (!inverse)
-                throw visionrt::ContractError("alignment 线性部分必须可逆");
+                fail(GeometryError::AlignmentInvalid, "线性部分不可逆");
             const auto scale = matrix.scale();
             validRoi.emplace_back();
             reasons.emplace_back();
@@ -103,11 +126,11 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
             {
                 const auto &record = records[image][index];
                 if (record.kind != visionrt::RoiKind::Rectangle || record.values.size() != 5)
-                    throw visionrt::ContractError("行间距测量要求每个 ROI 为 kind=2 的旋转矩形");
+                    fail(MetrologyError::RoiKindMismatch, "第 " + std::to_string(index + 1) + " 个 ROI 必须是 kind=2 的旋转矩形");
                 // Map the reference rectangle into current image coordinates; a
                 // similarity transform keeps the rectangle a rectangle.
                 if (!matrix.isSimilarity())
-                    throw visionrt::ContractError("行间距测量仅接受保向相似变换的 alignment");
+                    fail(MetrologyError::RoiKindMismatch, "alignment 必须是保向相似变换");
                 double centerX = 0, centerY = 0;
                 matrix.apply(record.values[0] + record.values[2] / 2.0, record.values[1] + record.values[3] / 2.0,
                              centerX, centerY);
@@ -167,9 +190,7 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
         visionrt::Values outputs;
         outputs.emplace(p::out::IMAGES,
                         visionrt::DataRef<visionrt::Image>(
-                            visionrt::Image(images), {std::get<visionrt::DataRef<visionrt::Image>>(
-                                                          requireInput(inputs, p::in::IMAGES))
-                                                          .owner()}));
+                            visionrt::Image(images), {imagesRef.owner()}));
         outputs.emplace(p::out::VALID_ROI,
                         visionrt::Array(visionrt::DataRef<visionrt::NestedVector<bool, 2>>(std::move(validRoi))));
         outputs.emplace(p::out::REASONS,
@@ -202,17 +223,17 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
         outputs.emplace(p::out::UNIT, unit);
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
-    catch (const visionrt::ContractError &error)
+    catch (const ToolFailure &error)
     {
-        return visionrt::toolResult(missingOutputs(), {1, error.what()});
+        return failureResult(missingOutputs(), error);
     }
     catch (const std::exception &error)
     {
-        return visionrt::toolResult(missingOutputs(), {1, "行间距测量失败", error.what()});
+        return failure(missingOutputs(), MetrologyError::MeasurementFailed, {}, error.what());
     }
     catch (...)
     {
-        return visionrt::toolResult(missingOutputs(), {-1, "行间距测量失败：未知异常"});
+        return failure(missingOutputs(), MetrologyError::MeasurementFailed, "未知异常");
     }
 }
 
