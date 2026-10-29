@@ -1,4 +1,5 @@
 #include <visionrt/contracts/Module.h>
+#include <visionrt/contracts/FunctionTool.h>
 #include "result_view.h"
 #include "TestRegistry.h"
 #include <visionrt/contracts/Tool.h>
@@ -49,6 +50,19 @@ inline std::size_t getProcessRSS()
     }                                                                                                           \
     while (0)
 
+namespace {
+struct ThrowingClassTool final : public visionrt::IToolInstance
+{
+    explicit ThrowingClassTool(const visionrt::ToolServices &)
+    {
+        throw std::runtime_error("故意构造抛错");
+    }
+    visionrt::ToolStatus initialize(const visionrt::Values &) override { return {}; }
+    visionrt::ToolResult execute(const visionrt::Values &) override { return {}; }
+    visionrt::ToolStatus release() override { return {}; }
+};
+} // namespace
+
 int main()
 {
     std::cout << "[TEST] Running test_module_contract..." << std::endl;
@@ -82,7 +96,7 @@ int main()
     const auto &factory = registry.factories.at("visiontools.preprocess.adaptive_binary");
     visionrt::ToolServices services;
     visionrt::ToolStatus status;
-    REQUIRE(factory.create(nullptr, &status) == nullptr && status.code == -3,
+    REQUIRE(factory.create(nullptr, &status) == nullptr && status.code == visionrt::kContractViolationStatus,
             "Missing services must be rejected without creating an instance");
     factory.destroy(nullptr);
     auto *uninitialized = factory.create(&services, nullptr);
@@ -90,6 +104,17 @@ int main()
     REQUIRE(uninitialized->release().code == 0, "An uninitialized instance must release safely");
     REQUIRE(uninitialized->release().code == 0, "Release must be idempotent");
     factory.destroy(uninitialized);
+
+    // T42-05: Constructor exception through public registerClass yields kContractViolationStatus
+    {
+        TestRegistry throwRegistry;
+        REQUIRE(visionrt::registerClass<ThrowingClassTool>(throwRegistry, "test.throwing").code == 0, "Registration must succeed");
+        const auto &throwFactory = throwRegistry.factories.at("test.throwing");
+        visionrt::ToolStatus throwStatus;
+        REQUIRE(throwFactory.create(&services, &throwStatus) == nullptr, "Throwing constructor must return nullptr");
+        REQUIRE(throwStatus.code == visionrt::kContractViolationStatus, "Constructor failure must yield kContractViolationStatus");
+        throwFactory.destroy(nullptr);
+    }
     // 5. Lifecycle and Snapshot persistence across execute/release/destroy (VS-05 / NS-05)
     cv::Mat snapshotImage;
     {

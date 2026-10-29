@@ -1,22 +1,21 @@
-#include "../ToolFactory.h"
 #include "AssistTools.h"
 #include "CircleTool.h"
 #include "RowSpacingTool.h"
 
+#include <visionrt/contracts/FunctionTool.h>
 #include <visionrt/contracts/Module.h>
 
 namespace visiontools::metrology { namespace {
 visionrt::ToolStatus VT_CALL registerTools(visionrt::IToolRegistry &registry) noexcept
 {
-    const visionrt::ToolFactoryDescriptor factories[]{
-        {   ports::measure_circle::TOOL_ID,       visiontools::createTool<CircleTool>, visiontools::destroyTool},
-        {ports::measure_row_spacing::TOOL_ID, visiontools::createTool<RowSpacingTool>, visiontools::destroyTool},
-        {              ports::assist::CIRCLE_ID, visiontools::createTool<AssistCircleTool>, visiontools::destroyTool},
-        {                  ports::assist::ROW_ID, visiontools::createTool<AssistRowSpacingTool>, visiontools::destroyTool},
-    };
-    for (const auto &factory : factories)
-        if (auto status = registry.add(factory); !status)
-            return status;
+    if (auto s = visionrt::registerClass<CircleTool>(registry, ports::measure_circle::TOOL_ID); !s)
+        return s;
+    if (auto s = visionrt::registerClass<RowSpacingTool>(registry, ports::measure_row_spacing::TOOL_ID); !s)
+        return s;
+    if (auto s = visionrt::registerClass<AssistCircleTool>(registry, ports::assist::CIRCLE_ID); !s)
+        return s;
+    if (auto s = visionrt::registerClass<AssistRowSpacingTool>(registry, ports::assist::ROW_ID); !s)
+        return s;
     return {};
 }
 }} // namespace visiontools::metrology

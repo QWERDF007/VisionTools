@@ -1,18 +1,12 @@
-#include "../ToolFactory.h"
 #include "YoloModel.h"
 
+#include <visionrt/contracts/FunctionTool.h>
 #include <visionrt/contracts/Module.h>
 
 namespace visionrt::infer { namespace {
 visionrt::ToolStatus VT_CALL registerTools(visionrt::IToolRegistry &registry) noexcept
 {
-    const visionrt::ToolFactoryDescriptor factories[]{
-        {ports::yolo::TOOL_ID, visiontools::createTool<YoloTool>, visiontools::destroyTool},
-    };
-    for (const auto &factory : factories)
-        if (auto status = registry.add(factory); !status)
-            return status;
-    return {};
+    return visionrt::registerClass<YoloTool>(registry, ports::yolo::TOOL_ID);
 }
 }}
 

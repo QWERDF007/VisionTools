@@ -29,7 +29,7 @@ from abc import ABC, abstractmethod
 
 UPSTREAM_STATUS_PORT = "upstream_status"
 
-# The two published status ports belong to the host; writing them from a tool is a contract error.
+# The two published status ports packed into outputs by result(); direct business mutation without result() is avoided.
 RESERVED_PORTS = ("__status_code", "__status_message")
 
 
