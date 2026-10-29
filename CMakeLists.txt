@@ -154,7 +154,12 @@ if(VISIONTOOLS_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-# 工具包构建元数据：时刻取自模块产物，配置时刻不能冒充构建时刻（Ticket VT-01）。
+# 工具包构建元数据：时刻取自发行模块产物，配置时刻不能冒充构建时刻（Ticket VT-01 / S45-03）。
+set(_vt_build_info_deps visiontools_metrology visiontools_preprocess)
+if(TARGET visiontools_infer)
+    list(APPEND _vt_build_info_deps visiontools_infer)
+endif()
+
 add_custom_target(visiontools_build_info ALL
     COMMAND ${CMAKE_COMMAND}
         -DCOMPONENT=VisionTools
@@ -162,11 +167,12 @@ add_custom_target(visiontools_build_info ALL
         -DCOMMIT=${VISIONTOOLS_COMMIT}
         -DBRANCH=${VISIONTOOLS_BRANCH}
         -DREPO_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-        -DSCAN_DIR=${CMAKE_CURRENT_BINARY_DIR}
+        -DSCAN_DIR=${CMAKE_CURRENT_BINARY_DIR}/src
         -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/build_info.json
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/WriteBuildInfo.cmake
     COMMENT "记录 VisionTools 构建完成时刻"
     VERBATIM)
+add_dependencies(visiontools_build_info ${_vt_build_info_deps})
 
 # 打印构建配置摘要
 visiontools_print_summary()

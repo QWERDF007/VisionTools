@@ -19,27 +19,61 @@ if(NOT DEFINED COMPONENT OR NOT DEFINED OUTPUT)
     message(FATAL_ERROR "WriteBuildInfo.cmake 需要 COMPONENT 与 OUTPUT")
 endif()
 
+set(IS_DIRTY FALSE)
 if(DEFINED REPO_DIR AND IS_DIRECTORY "${REPO_DIR}")
     execute_process(
         COMMAND git rev-parse HEAD
         WORKING_DIRECTORY "${REPO_DIR}"
         OUTPUT_VARIABLE _live_commit
         OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE _git_commit_res
         ERROR_QUIET
     )
-    if(_live_commit)
+    if(_git_commit_res EQUAL 0 AND _live_commit)
         set(COMMIT "${_live_commit}")
+    elseif(NOT COMMIT)
+        set(COMMIT "unknown")
     endif()
+
     execute_process(
         COMMAND git rev-parse --abbrev-ref HEAD
         WORKING_DIRECTORY "${REPO_DIR}"
         OUTPUT_VARIABLE _live_branch
         OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE _git_branch_res
         ERROR_QUIET
     )
-    if(_live_branch)
+    if(_git_branch_res EQUAL 0 AND _live_branch)
         set(BRANCH "${_live_branch}")
+    elseif(NOT BRANCH)
+        set(BRANCH "unknown")
     endif()
+
+    # 检查跟踪源文件是否存在未提交变更（排除本地维护的 WORKLOG.md 与未跟踪文档）
+    execute_process(
+        COMMAND git diff-index --name-only HEAD --
+        WORKING_DIRECTORY "${REPO_DIR}"
+        OUTPUT_VARIABLE _git_diff_files
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE _git_diff_res
+        ERROR_QUIET
+    )
+    if(_git_diff_res EQUAL 0 AND _git_diff_files)
+        string(REPLACE "\r\n" "\n" _git_diff_norm "${_git_diff_files}")
+        string(REPLACE "\n" ";" _diff_list "${_git_diff_norm}")
+        foreach(_f IN LISTS _diff_list)
+            if(NOT _f STREQUAL "" AND NOT _f STREQUAL "WORKLOG.md")
+                set(IS_DIRTY TRUE)
+                break()
+            endif()
+        endforeach()
+    endif()
+endif()
+
+if(IS_DIRTY)
+    set(IS_DIRTY_JSON "true")
+else()
+    set(IS_DIRTY_JSON "false")
 endif()
 
 set(BUILT_AT_EPOCH "")
@@ -71,6 +105,7 @@ file(WRITE "${OUTPUT}"
   \"version\": \"${VERSION}\",
   \"commit\": \"${COMMIT}\",
   \"branch\": \"${BRANCH}\",
+  \"dirty\": ${IS_DIRTY_JSON},
   \"built_at_epoch\": ${BUILT_AT_EPOCH}
 }
 ")
