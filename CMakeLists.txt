@@ -161,6 +161,7 @@ add_custom_target(visiontools_build_info ALL
         -DVERSION=${PROJECT_VERSION}
         -DCOMMIT=${VISIONTOOLS_COMMIT}
         -DBRANCH=${VISIONTOOLS_BRANCH}
+        -DREPO_DIR=${CMAKE_CURRENT_SOURCE_DIR}
         -DSCAN_DIR=${CMAKE_CURRENT_BINARY_DIR}
         -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/build_info.json
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/WriteBuildInfo.cmake

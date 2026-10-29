@@ -14,8 +14,32 @@
 #   OUTPUT       目标 build_info.json
 #   SOURCE_FILE  可选，单个构建产物
 #   SCAN_DIR     可选，产物所在目录
+#   REPO_DIR     可选，仓库目录；构建完成时实际查询当前 git commit 与 branch，防止配置期缓存滞后
 if(NOT DEFINED COMPONENT OR NOT DEFINED OUTPUT)
     message(FATAL_ERROR "WriteBuildInfo.cmake 需要 COMPONENT 与 OUTPUT")
+endif()
+
+if(DEFINED REPO_DIR AND IS_DIRECTORY "${REPO_DIR}")
+    execute_process(
+        COMMAND git rev-parse HEAD
+        WORKING_DIRECTORY "${REPO_DIR}"
+        OUTPUT_VARIABLE _live_commit
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(_live_commit)
+        set(COMMIT "${_live_commit}")
+    endif()
+    execute_process(
+        COMMAND git rev-parse --abbrev-ref HEAD
+        WORKING_DIRECTORY "${REPO_DIR}"
+        OUTPUT_VARIABLE _live_branch
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(_live_branch)
+        set(BRANCH "${_live_branch}")
+    endif()
 endif()
 
 set(BUILT_AT_EPOCH "")
