@@ -90,6 +90,12 @@ class DistributionContract(unittest.TestCase):
             package_tools.save_json(catalog, project / "tools/package_catalog.json")
             manifest = {"variant": "portable-release", "config": "Release", "modules": {}, "runtime_files": []}
             (build / "Release/resolved_dependencies.json").write_text(json.dumps(manifest), encoding="utf-8")
+            build_info = {
+                "schema_version": 1, "component": "VisionTools", "version": "0.1.0",
+                "commit": "testcommit0123456789abcdef0123456789abcdef",
+                "branch": "dev", "dirty": False, "built_at_epoch": 1793148779,
+            }
+            (build / "build_info.json").write_text(json.dumps(build_info), encoding="utf-8")
             output = project / "dist/tools"
             archive = package_tools.package_tools(build, output, project_root=project, validator=validator)
             external_index = archive.parent / f"{archive.stem}.module_index.json"

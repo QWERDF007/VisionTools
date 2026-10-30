@@ -24,6 +24,15 @@ import json
 import package_profile
 from package_payload import CopyPlan, PackagingError, ToolPayload, load_json, relative_path, resolve_inside, save_json
 
+_cmake_dir = Path(__file__).resolve().parent.parent / "cmake"
+if str(_cmake_dir) not in sys.path:
+    sys.path.insert(0, str(_cmake_dir))
+try:
+    from check_git_workspace import check_git_workspace, is_whitelisted
+except ImportError:
+    check_git_workspace = None
+    is_whitelisted = None
+
 
 MARKER_NAME = ".visiontools-package.json"
 MARKER_KIND = "visiontools-tools-package"
@@ -521,7 +530,10 @@ def package_tools(
         # 构建元数据只有一个来源：构建结束目标写出的 <build-dir>/build_info.json。多配置目录
         # （<build-dir>/<config>/）里的同名文件属于旧流程，会掩盖真实构建时刻，必须忽略。
         build_metadata_path = build_dir / "build_info.json"
-        if build_metadata_path.is_file():
+        if not build_metadata_path.is_file():
+            if not allow_dirty:
+                raise PackagingError(f"缺少必需的构建元数据 {build_metadata_path}，发布模式必须包含构建元数据")
+        else:
             try:
                 build_metadata = json.loads(build_metadata_path.read_text(encoding="utf-8"))
             except (OSError, ValueError) as error:

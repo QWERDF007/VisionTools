@@ -96,6 +96,31 @@ class TestPackageTransaction(PackageFixture):
             self.assertIn("build_info.json", bundle.namelist())
             self.assertEqual(json.loads(bundle.read("build_info.json")), build_info)
 
+    def test_missing_build_info_rejected_in_release(self):
+        self.publish()
+        previous = self.state()
+        (self.build / "build_info.json").unlink(missing_ok=True)
+
+        with self.assertRaisesRegex(package.PackagingError, r"缺少必需的构建元数据"):
+            package.package_tools(self.build, self.output, project_root=self.project,
+                                  validator=self.validator, allow_dirty=False)
+        self.assert_state(previous)
+
+        # S47-01: allow_dirty=True permits missing metadata in dev bypass
+        archive = package.package_tools(self.build, self.output, project_root=self.project,
+                                        validator=self.validator, allow_dirty=True)
+        self.assertTrue(archive.is_file())
+
+    def test_corrupt_build_info_rejected(self):
+        self.publish()
+        previous = self.state()
+        (self.build / "build_info.json").write_text("{corrupt json", encoding="utf-8")
+
+        with self.assertRaisesRegex(package.PackagingError, r"构建元数据不可读"):
+            package.package_tools(self.build, self.output, project_root=self.project,
+                                  validator=self.validator, allow_dirty=False)
+        self.assert_state(previous)
+
     def test_dirty_or_unknown_build_info_is_rejected_in_release(self):
         self.publish()
         cases = [

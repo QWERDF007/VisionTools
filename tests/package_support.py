@@ -61,12 +61,23 @@ class PackageFixture(unittest.TestCase):
     def targets(self):
         return package.resolve_targets(self.output, self.project)
 
-    def publish(self, install_dir=None, zip_output=None, profile=None):
+    def publish(self, install_dir=None, zip_output=None, profile=None, allow_dirty=False):
         package.save_json(self.document, self.declaration)
         package.save_json(self.index, self.project / "tools/package_catalog.json")
         package.save_json(self.manifest, self.build / "Release/resolved_dependencies.json")
+        if not (self.build / "build_info.json").is_file():
+            package.save_json({
+                "schema_version": 1,
+                "component": "VisionTools",
+                "version": "0.1.0",
+                "commit": "testcommit0123456789abcdef0123456789abcdef",
+                "branch": "dev",
+                "dirty": False,
+                "built_at_epoch": 1793148779,
+            }, self.build / "build_info.json")
         return package.package_tools(self.build, install_dir or self.output, project_root=self.project,
-                                     validator=self.validator, zip_output=zip_output, profile=profile)
+                                     validator=self.validator, zip_output=zip_output, profile=profile,
+                                     allow_dirty=allow_dirty)
 
     def state(self):
         targets = self.targets

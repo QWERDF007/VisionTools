@@ -32,96 +32,63 @@ if(NOT GIT_EXECUTABLE)
     set(GIT_EXECUTABLE git)
 endif()
 
+if(NOT PYTHON_EXECUTABLE)
+    find_program(PYTHON_EXECUTABLE NAMES python3 python py
+        PATHS
+            "D:/Software/anaconda3"
+            "C:/Program Files/Python312"
+            "C:/Program Files/Python311"
+            "C:/Program Files/Python310"
+            "C:/Program Files/Python39"
+    )
+endif()
+if(NOT PYTHON_EXECUTABLE)
+    set(PYTHON_EXECUTABLE python)
+endif()
+
 set(GIT_QUERY_OK FALSE)
 set(IS_DIRTY_VALUE "false")
 
 if(DEFINED REPO_DIR AND IS_DIRECTORY "${REPO_DIR}")
-    # 1. 查询当前 HEAD commit
     execute_process(
-        COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD
-        WORKING_DIRECTORY "${REPO_DIR}"
-        OUTPUT_VARIABLE _live_commit
+        COMMAND "${PYTHON_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/check_git_workspace.py" "${REPO_DIR}" "${GIT_EXECUTABLE}"
+        OUTPUT_VARIABLE _git_out
+        RESULT_VARIABLE _git_res
         OUTPUT_STRIP_TRAILING_WHITESPACE
-        RESULT_VARIABLE _git_commit_res
         ERROR_QUIET
     )
 
-    # 2. 查询当前 HEAD branch
-    execute_process(
-        COMMAND "${GIT_EXECUTABLE}" rev-parse --abbrev-ref HEAD
-        WORKING_DIRECTORY "${REPO_DIR}"
-        OUTPUT_VARIABLE _live_branch
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        RESULT_VARIABLE _git_branch_res
-        ERROR_QUIET
-    )
+    if(_git_res EQUAL 0 AND _git_out)
+        string(REGEX MATCH "COMMIT=([^\r\n]*)" _match_c "${_git_out}")
+        set(COMMIT "${CMAKE_MATCH_1}")
+        string(REGEX MATCH "BRANCH=([^\r\n]*)" _match_b "${_git_out}")
+        set(BRANCH "${CMAKE_MATCH_1}")
+        string(REGEX MATCH "DIRTY=([^\r\n]*)" _match_d "${_git_out}")
+        set(_dirty_state "${CMAKE_MATCH_1}")
 
-    if(_git_commit_res EQUAL 0 AND _live_commit AND _git_branch_res EQUAL 0 AND _live_branch)
-        set(GIT_QUERY_OK TRUE)
-        set(COMMIT "${_live_commit}")
-        set(BRANCH "${_live_branch}")
-
-        # 3. 检查工作区状态（跟踪变更、未跟踪生产文件、子模块）：git status --porcelain -uall
-        execute_process(
-            COMMAND "${GIT_EXECUTABLE}" status --porcelain -uall
-            WORKING_DIRECTORY "${REPO_DIR}"
-            OUTPUT_VARIABLE _git_status_out
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            RESULT_VARIABLE _git_status_res
-            ERROR_QUIET
-        )
-
-        set(IS_DIRTY FALSE)
-        if(_git_status_res EQUAL 0)
-            if(_git_status_out)
-                string(REPLACE "\r\n" "\n" _status_norm "${_git_status_out}")
-                string(REPLACE "\n" ";" _status_lines "${_status_norm}")
-                foreach(_line IN LISTS _status_lines)
-                    if(_line STREQUAL "")
-                        continue()
-                    endif()
-                    string(SUBSTRING "${_line}" 3 -1 _raw_path)
-                    string(STRIP "${_raw_path}" _raw_path)
-                    if(_raw_path MATCHES ".* -> (.*)")
-                        set(_raw_path "${CMAKE_MATCH_1}")
-                    endif()
-                    string(REPLACE "\\" "/" _norm_path "${_raw_path}")
-
-                    # 仅显式排除本地维护的 WORKLOG.md 与约定的本地审查报告/资料（如 docs/R*.md, docs/VisionRT_*.zip）
-                    # 其余所有修改或未跟踪生产文件均记为 dirty
-                    if(_norm_path STREQUAL "WORKLOG.md" OR _norm_path MATCHES ".*/WORKLOG\\.md$")
-                        continue()
-                    elseif(_norm_path MATCHES "^docs/R[0-9].*\\.md$")
-                        continue()
-                    elseif(_norm_path MATCHES "^docs/VisionRT_.*\\.zip$")
-                        continue()
-                    else()
-                        set(IS_DIRTY TRUE)
-                        break()
-                    endif()
-                endforeach()
-            endif()
-        else()
-            set(IS_DIRTY TRUE)
-        endif()
-
-        if(IS_DIRTY)
+        if(_dirty_state STREQUAL "false")
+            set(IS_DIRTY_VALUE "false")
+            set(GIT_QUERY_OK TRUE)
+        elseif(_dirty_state STREQUAL "true")
             set(IS_DIRTY_VALUE "true")
+            set(GIT_QUERY_OK TRUE)
             if(RELEASE_BUILD)
                 message(FATAL_ERROR "WriteBuildInfo: 发布模式禁止脏工作区候选（${REPO_DIR} 存在未提交变更或未跟踪生产输入）")
             endif()
         else()
-            set(IS_DIRTY_VALUE "false")
+            set(COMMIT "unknown")
+            set(BRANCH "unknown")
+            set(IS_DIRTY_VALUE "\"unknown\"")
+            if(RELEASE_BUILD)
+                message(FATAL_ERROR "WriteBuildInfo: 发布模式禁止未知候选。无法在 ${REPO_DIR} 查询 Git 提交或状态")
+            endif()
         endif()
     else()
-        # Git 查询失败（非 Git 仓库、Git 不存在或查询失败）：
-        # 禁止回退到旧配置期 COMMIT 并声称 dirty=false
         set(COMMIT "unknown")
         set(BRANCH "unknown")
         set(IS_DIRTY_VALUE "\"unknown\"")
-
         if(RELEASE_BUILD)
-            message(FATAL_ERROR "WriteBuildInfo: 发布模式禁止未知候选。无法在 ${REPO_DIR} 查询 Git 提交信息（退出码：${_git_commit_res}）")
+            message(FATAL_ERROR "WriteBuildInfo: 发布模式禁止未知候选。check_git_workspace 查询失败（退出码：${_git_res}）")
         endif()
     endif()
 else()

@@ -17,6 +17,7 @@ include(PrintConfig)
 option(VISIONTOOLS_BUILD_TESTS "Build contract and unit tests" ON)
 option(VISIONTOOLS_BUILD_INFER "Build InferRT GPU tools module" ON)
 option(VISIONTOOLS_BUILD_PYTHON "Enable Python tool and packaging tests" ON)
+option(VISIONTOOLS_RELEASE_BUILD "Enforce release gating checks (rejects dirty/unknown build metadata)" OFF)
 set(VISIONTOOLS_VALIDATOR "$ENV{VISIONTOOLS_VALIDATOR}" CACHE FILEPATH "Host tool declaration validator")
 
 if(VISIONTOOLS_BUILD_INFER)
@@ -169,6 +170,7 @@ add_custom_target(visiontools_build_info ALL
         -DREPO_DIR=${CMAKE_CURRENT_SOURCE_DIR}
         -DSCAN_DIR=${CMAKE_CURRENT_BINARY_DIR}/src
         -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/build_info.json
+        -DRELEASE_BUILD=${VISIONTOOLS_RELEASE_BUILD}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/WriteBuildInfo.cmake
     COMMENT "记录 VisionTools 构建完成时刻"
     VERBATIM)
