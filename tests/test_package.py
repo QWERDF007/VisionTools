@@ -78,6 +78,7 @@ class TestPackageTransaction(PackageFixture):
             "version": "0.1.0",
             "commit": "testcommit0123456789abcdef0123456789abcdef",
             "branch": "dev",
+            "dirty": False,
             "built_at_epoch": 1793148779,
         }
         self.build.mkdir(parents=True, exist_ok=True)
@@ -86,7 +87,7 @@ class TestPackageTransaction(PackageFixture):
         (self.build / "Release").mkdir(parents=True, exist_ok=True)
         (self.build / "Release" / "build_info.json").write_text(
             json.dumps({"schema_version": 1, "component": "VisionTools", "version": "0.0.0",
-                        "commit": "stale", "build_time_utc": "2026-10-27 12:00:00 UTC"}),
+                        "commit": "stale", "dirty": False, "build_time_utc": "2026-10-27 12:00:00 UTC"}),
             encoding="utf-8",
         )
         archive = self.publish()
@@ -94,6 +95,28 @@ class TestPackageTransaction(PackageFixture):
         with zipfile.ZipFile(archive) as bundle:
             self.assertIn("build_info.json", bundle.namelist())
             self.assertEqual(json.loads(bundle.read("build_info.json")), build_info)
+
+    def test_dirty_or_unknown_build_info_is_rejected_in_release(self):
+        self.publish()
+        cases = [
+            {"commit": "unknown", "dirty": False},
+            {"commit": "abc", "dirty": True},
+            {"commit": "abc", "dirty": "unknown"},
+        ]
+        for bad_meta in cases:
+            with self.subTest(bad=bad_meta):
+                meta = {
+                    "schema_version": 1, "component": "VisionTools", "version": "0.1.0",
+                    "branch": "dev", "built_at_epoch": 1793148779, **bad_meta
+                }
+                (self.build / "build_info.json").write_text(json.dumps(meta), encoding="utf-8")
+                with self.assertRaises(package.PackagingError):
+                    package.package_tools(self.build, self.output, project_root=self.project,
+                                          validator=self.validator, allow_dirty=False)
+                # S46-01: allow_dirty=True permits it
+                archive = package.package_tools(self.build, self.output, project_root=self.project,
+                                                validator=self.validator, allow_dirty=True)
+                self.assertTrue(archive.is_file())
 
     def test_old_build_info_format_is_rejected(self):
         self.publish()

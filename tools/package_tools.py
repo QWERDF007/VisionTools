@@ -498,6 +498,7 @@ def package_tools(
     validator: Path | None = None,
     zip_output: Path | None = None,
     profile: package_profile.Profile | None = None,
+    allow_dirty: bool = False,
 ) -> Path:
     build_dir = Path(build_dir).resolve()
     project_root = Path(project_root or Path(__file__).resolve().parents[1]).resolve()
@@ -525,11 +526,20 @@ def package_tools(
                 build_metadata = json.loads(build_metadata_path.read_text(encoding="utf-8"))
             except (OSError, ValueError) as error:
                 raise PackagingError(f"构建元数据不可读：{error}") from error
-            epoch = build_metadata.get("built_at_epoch") if isinstance(build_metadata, dict) else None
+            if not isinstance(build_metadata, dict):
+                raise PackagingError(f"{build_metadata_path} 根结构必须为 JSON 对象")
+            epoch = build_metadata.get("built_at_epoch")
             if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch <= 0:
                 raise PackagingError(
                     f"{build_metadata_path} 缺少有效的 built_at_epoch，旧格式不得冒充构建时间"
                 )
+            commit = build_metadata.get("commit")
+            dirty = build_metadata.get("dirty")
+            if not allow_dirty:
+                if not commit or commit == "unknown":
+                    raise PackagingError(f"{build_metadata_path} 的 commit 处于未知状态（{commit}），发布模式拒绝该候选")
+                if dirty is not False:
+                    raise PackagingError(f"{build_metadata_path} 的 dirty 处于非干净状态（{dirty}），发布模式拒绝脏工作区或未知候选")
             shutil.copy2(build_metadata_path, staging_dir / "build_info.json")
 
         _write_marker(staging_dir, targets.group)
@@ -591,6 +601,7 @@ def main() -> int:
     parser.add_argument("--profiles", type=Path, default=Path(__file__).with_name("package_profiles.json"))
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--verify-runtime", action="store_true")
+    parser.add_argument("--allow-dirty", action="store_true", help="允许 dirty 或未知的构建元数据")
     parser.add_argument("--consumer", type=Path,
                         default=Path("build/tests/test_installation_consumer.exe") if os.name == "nt"
                         else Path("build/tests/test_installation_consumer"))
@@ -609,7 +620,8 @@ def main() -> int:
                 return 1
         else:
             package_tools(arguments.build_dir, arguments.install_dir, arguments.config,
-                          validator=arguments.validator, zip_output=arguments.zip_output, profile=profile)
+                          validator=arguments.validator, zip_output=arguments.zip_output, profile=profile,
+                          allow_dirty=arguments.allow_dirty)
         if arguments.verify_runtime and not verify_runtime(arguments.install_dir, arguments.consumer):
             return 1
         return 0
