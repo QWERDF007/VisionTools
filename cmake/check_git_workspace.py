@@ -23,6 +23,8 @@ def is_whitelisted(path_str: str) -> bool:
         return True
     if norm == "WORKLOG.md" or norm.endswith("/WORKLOG.md"):
         return True
+    if norm == "docs/README.md" or norm.endswith("/docs/README.md"):
+        return True
     if re.match(r"^docs/R[0-9].*\.md$", norm):
         return True
     if re.match(r"^docs/VisionRT_.*\.zip$", norm):

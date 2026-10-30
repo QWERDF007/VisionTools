@@ -20,6 +20,18 @@ if(NOT DEFINED COMPONENT OR NOT DEFINED OUTPUT)
     message(FATAL_ERROR "WriteBuildInfo.cmake 需要 COMPONENT 与 OUTPUT")
 endif()
 
+# Strip any accidental surrounding quotes from paths (VERBATIM escaping)
+string(REGEX REPLACE "^\"|\"$" "" OUTPUT "${OUTPUT}")
+if(DEFINED REPO_DIR)
+    string(REGEX REPLACE "^\"|\"$" "" REPO_DIR "${REPO_DIR}")
+endif()
+if(DEFINED SOURCE_FILE)
+    string(REGEX REPLACE "^\"|\"$" "" SOURCE_FILE "${SOURCE_FILE}")
+endif()
+if(DEFINED SCAN_DIR)
+    string(REGEX REPLACE "^\"|\"$" "" SCAN_DIR "${SCAN_DIR}")
+endif()
+
 if(NOT GIT_EXECUTABLE)
     find_program(GIT_EXECUTABLE NAMES git git.exe
         PATHS
