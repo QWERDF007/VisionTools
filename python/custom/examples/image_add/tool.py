@@ -31,9 +31,9 @@ class ImageAddOutputs(OutputParametersBase):
         self.images = None
 
     def write_fields(self, writer):
-        if self.images is None:
-            writer.missing("images")
-        else:
+        # An unproduced image is simply not written; the host materialises the declared default and
+        # the status code above says why nothing was produced.
+        if self.images is not None:
             writer.array("images", self.images)
 
 def _validate_batch(images):

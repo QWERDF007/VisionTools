@@ -1,16 +1,17 @@
 {
-  "schema_version": 4,
-  "category": "流程控制",
-  "subcategory": "分支",
-  "tool_id": "visionrt.control.select",
-  "display_name": "分支合流",
+  "schema_version": 5,
+  "name_en": "visionrt.control.select",
+  "name_zh": "分支合流",
   "version": "1.0.0",
-  "kind": "host",
-  "node_model": "select",
-  "entry": {
+  "implementation": {
+    "kind": "host",
     "binding": "visionrt.select"
   },
-  "init_params": [],
-  "inputs": [],
-  "outputs": []
+  "ui": {
+    "category": [
+      "流程控制",
+      "分支"
+    ]
+  },
+  "node_model": "select"
 }

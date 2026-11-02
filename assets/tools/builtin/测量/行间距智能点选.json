@@ -1,115 +1,122 @@
 {
-  "schema_version": 4,
-  "category": "测量",
-  "subcategory": "辅助",
-  "tool_id": "visiontools.assist.row_spacing",
-  "display_name": "行间距智能点选",
+  "schema_version": 5,
+  "name_en": "visiontools.assist.row_spacing",
+  "name_zh": "行间距智能点选",
   "version": "1.0.0",
-  "kind": "cpp",
-  "visibility": "assist",
-  "init_params": [],
-  "inputs": [
-    {
-      "id": "images",
-      "name": "当前图像",
-      "type": "Image",
-      "required": true
-    },
-    {
-      "id": "cursor",
-      "name": "光标像素坐标",
-      "type": "Array",
-      "dtype": "float64",
-      "rank": 1,
-      "editor": "array",
-      "required": true
-    },
-    {
-      "id": "phase",
-      "name": "辅助阶段",
-      "type": "String",
-      "default": "hover",
-      "editor": "text",
-      "options": [
-        "hover",
-        "learn"
-      ],
-      "required": true
-    },
-    {
-      "id": "seed_rois",
-      "name": "候选种子",
-      "type": "ROI",
-      "default": [],
-      "editor": "array",
-      "image_input": "images",
-      "alignment_input": "alignment",
-      "required": true
-    },
-    {
-      "id": "alignment",
-      "name": "参考到当前变换",
-      "type": "Array",
-      "dtype": "float64",
-      "rank": 3,
-      "default": [],
-      "editor": "array",
-      "required": true
-    },
-    {
-      "id": "search_extent",
-      "name": "最大搜索半径",
-      "type": "Int",
-      "default": 256,
-      "editor": "number",
-      "min": 16,
-      "max": 2048,
-      "required": true
-    }
-  ],
-  "outputs": [
-    {
-      "id": "preview_rois",
-      "name": "候选轮廓",
-      "type": "ROI",
-      "image_port": "images",
-      "required": true
-    },
-    {
-      "id": "proposal_rois",
-      "name": "拟提交ROI",
-      "type": "ROI",
-      "required": true
-    },
-    {
-      "id": "candidate_valid",
-      "name": "候选有效",
-      "type": "Bool",
-      "required": true
-    },
-    {
-      "id": "quality",
-      "name": "候选质量说明",
-      "type": "String",
-      "required": true
-    },
-    {
-      "id": "suggested_polarity",
-      "name": "建议极性",
-      "type": "String",
-      "required": true
-    },
-    {
-      "id": "suggested_width_min",
-      "name": "建议宽度下限",
-      "type": "Float",
-      "required": true
-    },
-    {
-      "id": "suggested_width_max",
-      "name": "建议宽度上限",
-      "type": "Float",
-      "required": true
-    }
-  ]
+  "implementation": {
+    "kind": "cpp"
+  },
+  "ui": {
+    "category": [
+      "测量",
+      "辅助"
+    ],
+    "visibility": "assist"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "name_en": "images",
+        "name_zh": "当前图像",
+        "type": "image"
+      },
+      {
+        "name_en": "cursor",
+        "name_zh": "光标像素坐标",
+        "type": "vec_float",
+        "ui": {
+          "editor": "array"
+        }
+      },
+      {
+        "name_en": "phase",
+        "name_zh": "辅助阶段",
+        "type": "string",
+        "default": "hover",
+        "constraints": {
+          "options": [
+            "hover",
+            "learn"
+          ]
+        },
+        "ui": {
+          "editor": "text"
+        }
+      },
+      {
+        "name_en": "seed_rois",
+        "name_zh": "候选种子",
+        "type": "roi",
+        "default": [],
+        "ui": {
+          "editor": "array"
+        },
+        "relations": {
+          "image": "inputs.images",
+          "alignment": "inputs.alignment"
+        }
+      },
+      {
+        "name_en": "alignment",
+        "name_zh": "参考到当前变换",
+        "type": "vec_vec_vec_float",
+        "ui": {
+          "editor": "array"
+        }
+      },
+      {
+        "name_en": "search_extent",
+        "name_zh": "最大搜索半径",
+        "type": "int",
+        "default": 256,
+        "constraints": {
+          "min": 16,
+          "max": 2048
+        },
+        "ui": {
+          "editor": "number"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "name_en": "preview_rois",
+        "name_zh": "候选轮廓",
+        "type": "roi",
+        "relations": {
+          "image": "inputs.images"
+        }
+      },
+      {
+        "name_en": "proposal_rois",
+        "name_zh": "拟提交ROI",
+        "type": "roi"
+      },
+      {
+        "name_en": "candidate_valid",
+        "name_zh": "候选有效",
+        "type": "bool"
+      },
+      {
+        "name_en": "quality",
+        "name_zh": "候选质量说明",
+        "type": "string"
+      },
+      {
+        "name_en": "suggested_polarity",
+        "name_zh": "建议极性",
+        "type": "string"
+      },
+      {
+        "name_en": "suggested_width_min",
+        "name_zh": "建议宽度下限",
+        "type": "float"
+      },
+      {
+        "name_en": "suggested_width_max",
+        "name_zh": "建议宽度上限",
+        "type": "float"
+      }
+    ]
+  }
 }

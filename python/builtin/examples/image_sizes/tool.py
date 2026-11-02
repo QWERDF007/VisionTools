@@ -10,7 +10,6 @@ def execute(inputs):
     if not isinstance(images, list):
         return {
             "outputs": {
-                "sizes": None,
                 "__status_code": 1002,
                 "__status_message": "输入端口 'images' 需要图像 list",
             },

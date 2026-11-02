@@ -9,9 +9,9 @@ from package_support import PackageFixture, package
 
 class TestPackagePayload(PackageFixture):
     def test_package_can_select_the_origin_root(self):
-        self.document["entry"]["package"] = "."
-        self.document["entry"]["file"] = "examples/math/tool.py"
-        self.document["resources"] = ["examples/math/bias.dat"]
+        self.document["implementation"]["package"] = "."
+        self.document["implementation"]["file"] = "examples/math/tool.py"
+        self.document["implementation"]["resources"] = ["examples/math/bias.dat"]
         archive = self.publish()
         with zipfile.ZipFile(archive) as bundle:
             self.assertIn("python/custom/examples/math/tool.py", bundle.namelist())
@@ -19,7 +19,8 @@ class TestPackagePayload(PackageFixture):
 
     def test_same_package_name_is_scoped_to_its_origin(self):
         declaration = self.project / "assets/tools/builtin/math/tool.json"
-        document = dict(self.document, tool_id="builtin.math", resources=[])
+        document = dict(self.document, name_en="builtin.math")
+        document["implementation"] = dict(self.document["implementation"], resources=[])
         package.save_json(document, declaration)
         self.index["tools"].append({"definition": declaration.relative_to(self.project).as_posix()})
         code = self.project / "python/builtin/examples/math/tool.py"
@@ -31,7 +32,7 @@ class TestPackagePayload(PackageFixture):
             self.assertIn(b'calculate()', bundle.read("python/custom/examples/math/tool.py"))
             document = json.loads(bundle.read("tools/builtin/math/tool.json"))
             self.assertNotIn("origin", document)
-            self.assertEqual(document["entry"]["package"], "examples/math")
+            self.assertEqual(document["implementation"]["package"], "examples/math")
 
     def test_missing_custom_script_never_falls_back_to_builtin(self):
         code = self.project / "python/builtin/examples/math/tool.py"
@@ -46,7 +47,7 @@ class TestPackagePayload(PackageFixture):
         outside = self.project / "python/custom/other"
         self.link_directory(outside, self.code / "entry")
         (outside / "tool.py").write_text("raise RuntimeError('not imported')", encoding="utf-8")
-        self.document["entry"]["file"] = "entry/tool.py"
+        self.document["implementation"]["file"] = "entry/tool.py"
         with self.assertRaisesRegex(package.PackagingError, "逃逸"):
             self.publish()
 
@@ -61,7 +62,7 @@ class TestPackagePayload(PackageFixture):
         outside = self.project / "python/custom/other"
         self.link_directory(outside, self.code / "data")
         (outside / "bias.dat").write_text("99", encoding="utf-8")
-        self.document["resources"] = ["data/bias.dat"]
+        self.document["implementation"]["resources"] = ["data/bias.dat"]
         with self.assertRaisesRegex(package.PackagingError, "包根目录"):
             self.publish()
 

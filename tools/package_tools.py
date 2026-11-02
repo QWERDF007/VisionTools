@@ -187,12 +187,12 @@ def _load_build(build_dir: Path, config: str, project_root: Path, validator: Pat
             raise PackagingError("发行目录表工具条目只允许 definition 与 module")
         payload = ToolPayload.read(project_root, entry["definition"])
         source, declaration = payload.source, payload.document
-        tool_id = declaration.get("tool_id")
+        tool_id = declaration.get("name_en")
         if not isinstance(tool_id, str) or not tool_id or tool_id in identities:
-            raise PackagingError(f"工具声明 tool_id 为空或重复：{source}")
+            raise PackagingError(f"工具声明 name_en 为空或重复：{source}")
         identities.add(tool_id)
         module = entry.get("module")
-        kind = declaration.get("kind")
+        kind = declaration.get("implementation", {}).get("kind")
         if kind == "cpp":
             if module not in known_modules:
                 raise PackagingError(f"C++ 工具缺少有效模块归属：{tool_id}")

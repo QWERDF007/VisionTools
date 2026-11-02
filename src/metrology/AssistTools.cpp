@@ -84,26 +84,6 @@ visionrt::Values baseOutputs(const AssistResult &result)
     return outputs;
 }
 
-visionrt::Values missingCircleOutputs()
-{
-    return {{p::out::PREVIEW_ROIS, visionrt::Missing{}},
-            {p::out::PROPOSAL_ROIS, visionrt::Missing{}},
-            {p::out::CANDIDATE_VALID, visionrt::Missing{}},
-            {p::out::QUALITY, visionrt::Missing{}},
-            {p::out::SUGGESTED_POLARITY, visionrt::Missing{}},
-            {p::out::SUGGESTED_SEARCH, visionrt::Missing{}}};
-}
-
-visionrt::Values missingRowOutputs()
-{
-    return {{p::out::PREVIEW_ROIS, visionrt::Missing{}},
-            {p::out::PROPOSAL_ROIS, visionrt::Missing{}},
-            {p::out::CANDIDATE_VALID, visionrt::Missing{}},
-            {p::out::QUALITY, visionrt::Missing{}},
-            {p::out::SUGGESTED_POLARITY, visionrt::Missing{}},
-            {p::out::SUGGESTED_WIDTH_MIN, visionrt::Missing{}},
-            {p::out::SUGGESTED_WIDTH_MAX, visionrt::Missing{}}};
-}
 } // namespace
 
 visionrt::ToolStatus AssistCircleTool::initialize(const visionrt::Values &parameters)
@@ -125,15 +105,15 @@ visionrt::ToolResult AssistCircleTool::execute(const visionrt::Values &inputs)
     }
     catch (const ToolFailure &error)
     {
-        return failureResult(missingCircleOutputs(), error);
+        return failureResult(visionrt::Values{}, error);
     }
     catch (const std::exception &error)
     {
-        return failure(missingCircleOutputs(), MetrologyError::MeasurementFailed, "圆智能点选失败", error.what());
+        return failure(visionrt::Values{}, MetrologyError::MeasurementFailed, "圆智能点选失败", error.what());
     }
     catch (...)
     {
-        return failure(missingCircleOutputs(), MetrologyError::MeasurementFailed, "圆智能点选失败：未知异常");
+        return failure(visionrt::Values{}, MetrologyError::MeasurementFailed, "圆智能点选失败：未知异常");
     }
 }
 
@@ -162,15 +142,15 @@ visionrt::ToolResult AssistRowSpacingTool::execute(const visionrt::Values &input
     }
     catch (const ToolFailure &error)
     {
-        return failureResult(missingRowOutputs(), error);
+        return failureResult(visionrt::Values{}, error);
     }
     catch (const std::exception &error)
     {
-        return failure(missingRowOutputs(), MetrologyError::MeasurementFailed, "行间距智能点选失败", error.what());
+        return failure(visionrt::Values{}, MetrologyError::MeasurementFailed, "行间距智能点选失败", error.what());
     }
     catch (...)
     {
-        return failure(missingRowOutputs(), MetrologyError::MeasurementFailed, "行间距智能点选失败：未知异常");
+        return failure(visionrt::Values{}, MetrologyError::MeasurementFailed, "行间距智能点选失败：未知异常");
     }
 }
 

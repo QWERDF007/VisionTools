@@ -1,131 +1,123 @@
 {
-  "schema_version": 4,
-  "category": "处理",
-  "subcategory": "检测",
-  "tool_id": "visionrt.detection.filter",
-  "display_name": "缺陷过滤",
+  "schema_version": 5,
+  "name_en": "visionrt.detection.filter",
+  "name_zh": "缺陷过滤",
   "version": "1.0.0",
-  "kind": "cpp",
-  "init_params": [],
-  "inputs": [
-    {
-      "id": "images",
-      "name": "图像",
-      "type": "Image",
-      "required": false
-    },
-    {
-      "id": "rois",
-      "name": "候选ROI",
-      "type": "ROI",
-      "image_input": "images",
-      "required": false
-    },
-    {
-      "id": "scores",
-      "name": "置信度得分",
-      "type": "Array",
-      "dtype": "float32",
-      "rank": 2,
-      "required": false
-    },
-    {
-      "id": "classes",
-      "name": "类别ID",
-      "type": "Array",
-      "dtype": "int64",
-      "rank": 2,
-      "required": false
-    },
-    {
-      "id": "class_names",
-      "name": "类别名称",
-      "type": "Array",
-      "rank": 2,
-      "required": false,
-      "dtype": "string"
-    },
-    {
-      "id": "min_score",
-      "name": "最低置信度",
-      "type": "Float",
-      "default": 0.5,
-      "min": 0,
-      "max": 1,
-      "step": 0.05,
-      "tab": "检测",
-      "required": true
-    },
-    {
-      "id": "min_area",
-      "name": "最小面积",
-      "type": "Float",
-      "default": 1,
-      "min": 0,
-      "step": 1,
-      "tab": "检测",
-      "required": true
-    },
-    {
-      "id": "allowed_classes",
-      "name": "保留类别",
-      "type": "Array",
-      "dtype": "int64",
-      "rank": 1,
-      "default": [],
-      "tab": "检测",
-      "required": true
-    }
-  ],
-  "outputs": [
-    {
-      "id": "images",
-      "name": "输出图像",
-      "type": "Image",
-      "display": {
-        "same_geometry_as_input": "images",
-        "color_order": "BGR"
+  "implementation": {
+    "kind": "cpp"
+  },
+  "ui": {
+    "category": [
+      "处理",
+      "检测"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "name_en": "images",
+        "name_zh": "图像",
+        "type": "image"
       },
-      "required": true
-    },
-    {
-      "id": "rois",
-      "name": "过滤后ROI",
-      "type": "ROI",
-      "image_port": "images",
-      "required": true
-    },
-    {
-      "id": "scores",
-      "name": "过滤后得分",
-      "type": "Array",
-      "dtype": "float32",
-      "rank": 2,
-      "required": true
-    },
-    {
-      "id": "classes",
-      "name": "过滤后类别",
-      "type": "Array",
-      "dtype": "int64",
-      "rank": 2,
-      "required": true
-    },
-    {
-      "id": "class_names",
-      "name": "过滤后类别名",
-      "type": "Array",
-      "rank": 2,
-      "required": true,
-      "dtype": "string"
-    },
-    {
-      "id": "counts",
-      "name": "目标数量",
-      "type": "Array",
-      "dtype": "int64",
-      "rank": 1,
-      "required": true
-    }
-  ]
+      {
+        "name_en": "rois",
+        "name_zh": "候选ROI",
+        "type": "roi",
+        "relations": {
+          "image": "inputs.images"
+        }
+      },
+      {
+        "name_en": "scores",
+        "name_zh": "置信度得分",
+        "type": "vec_vec_float32"
+      },
+      {
+        "name_en": "classes",
+        "name_zh": "类别ID",
+        "type": "vec_vec_int"
+      },
+      {
+        "name_en": "class_names",
+        "name_zh": "类别名称",
+        "type": "vec_vec_string"
+      },
+      {
+        "name_en": "min_score",
+        "name_zh": "最低置信度",
+        "type": "float",
+        "default": 0.5,
+        "constraints": {
+          "min": 0,
+          "max": 1
+        },
+        "ui": {
+          "tab": "检测",
+          "step": 0.05
+        }
+      },
+      {
+        "name_en": "min_area",
+        "name_zh": "最小面积",
+        "type": "float",
+        "default": 1,
+        "constraints": {
+          "min": 0
+        },
+        "ui": {
+          "tab": "检测",
+          "step": 1
+        }
+      },
+      {
+        "name_en": "allowed_classes",
+        "name_zh": "保留类别",
+        "type": "vec_int",
+        "ui": {
+          "tab": "检测"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "name_en": "images",
+        "name_zh": "输出图像",
+        "type": "image",
+        "relations": {
+          "same_geometry_as": "inputs.images"
+        },
+        "display": {
+          "color_order": "BGR"
+        }
+      },
+      {
+        "name_en": "rois",
+        "name_zh": "过滤后ROI",
+        "type": "roi",
+        "relations": {
+          "image": "outputs.images"
+        }
+      },
+      {
+        "name_en": "scores",
+        "name_zh": "过滤后得分",
+        "type": "vec_vec_float32"
+      },
+      {
+        "name_en": "classes",
+        "name_zh": "过滤后类别",
+        "type": "vec_vec_int"
+      },
+      {
+        "name_en": "class_names",
+        "name_zh": "过滤后类别名",
+        "type": "vec_vec_string"
+      },
+      {
+        "name_en": "counts",
+        "name_zh": "目标数量",
+        "type": "vec_int"
+      }
+    ]
+  }
 }

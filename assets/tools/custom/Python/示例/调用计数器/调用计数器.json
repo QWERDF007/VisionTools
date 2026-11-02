@@ -1,24 +1,27 @@
 {
-  "schema_version": 4,
-  "category": "Python",
-  "subcategory": "示例",
-  "tool_id": "custom.call.counter",
-  "display_name": "调用计数器",
+  "schema_version": 5,
+  "name_en": "custom.call.counter",
+  "name_zh": "调用计数器",
   "version": "1.0.0",
-  "kind": "python_class",
-  "entry": {
+  "implementation": {
+    "kind": "python_class",
     "package": "examples/call_counter",
     "file": "counter.py",
     "symbol": "CounterTool"
   },
-  "init_params": [],
-  "inputs": [],
-  "outputs": [
-    {
-      "id": "count",
-      "name": "累计调用次数",
-      "type": "Int",
-      "required": true
-    }
-  ]
+  "ui": {
+    "category": [
+      "Python",
+      "示例"
+    ]
+  },
+  "ports": {
+    "outputs": [
+      {
+        "name_en": "count",
+        "name_zh": "累计调用次数",
+        "type": "int"
+      }
+    ]
+  }
 }

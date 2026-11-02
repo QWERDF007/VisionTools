@@ -18,10 +18,10 @@ class TestPackageTransaction(PackageFixture):
         previous = self.state()
         source = self.declaration.read_text(encoding="utf-8")
         invalid = (
-            source.replace('"tool_id": "custom.math"', '"tool_id": "ignored", "tool_id": "custom.math"'),
-            source.replace('"type": "Int"', '"type": "Float", "type": "Int"'),
-            source.replace('"type": "Int"', '"type": "Float", "t\\u0079pe": "Int"'),
-            source.replace('"schema_version": 4', '"schema_version": NaN'),
+            source.replace('"name_en": "custom.math"', '"name_en": "ignored", "name_en": "custom.math"'),
+            source.replace('"type": "int"', '"type": "float", "type": "int"'),
+            source.replace('"type": "int"', '"type": "float", "t\\u0079pe": "int"'),
+            source.replace('"schema_version": 5', '"schema_version": NaN'),
         )
         for document in invalid:
             with self.subTest(document=document):
@@ -40,7 +40,7 @@ class TestPackageTransaction(PackageFixture):
         command = [sys.executable, str(ROOT / "tools/package_tools.py"), "--verify-only",
                    "--build-dir", str(self.build), "--install-dir", str(self.output),
                    "--validator", str(self.validator)]
-        for path, member in ((declaration, "kind"), (index, "variant")):
+        for path, member in ((declaration, "name_en"), (index, "variant")):
             original = path.read_text(encoding="utf-8")
             path.write_text('{"' + member + '": "ignored", ' + original[1:], encoding="utf-8")
             with self.subTest(path=path):
@@ -163,7 +163,7 @@ class TestPackageTransaction(PackageFixture):
     def test_python_code_package_root_and_declared_data_are_collected(self):
         (self.code / "entry").mkdir()
         (self.code / "tool.py").rename(self.code / "entry/tool.py")
-        self.document["entry"]["file"] = "entry/tool.py"
+        self.document["implementation"]["file"] = "entry/tool.py"
         archive = self.publish()
         with zipfile.ZipFile(archive) as bundle:
             prefix = "python/custom/examples/math"
@@ -173,12 +173,11 @@ class TestPackageTransaction(PackageFixture):
             self.assertFalse(any(name.startswith("assets/") for name in bundle.namelist()))
 
     def test_native_tool_can_ship_declared_data_without_python(self):
-        self.document["kind"] = "cpp"
-        self.document.pop("entry")
+        self.document["implementation"] = {"kind": "cpp"}
         resource = self.declaration.parent / "resources/native/bias.dat"
         resource.parent.mkdir(parents=True)
         resource.write_text("42", encoding="utf-8")
-        self.document["resources"] = ["resources/native/bias.dat"]
+        self.document["implementation"]["resources"] = ["resources/native/bias.dat"]
         self.index["modules"] = ["visiontools_preprocess"]
         self.index["tools"][0]["module"] = "visiontools_preprocess"
         module = self.build / "src/preprocess/vst_image.dll"
@@ -188,13 +187,11 @@ class TestPackageTransaction(PackageFixture):
         self.publish()
         self.assertEqual((self.output / "tools/custom/Math/Arithmetic/resources/native/bias.dat").read_text(), "42")
         installed = self.output / self.declaration.relative_to(self.project / "assets")
-        resource_path = package.load_json(installed)["resources"][0]
+        resource_path = package.load_json(installed)["implementation"]["resources"][0]
         self.assertEqual((installed.parent / resource_path).resolve(), self.output / "tools/custom/Math/Arithmetic/resources/native/bias.dat")
 
     def test_platform_only_package_has_no_fake_module(self):
-        self.document["kind"] = "host"
-        self.document["entry"] = {"binding": "visionrt.receiver"}
-        self.document["resources"] = []
+        self.document["implementation"] = {"kind": "host", "binding": "visionrt.receiver"}
         archive = self.publish()
         with zipfile.ZipFile(archive) as bundle:
             self.assertFalse(any(name.startswith("bin/") for name in bundle.namelist()))
@@ -254,11 +251,11 @@ class TestPackageTransaction(PackageFixture):
         second = self.declaration.parent / "second.json"
         package.save_json(self.document, second)
         self.index["tools"].append({"definition": second.relative_to(self.project).as_posix()})
-        with self.assertRaisesRegex(RuntimeError, "tool_id"):
+        with self.assertRaisesRegex(RuntimeError, "name_en"):
             self.publish()
 
     def test_missing_script_is_rejected(self):
-        self.document["entry"]["file"] = "missing.py"
+        self.document["implementation"]["file"] = "missing.py"
         with self.assertRaisesRegex(RuntimeError, "入口脚本"):
             self.publish()
 
@@ -268,12 +265,12 @@ class TestPackageTransaction(PackageFixture):
             self.publish()
 
     def test_missing_resource_is_rejected(self):
-        self.document["resources"] = ["missing.bin"]
+        self.document["implementation"]["resources"] = ["missing.bin"]
         with self.assertRaisesRegex(RuntimeError, "资源不存在"):
             self.publish()
 
     def test_resource_cannot_escape_the_project(self):
-        self.document["resources"] = [os.path.relpath(self.project.parent / "outside.dat", self.code)]
+        self.document["implementation"]["resources"] = [os.path.relpath(self.project.parent / "outside.dat", self.code)]
         with self.assertRaisesRegex(RuntimeError, "根目录内"):
             self.publish()
 
@@ -281,7 +278,7 @@ class TestPackageTransaction(PackageFixture):
         resource = self.code / "shared.dat"
         resource.write_text("shared", encoding="utf-8")
         (self.code / "data").mkdir()
-        self.document["resources"] = ["data/../shared.dat"]
+        self.document["implementation"]["resources"] = ["data/../shared.dat"]
         self.publish()
         self.assertEqual((self.output / resource.relative_to(self.project)).read_text(), "shared")
 
@@ -520,7 +517,7 @@ class TestPythonPackageBoundary(PackageFixture):
         (data / "nested/value.txt").write_text("value", encoding="utf-8")
         (data / "__pycache__").mkdir()
         (data / "__pycache__/value.pyc").write_bytes(b"cache")
-        self.document["resources"] = ["bias.dat", "data"]
+        self.document["implementation"]["resources"] = ["bias.dat", "data"]
         archive = self.publish()
         with zipfile.ZipFile(archive) as bundle:
             prefix = self.code.relative_to(self.project).as_posix()
@@ -530,9 +527,9 @@ class TestPythonPackageBoundary(PackageFixture):
     def test_shared_package_root_is_deduplicated(self):
         second = self.declaration.parent / "second.json"
         second_document = dict(self.document)
-        second_document["tool_id"] = "custom.math.second"
-        second_document["display_name"] = "Math Second"
-        second_document["entry"] = dict(self.document["entry"])
+        second_document["name_en"] = "custom.math.second"
+        second_document["name_zh"] = "Math Second"
+        second_document["implementation"] = dict(self.document["implementation"])
         package.save_json(second_document, second)
         self.index["tools"].append({"definition": second.relative_to(self.project).as_posix()})
         archive = self.publish()

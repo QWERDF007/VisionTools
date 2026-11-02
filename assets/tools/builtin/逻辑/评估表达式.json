@@ -1,37 +1,33 @@
 {
-  "schema_version": 4,
-  "category": "逻辑",
-  "subcategory": "表达式",
-  "tool_id": "visiontools.logic.expression",
-  "display_name": "评估表达式",
+  "schema_version": 5,
+  "name_en": "visiontools.logic.expression",
+  "name_zh": "评估表达式",
   "version": "1.0.0",
-  "kind": "python_class",
-  "node_model": "expression",
-  "entry": {
+  "implementation": {
+    "kind": "python_class",
     "package": "logic",
     "file": "expression/tool.py",
     "symbol": "ExpressionTool"
   },
-  "init_params": [
-    {
-      "id": "variables",
-      "name": "派生变量表",
-      "type": "Array",
-      "dtype": "string",
-      "rank": 2,
-      "default": [],
-      "required": true
-    },
-    {
-      "id": "program",
-      "name": "派生表达式表",
-      "type": "Array",
-      "dtype": "string",
-      "rank": 2,
-      "default": [],
-      "required": true
-    }
-  ],
-  "inputs": [],
-  "outputs": []
+  "ui": {
+    "category": [
+      "逻辑",
+      "表达式"
+    ]
+  },
+  "ports": {
+    "init": [
+      {
+        "name_en": "variables",
+        "name_zh": "派生变量表",
+        "type": "vec_vec_string"
+      },
+      {
+        "name_en": "program",
+        "name_zh": "派生表达式表",
+        "type": "vec_vec_string"
+      }
+    ]
+  },
+  "node_model": "expression"
 }

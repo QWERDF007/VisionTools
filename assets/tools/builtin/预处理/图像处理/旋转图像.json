@@ -1,107 +1,103 @@
 {
-  "schema_version": 4,
-  "category": "预处理",
-  "subcategory": "图像处理",
-  "tool_id": "visiontools.image.rotate",
-  "display_name": "旋转图像",
+  "schema_version": 5,
+  "name_en": "visiontools.image.rotate",
+  "name_zh": "旋转图像",
   "version": "1.0.0",
-  "kind": "cpp",
-  "init_params": [],
-  "inputs": [
-    {
-      "id": "images",
-      "name": "输入图像",
-      "type": "Image",
-      "tab": "基本输入",
-      "required": false
-    },
-    {
-      "id": "angle_deg",
-      "name": "顺时针角度",
-      "type": "Float",
-      "default": 0.0,
-      "editor": "number",
-      "tab": "基本输入",
-      "decimals": 3,
-      "required": true
-    },
-    {
-      "id": "center",
-      "name": "旋转中心",
-      "type": "Array",
-      "dtype": "float64",
-      "rank": 1,
-      "default": [],
-      "editor": "array",
-      "tab": "基本输入",
-      "required": true
-    },
-    {
-      "id": "canvas",
-      "name": "画布模式",
-      "type": "String",
-      "default": "keep",
-      "editor": "text",
-      "tab": "基本输入",
-      "options": [
-        "keep",
-        "expand"
-      ],
-      "required": true
-    },
-    {
-      "id": "interpolation",
-      "name": "插值方式",
-      "type": "String",
-      "default": "linear",
-      "editor": "text",
-      "tab": "基本输入",
-      "options": [
-        "nearest",
-        "linear",
-        "cubic"
-      ],
-      "required": true
-    },
-    {
-      "id": "border_value",
-      "name": "边界填充值",
-      "type": "Array",
-      "dtype": "float64",
-      "rank": 1,
-      "default": [
-        0.0
-      ],
-      "editor": "array",
-      "tab": "基本输入",
-      "required": true
-    },
-    {
-      "id": "alignment",
-      "name": "参考到当前变换",
-      "type": "Array",
-      "dtype": "float64",
-      "rank": 3,
-      "default": [],
-      "editor": "array",
-      "tab": "基本输入",
-      "required": true
-    }
-  ],
-  "outputs": [
-    {
-      "id": "images",
-      "name": "旋转图像",
-      "type": "Image",
-      "required": true
-    },
-    {
-      "id": "alignment",
-      "name": "参考到输出变换",
-      "type": "Array",
-      "dtype": "float64",
-      "rank": 3,
-      "required": true
-    }
-  ]
+  "implementation": {
+    "kind": "cpp"
+  },
+  "ui": {
+    "category": [
+      "预处理",
+      "图像处理"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "name_en": "images",
+        "name_zh": "输入图像",
+        "type": "image"
+      },
+      {
+        "name_en": "angle_deg",
+        "name_zh": "顺时针角度",
+        "type": "float",
+        "ui": {
+          "editor": "number",
+          "decimals": 3
+        }
+      },
+      {
+        "name_en": "center",
+        "name_zh": "旋转中心",
+        "type": "vec_float",
+        "ui": {
+          "editor": "array"
+        }
+      },
+      {
+        "name_en": "canvas",
+        "name_zh": "画布模式",
+        "type": "string",
+        "default": "keep",
+        "constraints": {
+          "options": [
+            "keep",
+            "expand"
+          ]
+        },
+        "ui": {
+          "editor": "text"
+        }
+      },
+      {
+        "name_en": "interpolation",
+        "name_zh": "插值方式",
+        "type": "string",
+        "default": "linear",
+        "constraints": {
+          "options": [
+            "nearest",
+            "linear",
+            "cubic"
+          ]
+        },
+        "ui": {
+          "editor": "text"
+        }
+      },
+      {
+        "name_en": "border_value",
+        "name_zh": "边界填充值",
+        "type": "vec_float",
+        "default": [
+          0.0
+        ],
+        "ui": {
+          "editor": "array"
+        }
+      },
+      {
+        "name_en": "alignment",
+        "name_zh": "参考到当前变换",
+        "type": "vec_vec_vec_float",
+        "ui": {
+          "editor": "array"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "name_en": "images",
+        "name_zh": "旋转图像",
+        "type": "image"
+      },
+      {
+        "name_en": "alignment",
+        "name_zh": "参考到输出变换",
+        "type": "vec_vec_vec_float"
+      }
+    ]
+  }
 }

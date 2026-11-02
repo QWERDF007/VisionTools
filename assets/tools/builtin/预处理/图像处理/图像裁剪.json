@@ -1,42 +1,47 @@
 {
-  "schema_version": 4,
-  "category": "预处理",
-  "subcategory": "图像处理",
-  "tool_id": "visionrt.image.crop",
-  "display_name": "图像裁剪",
+  "schema_version": 5,
+  "name_en": "visionrt.image.crop",
+  "name_zh": "图像裁剪",
   "version": "2.0.0",
-  "kind": "cpp",
-  "init_params": [],
-  "inputs": [
-    {
-      "id": "images",
-      "name": "图像",
-      "type": "Image",
-      "required": false
-    },
-    {
-      "id": "rect",
-      "name": "矩形区域",
-      "type": "ROI",
-      "image_input": "images",
-      "required": false,
-      "editor": "rect"
-    }
-  ],
-  "outputs": [
-    {
-      "id": "images",
-      "name": "裁剪图像",
-      "type": "Image",
-      "required": true
-    },
-    {
-      "id": "origins",
-      "name": "原点坐标",
-      "type": "Array",
-      "dtype": "float64",
-      "rank": 2,
-      "required": true
-    }
-  ]
+  "implementation": {
+    "kind": "cpp"
+  },
+  "ui": {
+    "category": [
+      "预处理",
+      "图像处理"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "name_en": "images",
+        "name_zh": "图像",
+        "type": "image"
+      },
+      {
+        "name_en": "rect",
+        "name_zh": "矩形区域",
+        "type": "roi",
+        "ui": {
+          "editor": "rect"
+        },
+        "relations": {
+          "image": "inputs.images"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "name_en": "images",
+        "name_zh": "裁剪图像",
+        "type": "image"
+      },
+      {
+        "name_en": "origins",
+        "name_zh": "原点坐标",
+        "type": "vec_vec_float"
+      }
+    ]
+  }
 }

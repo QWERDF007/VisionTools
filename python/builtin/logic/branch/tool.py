@@ -73,9 +73,9 @@ class BranchTool:
         return status.executed(status.success(), outputs)
 
     def _failure(self, failure: dict):
+        # An unproduced branch is omitted; the host materialises the declared default and the
+        # per-branch status codes below still say which side ran.
         outputs = {
-            "on_true": None,
-            "on_false": None,
             "on_true_status": 1,
             "on_false_status": 1,
         }

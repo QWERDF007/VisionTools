@@ -154,14 +154,19 @@ class ToolPayload:
         return Path(*self.definition.parts[1:])
 
     @property
+    def implementation(self) -> dict:
+        value = self.document.get("implementation")
+        if not isinstance(value, dict):
+            raise PackagingError(f"工具缺少 implementation 块：{self.source}")
+        return value
+
+    @property
     def is_python(self) -> bool:
-        return self.document.get("kind") in ("python_function", "python_class")
+        return self.implementation.get("kind") in ("python_function", "python_class")
 
     @property
     def python_package(self) -> tuple[Path, Path]:
-        entry = self.document.get("entry")
-        if not isinstance(entry, dict):
-            raise PackagingError(f"工具缺少 Python entry：{self.source}")
+        entry = self.implementation
         code_root = resolve_inside(self.project_root, Path("python") / self.origin, "Python 代码根")
         package = relative_path(entry.get("package"), "Python 代码包", allow_root=True)
         source = resolve_inside(code_root, package, "Python 代码包", allow_root=True)
@@ -170,7 +175,7 @@ class ToolPayload:
     def validate(self) -> None:
         if self.is_python:
             package_root, _ = self.python_package
-            file = relative_path(self.document["entry"].get("file"), "Python 入口脚本")
+            file = relative_path(self.implementation.get("file"), "Python 入口脚本")
             if file.suffix != ".py" or any(not part.isidentifier() for part in file.with_suffix("").parts):
                 raise PackagingError(f"Python 入口脚本的模块路径必须是标识符：{file}")
             script = resolve_inside(package_root, file, "Python 入口脚本")
@@ -179,7 +184,7 @@ class ToolPayload:
         self.resources()
 
     def resources(self) -> list[tuple[Path, Path, Path]]:
-        resources = self.document.get("resources", [])
+        resources = self.implementation.get("resources", [])
         if not isinstance(resources, list):
             raise PackagingError(f"工具的 resources 必须是列表：{self.source}")
         if self.is_python:
@@ -226,6 +231,7 @@ class ToolPayload:
                 plan.add(source, destination)
         document = dict(self.document)
         if resources and not self.is_python:
-            document["resources"] = [Path(os.path.relpath(target, self.destination.parent)).as_posix()
-                                     for _, target, _ in resources]
+            document["implementation"] = dict(self.implementation)
+            document["implementation"]["resources"] = [
+                Path(os.path.relpath(target, self.destination.parent)).as_posix() for _, target, _ in resources]
         plan.add(json_bytes(document), self.destination)

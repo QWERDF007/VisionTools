@@ -183,8 +183,9 @@ class ToolContracts(unittest.TestCase):
         self.assertEqual(status["code"], 0)
         result = tool.execute({"p1": 1})
         self.assertNotEqual(result["outputs"]["__status_code"], 0)
-        self.assertIsNone(result["outputs"]["on_true"])
-        self.assertIsNone(result["outputs"]["on_false"])
+        # An unproduced branch is omitted by the tool; the host supplies the declared default.
+        self.assertNotIn("on_true", result["outputs"])
+        self.assertNotIn("on_false", result["outputs"])
 
     def test_branch_requires_single_hidden_result(self):
         tool = BranchTool()

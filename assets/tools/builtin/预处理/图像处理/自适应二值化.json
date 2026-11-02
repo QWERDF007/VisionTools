@@ -1,50 +1,61 @@
 {
-  "schema_version": 4,
-  "category": "预处理",
-  "subcategory": "图像处理",
-  "tool_id": "visiontools.preprocess.adaptive_binary",
-  "display_name": "自适应二值化",
+  "schema_version": 5,
+  "name_en": "visiontools.preprocess.adaptive_binary",
+  "name_zh": "自适应二值化",
   "version": "1.0.0",
-  "kind": "cpp",
-  "init_params": [],
-  "inputs": [
-    {
-      "id": "images",
-      "name": "输入图像",
-      "type": "Image",
-      "required": false
-    },
-    {
-      "id": "block_size",
-      "name": "邻域大小",
-      "type": "Int",
-      "editor": "number",
-      "default": 3,
-      "min": 3,
-      "max": 999,
-      "step": 2,
-      "required": true
-    },
-    {
-      "id": "constant_offset",
-      "name": "偏移常量",
-      "type": "Float",
-      "editor": "number",
-      "default": 5,
-      "decimals": 3,
-      "required": true
-    }
-  ],
-  "outputs": [
-    {
-      "id": "images",
-      "name": "二值图像",
-      "type": "Image",
-      "display": {
-        "color_order": "Gray",
-        "same_geometry_as_input": "images"
+  "implementation": {
+    "kind": "cpp"
+  },
+  "ui": {
+    "category": [
+      "预处理",
+      "图像处理"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "name_en": "images",
+        "name_zh": "输入图像",
+        "type": "image"
       },
-      "required": true
-    }
-  ]
+      {
+        "name_en": "block_size",
+        "name_zh": "邻域大小",
+        "type": "int",
+        "default": 3,
+        "constraints": {
+          "min": 3,
+          "max": 999
+        },
+        "ui": {
+          "editor": "number",
+          "step": 2
+        }
+      },
+      {
+        "name_en": "constant_offset",
+        "name_zh": "偏移常量",
+        "type": "float",
+        "default": 5,
+        "ui": {
+          "editor": "number",
+          "decimals": 3
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "name_en": "images",
+        "name_zh": "二值图像",
+        "type": "image",
+        "relations": {
+          "same_geometry_as": "inputs.images"
+        },
+        "display": {
+          "color_order": "Gray"
+        }
+      }
+    ]
+  }
 }

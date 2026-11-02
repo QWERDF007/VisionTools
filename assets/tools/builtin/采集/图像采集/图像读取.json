@@ -1,110 +1,113 @@
 {
-  "schema_version": 4,
-  "category": "采集",
-  "subcategory": "图像采集",
-  "tool_id": "visionrt.image.read",
-  "display_name": "图像读取",
+  "schema_version": 5,
+  "name_en": "visionrt.image.read",
+  "name_zh": "图像读取",
   "version": "1.0.0",
-  "kind": "cpp",
-  "init_params": [],
-  "inputs": [
-    {
-      "id": "path",
-      "name": "图像路径",
-      "type": "String",
-      "default": "",
-      "editor": "path",
-      "tab": "基本输入",
-      "required": true
-    },
-    {
-      "id": "recursive",
-      "name": "递归选项",
-      "type": "Bool",
-      "default": false,
-      "editor": "bool",
-      "tab": "基本输入",
-      "required": true
-    },
-    {
-      "id": "traversal",
-      "name": "遍历选项",
-      "type": "String",
-      "default": "循环",
-      "options": [
-        "循环",
-        "不循环"
-      ],
-      "editor": "text",
-      "tab": "基本输入",
-      "required": true
-    },
-    {
-      "id": "order",
-      "name": "遍历顺序",
-      "type": "String",
-      "default": "顺序（下一张）",
-      "options": [
-        "顺序（下一张）",
-        "逆序（上一张）"
-      ],
-      "editor": "text",
-      "tab": "基本输入",
-      "required": true
-    },
-    {
-      "id": "count",
-      "name": "图像数量",
-      "type": "Int",
-      "default": 1,
-      "min": 1,
-      "max": 64,
-      "editor": "number",
-      "tab": "基本输入",
-      "required": true
-    },
-    {
-      "id": "reload",
-      "name": "重新读图",
-      "type": "Bool",
-      "default": false,
-      "editor": "bool",
-      "tab": "基本输入",
-      "required": true
-    }
-  ],
-  "outputs": [
-    {
-      "id": "images",
-      "name": "图像",
-      "type": "Image",
-      "required": true
-    },
-    {
-      "id": "paths",
-      "name": "文件路径",
-      "type": "Array",
-      "rank": 1,
-      "dtype": "string",
-      "required": true
-    },
-    {
-      "id": "current_index",
-      "name": "当前索引",
-      "type": "Int",
-      "required": true
-    },
-    {
-      "id": "total_count",
-      "name": "目录总数量",
-      "type": "Int",
-      "required": true
-    },
-    {
-      "id": "end_reached",
-      "name": "已到末项",
-      "type": "Bool",
-      "required": true
-    }
-  ]
+  "implementation": {
+    "kind": "cpp"
+  },
+  "ui": {
+    "category": [
+      "采集",
+      "图像采集"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "name_en": "path",
+        "name_zh": "图像路径",
+        "type": "string",
+        "ui": {
+          "editor": "path"
+        }
+      },
+      {
+        "name_en": "recursive",
+        "name_zh": "递归选项",
+        "type": "bool",
+        "ui": {
+          "editor": "bool"
+        }
+      },
+      {
+        "name_en": "traversal",
+        "name_zh": "遍历选项",
+        "type": "string",
+        "default": "循环",
+        "constraints": {
+          "options": [
+            "循环",
+            "不循环"
+          ]
+        },
+        "ui": {
+          "editor": "text"
+        }
+      },
+      {
+        "name_en": "order",
+        "name_zh": "遍历顺序",
+        "type": "string",
+        "default": "顺序（下一张）",
+        "constraints": {
+          "options": [
+            "顺序（下一张）",
+            "逆序（上一张）"
+          ]
+        },
+        "ui": {
+          "editor": "text"
+        }
+      },
+      {
+        "name_en": "count",
+        "name_zh": "图像数量",
+        "type": "int",
+        "default": 1,
+        "constraints": {
+          "min": 1,
+          "max": 64
+        },
+        "ui": {
+          "editor": "number"
+        }
+      },
+      {
+        "name_en": "reload",
+        "name_zh": "重新读图",
+        "type": "bool",
+        "ui": {
+          "editor": "bool"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "name_en": "images",
+        "name_zh": "图像",
+        "type": "image"
+      },
+      {
+        "name_en": "paths",
+        "name_zh": "文件路径",
+        "type": "vec_string"
+      },
+      {
+        "name_en": "current_index",
+        "name_zh": "当前索引",
+        "type": "int"
+      },
+      {
+        "name_en": "total_count",
+        "name_zh": "目录总数量",
+        "type": "int"
+      },
+      {
+        "name_en": "end_reached",
+        "name_zh": "已到末项",
+        "type": "bool"
+      }
+    ]
+  }
 }

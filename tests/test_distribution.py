@@ -39,19 +39,21 @@ class DistributionContract(unittest.TestCase):
                                         capture_output=True, text=True, encoding="utf-8", errors="replace")
                 self.assertEqual(result.returncode, 0, result.stderr)
                 document = json.loads(result.stdout)
-                self.assertNotIn("registry_name", document.get("entry", {}))
-                self.assertTrue(all(not port["id"].startswith("__") for port in document["outputs"]))
+                self.assertNotIn("registry_name", document.get("implementation", {}))
+                outputs = document.get("ports", {}).get("outputs", [])
+                self.assertTrue(all(not port["name_en"].startswith("__") for port in outputs))
 
     def test_receiver_uses_stable_identity_and_host_binding(self):
         declaration = json.loads((ROOT / "assets/tools/builtin/流程控制/跨流程接收.json").read_text(encoding="utf-8"))
-        self.assertEqual(declaration["kind"], "host")
-        self.assertEqual(declaration["entry"], {"binding": "visionrt.receiver"})
-        parameters = {item["id"]: item for item in declaration["init_params"]}
+        self.assertEqual(declaration["implementation"]["kind"], "host")
+        self.assertEqual(declaration["implementation"]["binding"], "visionrt.receiver")
+        parameters = {item["name_en"]: item for item in declaration["ports"]["init"]}
         self.assertEqual(list(parameters), ["source_flow_id", "source_node_seq", "source_port_id", "timeout_ms"])
         for identifier in ("source_flow_id", "source_node_seq", "source_port_id"):
-            self.assertEqual(parameters[identifier]["type"], "String")
-        self.assertEqual(declaration["outputs"][0]["type_from"],
-                         {"flow": "source_flow_id", "node": "source_node_seq", "port": "source_port_id"})
+            self.assertEqual(parameters[identifier]["type"], "string")
+        self.assertEqual(declaration["ports"]["outputs"][0]["type_from"],
+                         {"flow": "init.source_flow_id", "node": "init.source_node_seq",
+                          "port": "init.source_port_id"})
 
     def test_python_package_uses_actual_manifest_without_backend_requirements(self):
         validator = require_validator()
@@ -64,12 +66,13 @@ class DistributionContract(unittest.TestCase):
             definition = project / "assets/tools/custom/math/arithmetic/add.json"
             definition.parent.mkdir(parents=True)
             document = {
-                "schema_version": 4, "tool_id": "test.add", "display_name": "Add",
-                "version": "1.0.0", "kind": "python_function",
-                "entry": {"package": "math/arithmetic", "file": "add.py", "symbol": "run"},
-                "init_params": [], "inputs": [],
-                "outputs": [{"id": "value", "name": "Value", "type": "Int"}],
-                "resources": ["bias.dat"],
+                "schema_version": 5, "name_en": "test.add", "name_zh": "Add", "version": "1.0.0",
+                "implementation": {"kind": "python_function",
+                                   "package": "math/arithmetic",
+                                   "file": "add.py",
+                                   "symbol": "run",
+                                   "resources": ["bias.dat"]},
+                "ports": {"outputs": [{"name_en": "value", "name_zh": "Value", "type": "int"}]},
             }
             definition.write_text(json.dumps(document), encoding="utf-8")
             code = project / "python/custom/math/arithmetic"

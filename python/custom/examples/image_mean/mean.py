@@ -42,13 +42,13 @@ class ToolInstance:
         try:
             images = InputReader(inputs).optional_array("images")
         except ContractError as error:
-            return failure(INVALID_INPUT, str(error), outputs={"means": None})
+            return failure(INVALID_INPUT, str(error))
         if images is None:
-            return failure(MISSING_INPUT, "输入端口 'images' 缺失", outputs={"means": None})
+            return failure(MISSING_INPUT, "输入端口 'images' 缺失")
 
         problem = _check_batch(images)
         if problem is not None:
-            return failure(INVALID_INPUT, problem, outputs={"means": None})
+            return failure(INVALID_INPUT, problem)
 
         return success({"means": [float(image.mean()) for image in images]})
 

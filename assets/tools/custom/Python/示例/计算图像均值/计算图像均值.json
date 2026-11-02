@@ -1,33 +1,34 @@
 {
-  "schema_version": 4,
-  "category": "Python",
-  "subcategory": "示例",
-  "tool_id": "custom.image.mean",
-  "display_name": "计算图像均值",
+  "schema_version": 5,
+  "name_en": "custom.image.mean",
+  "name_zh": "计算图像均值",
   "version": "1.0.0",
-  "kind": "python_class",
-  "entry": {
+  "implementation": {
+    "kind": "python_class",
     "package": "examples/image_mean",
     "file": "mean.py",
     "symbol": "ToolInstance"
   },
-  "init_params": [],
-  "inputs": [
-    {
-      "id": "images",
-      "name": "输入图像",
-      "type": "Image",
-      "required": true
-    }
-  ],
-  "outputs": [
-    {
-      "id": "means",
-      "name": "图像均值",
-      "type": "Array",
-      "dtype": "float64",
-      "rank": 1,
-      "required": true
-    }
-  ]
+  "ui": {
+    "category": [
+      "Python",
+      "示例"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "name_en": "images",
+        "name_zh": "输入图像",
+        "type": "image"
+      }
+    ],
+    "outputs": [
+      {
+        "name_en": "means",
+        "name_zh": "图像均值",
+        "type": "vec_float"
+      }
+    ]
+  }
 }

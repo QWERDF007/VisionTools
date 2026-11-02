@@ -205,10 +205,6 @@ class OutputWriter:
         # Stored by reference: images and native lists keep their identity.
         self._write(key, value)
 
-    def missing(self, key):
-        # A declared port with no value is written explicitly, never left out.
-        self._write(key, None)
-
     def value(self, key, raw):
         self._write(key, raw)
 

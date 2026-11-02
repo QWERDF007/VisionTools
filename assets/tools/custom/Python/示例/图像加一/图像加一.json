@@ -1,42 +1,46 @@
 {
-  "schema_version": 4,
-  "category": "Python",
-  "subcategory": "示例",
-  "tool_id": "custom.python.image_add",
-  "display_name": "图像加一",
+  "schema_version": 5,
+  "name_en": "custom.python.image_add",
+  "name_zh": "图像加一",
   "version": "1.0.0",
-  "kind": "python_function",
-  "entry": {
+  "implementation": {
+    "kind": "python_function",
     "package": "examples/image_add",
     "file": "tool.py",
     "symbol": "execute"
   },
-  "init_params": [],
-  "inputs": [
-    {
-      "id": "images",
-      "name": "输入图像",
-      "type": "Image",
-      "required": false
-    },
-    {
-      "id": "mode",
-      "name": "处理方式",
-      "type": "String",
-      "default": "copy",
-      "options": [
-        "copy",
-        "inplace"
-      ],
-      "required": true
-    }
-  ],
-  "outputs": [
-    {
-      "id": "images",
-      "name": "输出图像",
-      "type": "Image",
-      "required": true
-    }
-  ]
+  "ui": {
+    "category": [
+      "Python",
+      "示例"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "name_en": "images",
+        "name_zh": "输入图像",
+        "type": "image"
+      },
+      {
+        "name_en": "mode",
+        "name_zh": "处理方式",
+        "type": "string",
+        "default": "copy",
+        "constraints": {
+          "options": [
+            "copy",
+            "inplace"
+          ]
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "name_en": "images",
+        "name_zh": "输出图像",
+        "type": "image"
+      }
+    ]
+  }
 }

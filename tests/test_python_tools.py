@@ -48,10 +48,10 @@ def outputs(result):
 
 class TestPythonToolContracts(unittest.TestCase):
     def setUp(self):
-        mean = json.loads((ROOT / "assets/tools/custom/Python/示例/计算图像均值/计算图像均值.json").read_text(encoding="utf-8"))["entry"]
-        counter = json.loads((ROOT / "assets/tools/custom/Python/示例/调用计数器/调用计数器.json").read_text(encoding="utf-8"))["entry"]
-        roi = json.loads((ROOT / "assets/tools/custom/Python/示例/ROI几何/ROI几何.json").read_text(encoding="utf-8"))["entry"]
-        add = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一/图像加一.json").read_text(encoding="utf-8"))["entry"]
+        mean = json.loads((ROOT / "assets/tools/custom/Python/示例/计算图像均值/计算图像均值.json").read_text(encoding="utf-8"))["implementation"]
+        counter = json.loads((ROOT / "assets/tools/custom/Python/示例/调用计数器/调用计数器.json").read_text(encoding="utf-8"))["implementation"]
+        roi = json.loads((ROOT / "assets/tools/custom/Python/示例/ROI几何/ROI几何.json").read_text(encoding="utf-8"))["implementation"]
+        add = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一/图像加一.json").read_text(encoding="utf-8"))["implementation"]
         self.mean_py = ROOT / "python/custom" / mean["package"] / mean["file"]
         self.counter_py = ROOT / "python/custom" / counter["package"] / counter["file"]
         self.roi_py = ROOT / "python/custom" / roi["package"] / roi["file"]
@@ -80,7 +80,7 @@ class TestPythonToolContracts(unittest.TestCase):
                 result = instance.execute(inputs)
                 self.assertEqual(status(result)["code"], 1001)
                 self.assertIn("输入端口 'images' 缺失", status(result)["message"])
-                self.assertIsNone(outputs(result)["means"])
+                self.assertNotIn("means", outputs(result))
 
         instance.release()
 
@@ -94,7 +94,7 @@ class TestPythonToolContracts(unittest.TestCase):
                 self.assertEqual(status(result)["code"], 1002)
                 self.assertIn("输入端口 'images'", status(result)["message"])
                 self.assertIn("列表", status(result)["message"])
-                self.assertIsNone(outputs(result)["means"])
+                self.assertNotIn("means", outputs(result))
 
     def test_mean_rejects_non_image_elements(self):
         instance = load_module_from_file(self.mean_py).ToolInstance()
@@ -107,7 +107,7 @@ class TestPythonToolContracts(unittest.TestCase):
                 self.assertIn("输入端口 'images'", status(result)["message"])
                 self.assertIn("批次索引 1", status(result)["message"])
                 self.assertIn("ndarray", status(result)["message"])
-                self.assertIsNone(outputs(result)["means"])
+                self.assertNotIn("means", outputs(result))
 
     def test_mean_rejects_invalid_image_shapes(self):
         instance = load_module_from_file(self.mean_py).ToolInstance()
@@ -121,7 +121,7 @@ class TestPythonToolContracts(unittest.TestCase):
                 self.assertIn("批次索引 1", status(result)["message"])
                 self.assertIn("图像形状", status(result)["message"])
                 self.assertIn(str(shape), status(result)["message"])
-                self.assertIsNone(outputs(result)["means"])
+                self.assertNotIn("means", outputs(result))
 
     def test_mean_rejects_non_real_pixels(self):
         instance = load_module_from_file(self.mean_py).ToolInstance()
@@ -136,7 +136,7 @@ class TestPythonToolContracts(unittest.TestCase):
                 self.assertIn("批次索引 1", status(result)["message"])
                 self.assertIn("实数数值", status(result)["message"])
                 self.assertIn(str(invalid.dtype), status(result)["message"])
-                self.assertIsNone(outputs(result)["means"])
+                self.assertNotIn("means", outputs(result))
 
     def test_mean_empty_batch(self):
         mod = load_module_from_file(self.mean_py)
@@ -213,7 +213,7 @@ class TestPythonToolContracts(unittest.TestCase):
 
     def test_roi_geometry_returns_three_layer_native_lists(self):
         declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/ROI几何/ROI几何.json").read_text(encoding="utf-8"))
-        execute = getattr(load_module_from_file(self.roi_py), declaration["entry"]["symbol"])
+        execute = getattr(load_module_from_file(self.roi_py), declaration["implementation"]["symbol"])
         images = [np.zeros((4, 5), dtype=np.uint8), np.zeros((3, 7, 3), dtype=np.uint8)]
         result = execute({"images": images})
         self.assertEqual(status(result)["code"], 0)
@@ -229,11 +229,11 @@ class TestPythonToolContracts(unittest.TestCase):
         self.assertEqual(outputs(execute({"images": []}))["rois"], [])
         rejected = execute({"images": [np.zeros((0, 5), dtype=np.uint8)]})
         self.assertEqual(status(rejected)["code"], 1002)
-        self.assertIsNone(outputs(rejected)["rois"])
+        self.assertNotIn("rois", outputs(rejected))
 
     def test_image_add_distinguishes_copy_and_inplace(self):
         declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一/图像加一.json").read_text(encoding="utf-8"))
-        execute = getattr(load_module_from_file(self.image_add_py), declaration["entry"]["symbol"])
+        execute = getattr(load_module_from_file(self.image_add_py), declaration["implementation"]["symbol"])
         source = np.full((2, 3), 10, dtype=np.uint8)
         copied = execute({"images": [source], "mode": "copy"})
         self.assertEqual(status(copied)["code"], 0)
@@ -253,7 +253,7 @@ class TestPythonToolContracts(unittest.TestCase):
 
     def test_image_add_honours_upstream_status(self):
         declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一/图像加一.json").read_text(encoding="utf-8"))
-        execute = getattr(load_module_from_file(self.image_add_py), declaration["entry"]["symbol"])
+        execute = getattr(load_module_from_file(self.image_add_py), declaration["implementation"]["symbol"])
         source = np.full((2, 3), 10, dtype=np.uint8)
         skipped = execute({"images": [source], "mode": "inplace", "upstream_status": 7})
         self.assertEqual(status(skipped)["code"], 7)
@@ -286,8 +286,8 @@ class TestPythonToolContracts(unittest.TestCase):
 
     def test_builtin_function_uses_its_json_entry_and_returns_native_lists(self):
         declaration = json.loads((ROOT / "assets/tools/builtin/Python/示例/图像尺寸.json").read_text(encoding="utf-8"))
-        self.assertEqual(declaration["kind"], "python_function")
-        entry = declaration["entry"]
+        self.assertEqual(declaration["implementation"]["kind"], "python_function")
+        entry = declaration["implementation"]
         module = load_module_from_file(ROOT / "python/builtin" / entry["package"] / entry["file"])
         execute = getattr(module, entry["symbol"])
         images = [np.zeros((2, 3, 3), dtype=np.uint8), np.zeros((4, 1), dtype=np.float32)]

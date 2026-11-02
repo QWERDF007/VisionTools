@@ -1,112 +1,137 @@
 {
-  "schema_version": 4,
-  "category": "预处理",
-  "subcategory": "ROI",
-  "tool_id": "visionrt.roi.projection",
-  "display_name": "投影ROI",
+  "schema_version": 5,
+  "name_en": "visionrt.roi.projection",
+  "name_zh": "投影ROI",
   "version": "1.0.0",
-  "kind": "cpp",
-  "init_params": [],
-  "inputs": [
-    {
-      "id": "images",
-      "name": "图像",
-      "type": "Image",
-      "required": false
-    },
-    {
-      "id": "axis",
-      "name": "投影轴",
-      "type": "String",
-      "default": "x",
-      "tab": "预处理",
-      "options": [
-        "x",
-        "y"
-      ],
-      "required": true
-    },
-    {
-      "id": "polarity",
-      "name": "极性",
-      "type": "String",
-      "default": "bright",
-      "tab": "预处理",
-      "options": [
-        "bright",
-        "dark"
-      ],
-      "required": true
-    },
-    {
-      "id": "threshold",
-      "name": "二值化阈值",
-      "type": "Int",
-      "default": 128,
-      "min": 0,
-      "max": 255,
-      "step": 1,
-      "editor": "number",
-      "tab": "预处理",
-      "required": true
-    },
-    {
-      "id": "min_pixels",
-      "name": "最小像素数",
-      "type": "Int",
-      "default": 1,
-      "min": 1,
-      "editor": "number",
-      "tab": "预处理",
-      "required": true
-    },
-    {
-      "id": "min_extent",
-      "name": "最小跨度",
-      "type": "Int",
-      "default": 1,
-      "min": 1,
-      "editor": "number",
-      "tab": "预处理",
-      "required": true
-    },
-    {
-      "id": "merge_gap",
-      "name": "合并间隙",
-      "type": "Int",
-      "default": 0,
-      "min": 0,
-      "editor": "number",
-      "tab": "预处理",
-      "required": true
-    },
-    {
-      "id": "padding",
-      "name": "外扩边距",
-      "type": "Int",
-      "default": 0,
-      "min": 0,
-      "editor": "number",
-      "tab": "预处理",
-      "required": true
-    }
-  ],
-  "outputs": [
-    {
-      "id": "images",
-      "name": "输出图像",
-      "type": "Image",
-      "display": {
-        "same_geometry_as_input": "images"
+  "implementation": {
+    "kind": "cpp"
+  },
+  "ui": {
+    "category": [
+      "预处理",
+      "ROI"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "name_en": "images",
+        "name_zh": "图像",
+        "type": "image"
       },
-      "required": true
-    },
-    {
-      "id": "rois",
-      "name": "ROI批次",
-      "type": "ROI",
-      "image_port": "images",
-      "required": true
-    }
-  ]
+      {
+        "name_en": "axis",
+        "name_zh": "投影轴",
+        "type": "string",
+        "default": "x",
+        "constraints": {
+          "options": [
+            "x",
+            "y"
+          ]
+        },
+        "ui": {
+          "tab": "预处理"
+        }
+      },
+      {
+        "name_en": "polarity",
+        "name_zh": "极性",
+        "type": "string",
+        "default": "bright",
+        "constraints": {
+          "options": [
+            "bright",
+            "dark"
+          ]
+        },
+        "ui": {
+          "tab": "预处理"
+        }
+      },
+      {
+        "name_en": "threshold",
+        "name_zh": "二值化阈值",
+        "type": "int",
+        "default": 128,
+        "constraints": {
+          "min": 0,
+          "max": 255
+        },
+        "ui": {
+          "editor": "number",
+          "tab": "预处理",
+          "step": 1
+        }
+      },
+      {
+        "name_en": "min_pixels",
+        "name_zh": "最小像素数",
+        "type": "int",
+        "default": 1,
+        "constraints": {
+          "min": 1
+        },
+        "ui": {
+          "editor": "number",
+          "tab": "预处理"
+        }
+      },
+      {
+        "name_en": "min_extent",
+        "name_zh": "最小跨度",
+        "type": "int",
+        "default": 1,
+        "constraints": {
+          "min": 1
+        },
+        "ui": {
+          "editor": "number",
+          "tab": "预处理"
+        }
+      },
+      {
+        "name_en": "merge_gap",
+        "name_zh": "合并间隙",
+        "type": "int",
+        "constraints": {
+          "min": 0
+        },
+        "ui": {
+          "editor": "number",
+          "tab": "预处理"
+        }
+      },
+      {
+        "name_en": "padding",
+        "name_zh": "外扩边距",
+        "type": "int",
+        "constraints": {
+          "min": 0
+        },
+        "ui": {
+          "editor": "number",
+          "tab": "预处理"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "name_en": "images",
+        "name_zh": "输出图像",
+        "type": "image",
+        "relations": {
+          "same_geometry_as": "inputs.images"
+        }
+      },
+      {
+        "name_en": "rois",
+        "name_zh": "ROI批次",
+        "type": "roi",
+        "relations": {
+          "image": "outputs.images"
+        }
+      }
+    ]
+  }
 }
