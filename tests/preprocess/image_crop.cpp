@@ -1,5 +1,5 @@
 #include "src/preprocess/ImageCropTool.h"
-#include "../result_view.h"
+#include "../ToolResultAssertions.h"
 #include "TestSupport.h"
 #include "MatAllocationProbe.h"
 

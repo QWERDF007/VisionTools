@@ -152,6 +152,9 @@ endif()
 # 包含契约与单元测试
 if(VISIONTOOLS_BUILD_TESTS)
     enable_testing()
+    # Test executables are EXCLUDE_FROM_ALL; this target is their single build entry, mirroring
+    # VisionRT's tests-<group> targets without adding a second registration mechanism.
+    add_custom_target(visiontools_tests)
     add_subdirectory(tests)
 endif()
 

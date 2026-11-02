@@ -15,7 +15,7 @@ VisionRT 的工具实现与作者声明。职责和验证入口见 [文档索引
 ```cmd
 git submodule update --init --recursive
 tools\build.cmd cmake --preset cpu -DVISIONTOOLS_BUILD_PYTHON=OFF
-tools\build.cmd cmake --build build --target visiontools_preprocess
+tools\build.cmd cmake --build build --target visiontools_tests
 tools\build.cmd ctest --test-dir build -R test_module_contract --output-on-failure
 ```
 

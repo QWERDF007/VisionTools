@@ -1,7 +1,7 @@
 // Geometry, image transform and metrology contract for the seven-tool delivery.
 // Synthetic fixtures provide analytic ground truth; no model or GPU is involved.
 #include "preprocess/BrightnessTool.h"
-#include "result_view.h"
+#include "ToolResultAssertions.h"
 #include "preprocess/RotateImageTool.h"
 #include "metrology/CircleFit.h"
 #include "metrology/CircleMeasureKernel.h"

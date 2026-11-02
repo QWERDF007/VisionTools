@@ -1,5 +1,5 @@
 #include <cuda_runtime.h>
-#include "../../tests/result_view.h"
+#include "../../tests/ToolResultAssertions.h"
 #include <visionrt/contracts/Module.h>
 #include <visionrt/contracts/ROI.h>
 #include <visionrt/contracts/Tool.h>

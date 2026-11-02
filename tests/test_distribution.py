@@ -55,52 +55,59 @@ class DistributionContract(unittest.TestCase):
                          {"flow": "init.source_flow_id", "node": "init.source_node_seq",
                           "port": "init.source_port_id"})
 
+    def _python_fixture(self, project: Path) -> Path:
+        """Builds the minimal one-tool Python package the rest of this file distributes."""
+        # A project that ships Python tools carries the one author SDK the packager injects.
+        sdk = project / "python/author_sdk/visiontools_sdk"
+        sdk.mkdir(parents=True)
+        (sdk / "__init__.py").write_text("", encoding="utf-8")
+        definition = project / "assets/tools/custom/math/arithmetic/add.json"
+        definition.parent.mkdir(parents=True)
+        document = {
+            "schema_version": 5, "name_en": "test.add", "name_zh": "Add", "version": "1.0.0",
+            "implementation": {"kind": "python_function",
+                               "package": "math/arithmetic",
+                               "file": "add.py",
+                               "symbol": "run",
+                               "resources": ["bias.dat"]},
+            "ports": {"outputs": [{"name_en": "value", "name_zh": "Value", "type": "int"}]},
+        }
+        definition.write_text(json.dumps(document), encoding="utf-8")
+        code = project / "python/custom/math/arithmetic"
+        code.mkdir(parents=True)
+        # The example returns the current tool envelope: outputs (including the status ports) plus
+        # detail. The previous fixture returned a separate status object, which no host accepts.
+        (code / "add.py").write_text(
+            'from .helper import value\nfrom pathlib import Path\n'
+            'def run(inputs):\n'
+            '    return {"outputs": {"value": value + int(Path(__file__).with_name("bias.dat").read_text()),\n'
+            '                        "__status_code": 0, "__status_message": "运行成功"},\n'
+            '            "detail": ""}\n',
+            encoding="utf-8")
+        (code / "helper.py").write_text("value = 37\n", encoding="utf-8")
+        (code / "bias.dat").write_text("5", encoding="utf-8")
+        build = project / "build"
+        build.mkdir()
+        (build / "Release").mkdir()
+        catalog = {"schema_version": 1, "modules": [],
+                   "tools": [{"definition": definition.relative_to(project).as_posix()}]}
+        package_tools.save_json(catalog, project / "tools/package_catalog.json")
+        manifest = {"variant": "portable-release", "config": "Release", "modules": {}, "runtime_files": []}
+        (build / "Release/resolved_dependencies.json").write_text(json.dumps(manifest), encoding="utf-8")
+        build_info = {
+            "schema_version": 1, "component": "VisionTools", "version": "0.1.0",
+            "commit": "testcommit0123456789abcdef0123456789abcdef",
+            "branch": "dev", "dirty": False, "built_at_epoch": 1793148779,
+        }
+        (build / "build_info.json").write_text(json.dumps(build_info), encoding="utf-8")
+        output = project / "dist/tools"
+        return package_tools.package_tools(build, output, project_root=project, validator=require_validator())
+
     def test_python_package_uses_actual_manifest_without_backend_requirements(self):
         validator = require_validator()
         with tempfile.TemporaryDirectory() as temporary:
             project = Path(temporary)
-            # A project that ships Python tools carries the one author SDK the packager injects.
-            sdk = project / "python/author_sdk/visiontools_sdk"
-            sdk.mkdir(parents=True)
-            (sdk / "__init__.py").write_text("", encoding="utf-8")
-            definition = project / "assets/tools/custom/math/arithmetic/add.json"
-            definition.parent.mkdir(parents=True)
-            document = {
-                "schema_version": 5, "name_en": "test.add", "name_zh": "Add", "version": "1.0.0",
-                "implementation": {"kind": "python_function",
-                                   "package": "math/arithmetic",
-                                   "file": "add.py",
-                                   "symbol": "run",
-                                   "resources": ["bias.dat"]},
-                "ports": {"outputs": [{"name_en": "value", "name_zh": "Value", "type": "int"}]},
-            }
-            definition.write_text(json.dumps(document), encoding="utf-8")
-            code = project / "python/custom/math/arithmetic"
-            code.mkdir(parents=True)
-            (code / "add.py").write_text(
-                'from .helper import value\nfrom pathlib import Path\n'
-                'def run(inputs):\n'
-                '    return {"status": {"code": 0, "message": "运行成功", "detail": ""},\n'
-                '            "outputs": {"value": value + int(Path(__file__).with_name("bias.dat").read_text())}}\n',
-                encoding="utf-8")
-            (code / "helper.py").write_text("value = 37\n", encoding="utf-8")
-            (code / "bias.dat").write_text("5", encoding="utf-8")
-            build = project / "build"
-            build.mkdir()
-            (build / "Release").mkdir()
-            catalog = {"schema_version": 1, "modules": [],
-                       "tools": [{"definition": definition.relative_to(project).as_posix()}]}
-            package_tools.save_json(catalog, project / "tools/package_catalog.json")
-            manifest = {"variant": "portable-release", "config": "Release", "modules": {}, "runtime_files": []}
-            (build / "Release/resolved_dependencies.json").write_text(json.dumps(manifest), encoding="utf-8")
-            build_info = {
-                "schema_version": 1, "component": "VisionTools", "version": "0.1.0",
-                "commit": "testcommit0123456789abcdef0123456789abcdef",
-                "branch": "dev", "dirty": False, "built_at_epoch": 1793148779,
-            }
-            (build / "build_info.json").write_text(json.dumps(build_info), encoding="utf-8")
-            output = project / "dist/tools"
-            archive = package_tools.package_tools(build, output, project_root=project, validator=validator)
+            archive = self._python_fixture(project)
             external_index = archive.parent / f"{archive.stem}.module_index.json"
             with zipfile.ZipFile(archive) as bundle:
                 self.assertEqual(bundle.read("module_index.json"), external_index.read_bytes())
@@ -108,7 +115,8 @@ class DistributionContract(unittest.TestCase):
                 self.assertEqual(installed["variant"], "portable-release")
                 self.assertEqual(installed["modules"], [])
                 self.assertEqual({tool["tool_id"] for tool in installed["tools"]}, {"test.add"})
-            result = subprocess.run([str(validator), "--package", str(output)], capture_output=True, text=True)
+            result = subprocess.run([str(validator), "--package", str(project / "dist/tools")],
+                                    capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             for source_root in (project / "assets", project / "python"):
                 self.assertTrue(source_root.resolve().is_relative_to(project))
@@ -127,27 +135,39 @@ class DistributionContract(unittest.TestCase):
                     "pkg = importlib.util.module_from_spec(spec); sys.modules['add_pkg'] = pkg; spec.loader.exec_module(pkg)\n"
                     "spec = importlib.util.spec_from_file_location('add_pkg.add', root / 'add.py')\n"
                     "module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\n"
-                    "print(module.run({})['outputs']['value'])\n",
+                    "result = module.run({})\n"
+                    "assert 'status' not in result, 'the fixture still uses the removed status envelope'\n"
+                    "assert result['outputs']['__status_code'] == 0 and result['detail'] == ''\n"
+                    "print(result['outputs']['value'])\n",
                     str(package_root),
                 ], capture_output=True, text=True, encoding="utf-8", errors="replace")
                 self.assertEqual(probe.returncode, 0, probe.stderr)
                 self.assertEqual(probe.stdout.strip(), "42")
-            consumer = os.environ.get("VISIONRT_PYTHON_CONSUMER")
-            if consumer:
-                deploy_script = Path(os.environ["VISIONRT_DEPLOY_SCRIPT"])
-                installation = project / "installed"
-                deployed = subprocess.run([
-                    sys.executable, "-B", "-c",
-                    "import runpy,sys; from pathlib import Path; api=runpy.run_path(sys.argv[1]); "
-                    "api['deploy_tools_package'](Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]))",
-                    str(deploy_script), str(installation), str(archive), str(validator),
-                ], capture_output=True, text=True, encoding="utf-8", errors="replace")
-                self.assertEqual(deployed.returncode, 0, deployed.stderr)
-                executed = subprocess.run([consumer, "--package", str(installation / "tools-package")],
-                                          capture_output=True, text=True, encoding="utf-8", errors="replace")
-                self.assertEqual(executed.returncode, 0, executed.stdout + executed.stderr)
-                self.assertIn("Pure Python ZIP result: 42", executed.stdout)
 
+    def test_python_package_executes_in_real_host(self):
+        """Host execution is a separate, explicitly required check: the packager itself never runs
+        author code, so a package that validates can still fail inside the runtime."""
+        consumer = os.environ.get("VISIONRT_PYTHON_CONSUMER")
+        deploy_script = os.environ.get("VISIONRT_DEPLOY_SCRIPT")
+        if not consumer or not deploy_script:
+            if os.environ.get("VISIONTOOLS_REQUIRE_HOST_EXECUTION") == "1":
+                self.fail("本候选要求宿主执行，但 VISIONRT_PYTHON_CONSUMER/VISIONRT_DEPLOY_SCRIPT 未配置")
+            self.skipTest("未配置宿主消费者，仅完成包内容验证")
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            archive = self._python_fixture(project)
+            installation = project / "installed"
+            deployed = subprocess.run([
+                sys.executable, "-B", "-c",
+                "import runpy,sys; from pathlib import Path; api=runpy.run_path(sys.argv[1]); "
+                "api['deploy_tools_package'](Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]))",
+                str(deploy_script), str(installation), str(archive), str(require_validator()),
+            ], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertEqual(deployed.returncode, 0, deployed.stderr)
+            executed = subprocess.run([consumer, "--package", str(installation / "tools-package")],
+                                      capture_output=True, text=True, encoding="utf-8", errors="replace")
+            self.assertEqual(executed.returncode, 0, executed.stdout + executed.stderr)
+            self.assertIn("Pure Python ZIP result: 42", executed.stdout)
 
 if __name__ == "__main__":
     unittest.main()

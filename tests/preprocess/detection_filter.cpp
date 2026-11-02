@@ -1,5 +1,5 @@
 #include "src/preprocess/DetectionFilterTool.h"
-#include "../result_view.h"
+#include "../ToolResultAssertions.h"
 #include "TestSupport.h"
 
 using namespace visionrt;

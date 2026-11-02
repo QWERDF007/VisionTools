@@ -12,6 +12,11 @@ import ast
 import math
 from dataclasses import dataclass
 
+try:  # The host runtime ships NumPy with the interpreter; the engine stays importable without it.
+    import numpy as np
+except ImportError:  # pragma: no cover - exercising this branch needs a NumPy-free interpreter
+    np = None
+
 from .vendor import simpleeval
 
 MAX_EXPRESSION_CHARS = 4096
@@ -161,10 +166,53 @@ def check_value(value, spec: TypeSpec, location: str, budget: Budget | None = No
             raise EngineError(f"{location} 字符串超出长度上限")
         return value
     if spec.name == "Array":
+        if np is not None and isinstance(value, np.ndarray):
+            return _check_numpy(value, spec, location, budget)
         if not isinstance(value, list):
             raise EngineError(f"{location} 需要数组，实际为 {type(value).__name__}")
         return _check_array(value, spec, 1, location, budget)
     raise EngineError(f"{location} 的类型不受支持：{spec.name}")
+
+
+def _check_numpy(value, spec: TypeSpec, location: str, budget: Budget | None):
+    """Normalises a host NumPy view into the list surface the expression AST understands.
+
+    The host does not copy numeric arrays before crossing into Python, so the engine converts
+    once at this single entry instead of expecting every expression to handle ndarray.
+    """
+    if spec.dtype == "string":
+        raise EngineError(f"{location} 不接受 NumPy 字符串数组")
+    if value.ndim != spec.rank:
+        raise EngineError(f"{location} 数组维度不匹配：声明 {spec.rank}，实际 {value.ndim}")
+    if value.dtype != np.dtype(spec.dtype):
+        raise EngineError(f"{location} 数组元素类型不匹配：声明 {spec.dtype}，实际 {value.dtype}")
+    # A shape such as (huge, 0) has zero leaves, but tolist() still builds every empty inner list,
+    # so the container count is bounded before the conversion allocates anything.
+    containers = 0
+    prefix = 1
+    for extent in value.shape[:-1]:
+        prefix *= int(extent)
+        containers += prefix
+        if containers > MAX_COLLECTION_ITEMS:
+            raise EngineError(f"{location} 数组容器数量超出上限")
+    if budget is not None:
+        budget.spend(int(value.size), location)
+    elif value.size > MAX_COLLECTION_ITEMS:
+        raise EngineError(f"{location} 数组元素数量超出上限")
+    return _check_owned_array(value.tolist(), spec, 1, location)
+
+
+def _check_owned_array(value, spec: TypeSpec, depth: int, location: str):
+    """Validates a tree this call just built; leaves are replaced in place instead of copied again."""
+    if depth < spec.rank:
+        if len(value) > MAX_COLLECTION_ITEMS:
+            raise EngineError(f"{location} 数组元素数量超出上限")
+        for index, item in enumerate(value):
+            _check_owned_array(item, spec, depth + 1, f"{location}[{index}]")
+        return value
+    for index, item in enumerate(value):
+        value[index] = _check_leaf(item, spec.dtype, f"{location}[{index}]")
+    return value
 
 
 def _check_array(value, spec: TypeSpec, depth: int, location: str, budget: Budget | None = None):

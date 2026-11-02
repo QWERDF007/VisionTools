@@ -1,5 +1,5 @@
 #include "TestRegistry.h"
-#include "result_view.h"
+#include "ToolResultAssertions.h"
 #include <visionrt/contracts/Module.h>
 
 #include <array>

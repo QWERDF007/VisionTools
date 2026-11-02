@@ -1,5 +1,5 @@
 #include "src/infer/YoloModel.h"
-#include "result_view.h"
+#include "ToolResultAssertions.h"
 #include "src/infer/YoloPostprocess.h"
 
 #include <visionrt/contracts/Module.h>
@@ -7,7 +7,9 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
+#include <string>
 
 #define REQUIRE(cond, msg)                                                                                      \
     do                                                                                                          \
@@ -144,21 +146,47 @@ void testWhiteboxYoloInitializedTrace()
     std::cout << "[PASS] testWhiteboxYoloInitializedTrace passed." << std::endl;
 }
 
-int main()
+int main(int argc, char **argv)
 {
-    std::cout << "[TEST] Running test_infer_whitebox_trace (isolated whitebox test)..." << std::endl;
+    // One runner, one scenario per capability: geometry and the uninitialized error path need no
+    // model, while the initialized trace needs an external engine or weights and may skip alone.
+    std::string scenario = "all";
+    for (int index = 1; index < argc; ++index)
+    {
+        const std::string argument = argv[index];
+        if (argument == "--case" && index + 1 < argc)
+            scenario = argv[++index];
+        else
+        {
+            std::cerr << "[ERROR] unknown argument: " << argument << std::endl;
+            return 1;
+        }
+    }
+
+    std::cout << "[TEST] infer trace scenario: " << scenario << std::endl;
+    if (scenario != "geometry" && scenario != "uninitialized" && scenario != "initialized-trace"
+        && scenario != "all")
+    {
+        std::cerr << "[ERROR] unknown scenario: " << scenario << std::endl;
+        return 1;
+    }
     try
     {
-        testWhiteboxGeometryProbe();
-        testWhiteboxLetterboxRoundtrip();
-        testWhiteboxYoloUninitializedErrorPath();
-        testWhiteboxYoloInitializedTrace();
-        std::cout << "[ALL TESTS PASSED] test_infer_whitebox_trace passed successfully." << std::endl;
+        if (scenario == "geometry" || scenario == "all")
+        {
+            testWhiteboxGeometryProbe();
+            testWhiteboxLetterboxRoundtrip();
+        }
+        if (scenario == "uninitialized" || scenario == "all")
+            testWhiteboxYoloUninitializedErrorPath();
+        if (scenario == "initialized-trace" || scenario == "all")
+            testWhiteboxYoloInitializedTrace();
+        std::cout << "[ALL TESTS PASSED] infer trace scenario passed." << std::endl;
         return 0;
     }
     catch (const std::exception &e)
     {
-        std::cerr << "[ERROR] Whitebox trace test failed: " << e.what() << std::endl;
+        std::cerr << "[ERROR] Infer trace test failed: " << e.what() << std::endl;
         return 1;
     }
 }

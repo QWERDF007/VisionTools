@@ -43,16 +43,21 @@ visiontools_add_test(test_preprocess_contract
     DEFINITIONS VISIONTOOLS_TESTING
 )
 
-# VT-02: measured read-cache residency. It compiles ReadImageTool.cpp itself so the decode counter
-# (VISIONTOOLS_TESTING) is the one the test drives.
-visiontools_add_test(test_read_cache_contract
+# VT-02: cache correctness runs on three small frames; the residency measurement needs a stated
+# 1600x900 batch and a long loop, so it is a second entry over the same binary. It compiles
+# ReadImageTool.cpp itself so the decode counter (VISIONTOOLS_TESTING) is the one the test drives.
+visiontools_add_test(image_read_cache_test
     SOURCES
-        test_read_cache_contract.cpp
+        image_read_cache_test.cpp
         "${CMAKE_SOURCE_DIR}/src/preprocess/ReadImageTool.cpp"
     LIBRARIES visiontools_preprocess visiontools_common VisionRT::Contracts ${OpenCV_LIBS}
     DEFINITIONS VISIONTOOLS_TESTING
-    COMMAND_ARGS "${CMAKE_BINARY_DIR}/evidence"
 )
+add_test(NAME image_read_cache_benchmark
+    COMMAND image_read_cache_test --perf --evidence "${CMAKE_BINARY_DIR}/evidence")
+visiontools_test_path(_vt_cache_benchmark_paths)
+set_tests_properties(image_read_cache_benchmark PROPERTIES
+    ENVIRONMENT "PATH=${_vt_cache_benchmark_paths}" LABELS "perf")
 
 # VT-03: proof that rotate/brightness allocate their own pixels before dropping the input owner.
 visiontools_add_test(test_output_ownership_contract
@@ -87,12 +92,23 @@ if(VISIONTOOLS_BUILD_INFER AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_infer_co
         SOURCES test_infer_contract.cpp "${CMAKE_SOURCE_DIR}/src/infer/YoloPostprocess.cpp"
         LIBRARIES visiontools_infer VisionRT::Contracts ${OpenCV_LIBS}
     )
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_infer_whitebox_trace.cpp")
-        visiontools_add_test(test_infer_whitebox_trace
-            SOURCES test_infer_whitebox_trace.cpp "${CMAKE_SOURCE_DIR}/src/infer/YoloPostprocess.cpp"
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/infer_trace_test.cpp")
+        # Trace capabilities are separate entries: geometry and the uninitialized path always run,
+        # while the initialized trace needs a GPU/model fixture and may skip on its own.
+        visiontools_add_test(infer_trace_test
+            SOURCES infer_trace_test.cpp "${CMAKE_SOURCE_DIR}/src/infer/YoloPostprocess.cpp"
             LIBRARIES visiontools_infer VisionRT::Contracts ${OpenCV_LIBS} InferRT::model CUDA::cudart
+            NO_TEST
         )
-        set_tests_properties(test_infer_whitebox_trace PROPERTIES SKIP_RETURN_CODE 77)
+        visiontools_test_path(_vt_infer_trace_paths)
+        foreach(_case IN ITEMS geometry uninitialized)
+            add_test(NAME infer_trace_${_case} COMMAND infer_trace_test --case ${_case})
+            set_tests_properties(infer_trace_${_case} PROPERTIES
+                ENVIRONMENT "PATH=${_vt_infer_trace_paths}" LABELS "smoke")
+        endforeach()
+        add_test(NAME infer_trace_initialized COMMAND infer_trace_test --case initialized-trace)
+        set_tests_properties(infer_trace_initialized PROPERTIES
+            ENVIRONMENT "PATH=${_vt_infer_trace_paths}" LABELS "gpu" SKIP_RETURN_CODE 77)
     endif()
 endif()
 

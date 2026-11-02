@@ -171,6 +171,15 @@ if errorlevel 1 (
 )
 
 if "%DO_TEST%"=="1" (
+    rem Test executables are EXCLUDE_FROM_ALL: a normal build stays product-only, and testing
+    rem explicitly builds the whole matrix before ctest runs it.
+    echo [INFO] Building test executables...
+    cmake --build "%BUILD_DIR%" --config %CONFIG% --target visiontools_tests
+    if errorlevel 1 (
+        echo [ERROR] Test build failed.
+        popd
+        exit /b 1
+    )
     echo [INFO] Running CTest...
     ctest --test-dir "%BUILD_DIR%" -C %CONFIG% --output-on-failure
     if errorlevel 1 (

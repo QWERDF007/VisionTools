@@ -1,6 +1,6 @@
 #include <visionrt/contracts/Module.h>
 #include <visionrt/contracts/FunctionTool.h>
-#include "result_view.h"
+#include "ToolResultAssertions.h"
 #include "TestRegistry.h"
 #include <visionrt/contracts/Tool.h>
 

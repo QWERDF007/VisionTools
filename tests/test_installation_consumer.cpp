@@ -1,5 +1,5 @@
 #include <opencv2/core.hpp>
-#include "result_view.h"
+#include "ToolResultAssertions.h"
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <visionrt/contracts/Module.h>

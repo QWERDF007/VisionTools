@@ -7,7 +7,7 @@
 #include "preprocess/AdaptiveBinaryTool.h"
 #include "preprocess/BrightnessTool.h"
 #include "preprocess/ReadImageTool.h"
-#include "result_view.h"
+#include "ToolResultAssertions.h"
 #include "visionrt/contracts/Tool.h"
 
 #include <opencv2/core.hpp>

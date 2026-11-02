@@ -19,8 +19,11 @@ tools\build.cmd cmake --build build --config Release
 :: 默认 Release 构建（含 InferRT，需要本机依赖路径）
 tools\build.cmd
 
-:: 编译并执行契约测试
+:: 编译并执行契约测试（测试可执行不进默认构建，--test 会先构建 visiontools_tests）
 tools\build.cmd --test
+
+:: 只构建全部测试可执行，不运行
+tools\build.cmd cmake --build build --target visiontools_tests
 
 :: 清理并重新构建
 tools\build.cmd --clean
@@ -28,6 +31,7 @@ tools\build.cmd --clean
 :: 打包发布产物（安装目录、ZIP、外置索引）
 tools\build.cmd --package dist\VisionTools
 
-:: 在 MSVC x64 环境下透传任意命令
+:: 在 MSVC x64 环境下透传任意命令（直接跑 ctest 前需已构建 visiontools_tests）
+tools\build.cmd cmake --build build --target visiontools_tests
 tools\build.cmd ctest --test-dir build --output-on-failure
 ```

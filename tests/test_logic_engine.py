@@ -17,6 +17,11 @@ from logic.branch.tool import BranchTool  # noqa: E402
 from logic.common.engine import EngineError, Program  # noqa: E402
 from logic.expression.tool import ExpressionTool  # noqa: E402
 
+try:  # The host interpreter ships NumPy; the engine itself stays importable without it.
+    import numpy as np
+except ImportError:  # pragma: no cover - only a NumPy-free interpreter takes this branch
+    np = None
+
 
 def tables(variables, program):
     return ([
@@ -28,10 +33,14 @@ def tables(variables, program):
     ])
 
 
+def compile_program(variables, program, **kwargs):
+    variable_rows, program_rows = tables(variables, program)
+    return Program.from_tables(variable_rows, program_rows, **kwargs)
+
+
 class EngineSemantics(unittest.TestCase):
     def program(self, variables, program, **kwargs):
-        variable_rows, program_rows = tables(variables, program)
-        return Program.from_tables(variable_rows, program_rows, **kwargs)
+        return compile_program(variables, program, **kwargs)
 
     def test_true_and_floor_division(self):
         compiled = self.program([], [
@@ -142,6 +151,84 @@ class EngineSemantics(unittest.TestCase):
         self.assertIn("float32 可表示范围", str(context.exception))
         accepted = self.program([], [("p1", "value", "[1e30, -2.5]", "Array", "float32", 1, True)])
         self.assertEqual(accepted.evaluate({})["p1"], [1e30, -2.5])
+
+
+@unittest.skipIf(np is None, "需要 NumPy")
+class NumpyInputs(unittest.TestCase):
+    """A numeric host Array crosses into Python as an ndarray, so inputs must reach expressions as lists."""
+
+    def test_list_and_ndarray_inputs_agree(self):
+        program = compile_program([("p1", "values", "Array", "float64", 1, False)], [
+            ("p2", "average", "mean(values)", "Float", "", -1, True),
+            ("p3", "count", "len(values)", "Int", "", -1, True),
+        ])
+        as_list = program.evaluate({"p1": [2.0, 4.0]})
+        as_numpy = program.evaluate({"p1": np.array([2.0, 4.0], dtype=np.float64)})
+        self.assertEqual(as_list, as_numpy)
+        self.assertEqual(as_numpy["p2"], 3.0)
+
+    def test_rank_two_int32_input_is_normalised(self):
+        program = compile_program([("p1", "grid", "Array", "int32", 2, False)], [
+            ("p2", "rows", "len(grid)", "Int", "", -1, True),
+            ("p3", "first", "mean(grid[0])", "Float", "", -1, True),
+        ])
+        values = program.evaluate({"p1": np.array([[1, 2], [3, 4]], dtype=np.int32)})
+        self.assertEqual(values["p2"], 2)
+        self.assertEqual(values["p3"], 1.5)
+
+    def test_branch_tool_accepts_numpy_array(self):
+        tool = BranchTool()
+        variable_rows, program_rows = tables([("p1", "values", "Array", "float64", 1, False)], [
+            ("p2", "ok", "mean(values) > 2", "Bool", "", -1, False),
+        ])
+        self.assertEqual(tool.initialize({"variables": variable_rows, "program": program_rows})["code"], 0)
+        yes = tool.execute({"p1": np.array([2.0, 4.0], dtype=np.float64)})
+        self.assertEqual(yes["outputs"]["__status_code"], 0)
+        self.assertTrue(yes["outputs"]["on_true"])
+        self.assertFalse(yes["outputs"]["on_false"])
+
+    def test_declared_dtype_and_rank_are_enforced(self):
+        program = compile_program([("p1", "values", "Array", "float64", 1, False)], [
+            ("p2", "count", "len(values)", "Int", "", -1, True),
+        ])
+        with self.assertRaises(EngineError) as dtype_error:
+            program.evaluate({"p1": np.array([1.0], dtype=np.float32)})
+        self.assertIn("元素类型", str(dtype_error.exception))
+        with self.assertRaises(EngineError) as rank_error:
+            program.evaluate({"p1": np.array([[1.0]], dtype=np.float64)})
+        self.assertIn("维度", str(rank_error.exception))
+
+    def test_budget_is_charged_before_conversion(self):
+        program = compile_program([
+            ("p1", "first", "Array", "int32", 1, False),
+            ("p2", "second", "Array", "int32", 1, False),
+        ], [("p3", "count", "len(first) + len(second)", "Int", "", -1, True)])
+        with self.assertRaises(EngineError) as context:
+            program.evaluate({"p1": np.zeros(60000, dtype=np.int32),
+                              "p2": np.zeros(60000, dtype=np.int32)})
+        self.assertIn("累计元素上限", str(context.exception))
+
+    def test_zero_leaf_shape_still_bounds_containers(self):
+        program = compile_program([("p1", "grid", "Array", "int32", 2, False)], [
+            ("p2", "rows", "len(grid)", "Int", "", -1, True),
+        ])
+        with self.assertRaises(EngineError) as context:
+            program.evaluate({"p1": np.zeros((200000, 0), dtype=np.int32)})
+        self.assertIn("容器数量", str(context.exception))
+
+    def test_non_finite_and_string_arrays_are_rejected(self):
+        numeric = compile_program([("p1", "values", "Array", "float64", 1, False)], [
+            ("p2", "count", "len(values)", "Int", "", -1, True),
+        ])
+        with self.assertRaises(EngineError) as context:
+            numeric.evaluate({"p1": np.array([np.nan], dtype=np.float64)})
+        self.assertIn("有限数值", str(context.exception))
+        strings = compile_program([("p1", "labels", "Array", "string", 1, False)], [
+            ("p2", "count", "len(labels)", "Int", "", -1, True),
+        ])
+        with self.assertRaises(EngineError) as string_error:
+            strings.evaluate({"p1": np.array(["a"], dtype="U1")})
+        self.assertIn("NumPy 字符串数组", str(string_error.exception))
 
 
 class ToolContracts(unittest.TestCase):
