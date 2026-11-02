@@ -249,7 +249,8 @@ class TestPythonToolContracts(unittest.TestCase):
         self.assertEqual(outputs(execute({"images": [], "mode": "copy"}))["images"], [])
         invalid = execute({"images": [source], "mode": "other"})
         self.assertEqual(status(invalid)["code"], 1003)
-        self.assertIsNone(outputs(invalid)["images"])
+        # The tool omits a port it never produced; the host materialises the declared default.
+        self.assertNotIn("images", outputs(invalid))
 
     def test_image_add_honours_upstream_status(self):
         declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一/图像加一.json").read_text(encoding="utf-8"))
@@ -258,7 +259,7 @@ class TestPythonToolContracts(unittest.TestCase):
         skipped = execute({"images": [source], "mode": "inplace", "upstream_status": 7})
         self.assertEqual(status(skipped)["code"], 7)
         self.assertEqual(status(skipped)["message"], "上游未选中本分支，工具未执行")
-        self.assertIsNone(outputs(skipped)["images"])
+        self.assertNotIn("images", outputs(skipped))
         self.assertTrue(np.array_equal(source, np.full((2, 3), 10, dtype=np.uint8)),
                         "a non-zero upstream status must not modify the source image")
         recovered = execute({"images": [source], "mode": "copy", "upstream_status": 0})
