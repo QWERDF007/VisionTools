@@ -8,8 +8,9 @@ one the tests exercise.
 The SDK mirrors the C++ ``visionrt/contracts/Parameters.h`` interface: an
 ``InputReader``/``OutputWriter`` pair owns the dict keys, and the tool keeps every
 business decision (upstream-status policy, missing inputs, in-place versus copy) in
-its own code. Values — ndarray images and native lists — are carried by reference;
-nothing is cloned while wrapping.
+its own code. Values — ndarray images, rectangular numeric arrays as ``numpy.ndarray``,
+ragged or string arrays as nested lists — are carried by reference; nothing is cloned
+while wrapping.
 
 The host contract this SDK relies on:
 
@@ -26,6 +27,18 @@ protocol: a functional tool returns them directly, and a class tool uses
 """
 
 from abc import ABC, abstractmethod
+
+try:  # NumPy carries rectangular numeric arrays; the host always embeds it with the interpreter.
+    import numpy as _numpy
+except ImportError:  # A tool that never reads a numeric array does not need it.
+    _numpy = None
+
+
+def _is_array(value):
+    """A declared array arrives as a NumPy ndarray when it is rectangular and numeric, and as a
+    nested list when it is ragged, holds strings, or was built from the readable nested form."""
+    return isinstance(value, list) or (_numpy is not None and isinstance(value, _numpy.ndarray))
+
 
 UPSTREAM_STATUS_PORT = "upstream_status"
 
@@ -121,8 +134,8 @@ class InputReader:
 
     def array(self, key):
         value = self._require(key)
-        if not isinstance(value, list):
-            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望列表）")
+        if not _is_array(value):
+            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望 ndarray 或列表）")
         return value
 
     def optional_integer(self, key):
@@ -161,8 +174,8 @@ class InputReader:
         value = self._find(key)
         if value is None:
             return None
-        if not isinstance(value, list):
-            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望列表）")
+        if not _is_array(value):
+            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望 ndarray 或列表）")
         return value
 
     # Raw access for ports a tool inspects without committing to one payload kind.

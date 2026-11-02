@@ -12,17 +12,17 @@ namespace {
 // Conservative pixel-center tolerance used by the shared geometry component.
 constexpr double kBoundaryTolerance = 0.5;
 
-bool pointInPolygon(const std::vector<double> &values, std::size_t offset, double x, double y)
+bool pointInPolygon(const visionrt::PolygonView &polygon, double x, double y)
 {
-    const std::size_t count = (values.size() - offset) / 2;
+    const std::size_t count = polygon.size();
     if (count < 3)
         return false;
     bool inside = false;
     for (std::size_t i = 0, j = count - 1; i < count; j = i++)
     {
-        const double xi = values[offset + i * 2], yi = values[offset + i * 2 + 1];
-        const double xj = values[offset + j * 2], yj = values[offset + j * 2 + 1];
-        if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi)
+        const auto a = polygon.point(j);
+        const auto b = polygon.point(i);
+        if ((b.y > y) != (a.y > y) && x < (a.x - b.x) * (y - b.y) / (a.y - b.y) + b.x)
             inside = !inside;
     }
     return inside;
@@ -50,15 +50,17 @@ std::vector<std::vector<Record>> groups(const visionrt::PortValue &value, std::s
         {
             if (record.empty())
                 fail(GeometryError::RoiOutOfImage, name + " 含空 ROI 记录");
-            const int kind = static_cast<int>(record.front());
-            if (kind < 0 || kind > 5)
-                fail(CommonToolError::InputOutOfRange, name + " 的 ROI kind 超出 0-5");
-            if (std::any_of(record.begin(), record.end(), [](double v) { return !std::isfinite(v); }))
-                fail(CommonToolError::InputOutOfRange, name + " 的 ROI 值必须有限");
-            Record decoded;
-            decoded.kind = static_cast<visionrt::RoiKind>(kind);
-            decoded.values.assign(record.begin() + 1, record.end());
-            result[image].push_back(std::move(decoded));
+            try
+            {
+                // One validation per region at the external entry; downstream code receives the
+                // record as an already-checked encoding and reads it through typed views.
+                (void)visionrt::RegionView(record);
+            }
+            catch (const visionrt::ContractError &error)
+            {
+                fail(CommonToolError::InputOutOfRange, name + " 的 ROI 记录不合法：" + error.what());
+            }
+            result[image].push_back(record);
         }
     }
     return result;
@@ -70,44 +72,34 @@ bool anyRecord(const std::vector<std::vector<Record>> &records) noexcept
                        [](const auto &image) { return !image.empty(); });
 }
 
-std::vector<double> encoded(const Record &record)
-{
-    std::vector<double> result;
-    result.reserve(record.values.size() + 1);
-    result.push_back(static_cast<double>(record.kind));
-    result.insert(result.end(), record.values.begin(), record.values.end());
-    return result;
-}
-
 bool contains(const Record &record, double currentX, double currentY, const geometry::Alignment &toReference)
 {
-    double x = 0, y = 0;
+    const auto view = visionrt::RegionView(record);
+    double     x = 0, y = 0;
     toReference.apply(currentX, currentY, x, y);
-    switch (record.kind)
+    switch (view.kind())
     {
     case visionrt::RoiKind::Rectangle:
     {
-        if (record.values.size() != 5)
-            fail(GeometryError::RoiOutOfImage, "矩形 ROI 需要 5 个值");
-        const double cx = record.values[0] + record.values[2] / 2.0;
-        const double cy = record.values[1] + record.values[3] / 2.0;
-        const double angle = record.values[4] * 3.14159265358979323846 / 180.0;
-        const double cos   = std::cos(angle), sin = std::sin(angle);
-        const double dx    = x - cx, dy = y - cy;
+        const auto   rectangle = view.rectangle();
+        const double angle     = rectangle.angle() * 3.14159265358979323846 / 180.0;
+        const double cos       = std::cos(angle), sin = std::sin(angle);
+        const auto   center    = rectangle.center();
+        const double dx = x - center.x, dy = y - center.y;
         const double localX = dx * cos + dy * sin;
         const double localY = -dx * sin + dy * cos;
-        return std::abs(localX) <= record.values[2] / 2.0 + kBoundaryTolerance
-            && std::abs(localY) <= record.values[3] / 2.0 + kBoundaryTolerance;
+        return std::abs(localX) <= rectangle.width() / 2.0 + kBoundaryTolerance
+            && std::abs(localY) <= rectangle.height() / 2.0 + kBoundaryTolerance;
     }
     case visionrt::RoiKind::Circle:
     {
-        if (record.values.size() != 3)
-            fail(GeometryError::RoiOutOfImage, "圆 ROI 需要 3 个值");
-        const double dx = x - record.values[0], dy = y - record.values[1];
-        return std::sqrt(dx * dx + dy * dy) <= record.values[2] + kBoundaryTolerance;
+        const auto   circle = view.circle();
+        const auto   center = circle.center();
+        const double dx = x - center.x, dy = y - center.y;
+        return std::sqrt(dx * dx + dy * dy) <= circle.radius() + kBoundaryTolerance;
     }
     case visionrt::RoiKind::Polygon:
-        return pointInPolygon(record.values, 0, x, y);
+        return pointInPolygon(view.polygon(), x, y);
     default:
         fail(CommonToolError::InputTypeMismatch, "面积选择只接受旋转矩形、圆和多边形 ROI");
     }
@@ -136,34 +128,33 @@ cv::Mat regionMask(const std::vector<Record> &records, cv::Size size, const geom
             maxX = std::max(maxX, x);
             maxY = std::max(maxY, y);
         };
-        switch (record.kind)
+        const auto view = visionrt::RegionView(record);
+        switch (view.kind())
         {
         case visionrt::RoiKind::Rectangle:
-        {
-            const double angle = record.values[4] * 3.14159265358979323846 / 180.0;
-            const double cx    = record.values[0] + record.values[2] / 2.0;
-            const double cy    = record.values[1] + record.values[3] / 2.0;
-            const double cos = std::cos(angle), sin = std::sin(angle);
-            for (const auto &[sx, sy] : {std::pair{-0.5, -0.5}, std::pair{0.5, -0.5}, std::pair{0.5, 0.5},
-                                         std::pair{-0.5, 0.5}})
-            {
-                const double localX = record.values[2] * sx, localY = record.values[3] * sy;
-                extend(cx + localX * cos - localY * sin, cy + localX * sin + localY * cos);
-            }
+            for (const auto &corner : view.rectangle().corners()) extend(corner.x, corner.y);
             break;
-        }
         case visionrt::RoiKind::Circle:
         {
-            const double radius = record.values[2];
-            for (const auto &[dx, dy] : {std::pair{-1.0, -1.0}, std::pair{1.0, -1.0}, std::pair{1.0, 1.0},
-                                         std::pair{-1.0, 1.0}})
-                extend(record.values[0] + dx * radius, record.values[1] + dy * radius);
+            const auto   circle = view.circle();
+            const auto   center = circle.center();
+            const double radius = circle.radius();
+            extend(center.x - radius, center.y - radius);
+            extend(center.x + radius, center.y - radius);
+            extend(center.x + radius, center.y + radius);
+            extend(center.x - radius, center.y + radius);
             break;
         }
         case visionrt::RoiKind::Polygon:
-            for (std::size_t index = 0; index + 1 < record.values.size(); index += 2)
-                extend(record.values[index], record.values[index + 1]);
+        {
+            const auto polygon = view.polygon();
+            for (std::size_t index = 0; index < polygon.size(); ++index)
+            {
+                const auto point = polygon.point(index);
+                extend(point.x, point.y);
+            }
             break;
+        }
         default:
             fail(CommonToolError::InputTypeMismatch, "面积选择只接受旋转矩形、圆和多边形 ROI");
         }
@@ -183,14 +174,7 @@ visionrt::ROI toRoi(std::vector<std::vector<Record>> records)
 {
     visionrt::ROI result;
     result.reserve(records.size());
-    for (auto &image : records)
-    {
-        std::vector<std::vector<double>> encodedGroup;
-        encodedGroup.reserve(image.size());
-        for (const auto &record : image)
-            encodedGroup.push_back(encoded(record));
-        result.push_back(std::move(encodedGroup));
-    }
+    for (auto &image : records) result.push_back(std::move(image));
     return result;
 }
 
@@ -201,35 +185,27 @@ visionrt::PortValue roiValue(std::vector<std::vector<Record>> records)
 
 Record point(double x, double y)
 {
-    return Record{visionrt::RoiKind::Point, {x, y}};
+    return visionrt::makePoint(x, y);
 }
 
 Record circle(double centerX, double centerY, double radius)
 {
-    return Record{visionrt::RoiKind::Circle, {centerX, centerY, radius}};
+    return visionrt::makeCircle({centerX, centerY}, radius);
 }
 
 Record rectangle(double centerX, double centerY, double width, double height, double angleDegrees)
 {
-    return Record{visionrt::RoiKind::Rectangle,
-                  {centerX - width / 2.0, centerY - height / 2.0, width, height, angleDegrees}};
+    return visionrt::makeRectangle(centerX - width / 2.0, centerY - height / 2.0, width, height, angleDegrees);
 }
 
 Record segmentValue(double x1, double y1, double x2, double y2)
 {
-    return Record{visionrt::RoiKind::Segment, {x1, y1, x2, y2}};
+    return visionrt::makeSegment({x1, y1}, {x2, y2});
 }
 
 Record pointSet(std::vector<cv::Point2d> values)
 {
-    Record record;
-    record.kind = visionrt::RoiKind::PointSet;
-    record.values.reserve(values.size() * 2);
-    for (const auto &value : values)
-    {
-        record.values.push_back(value.x);
-        record.values.push_back(value.y);
-    }
-    return record;
+    return visionrt::makePointSet(values);
 }
+
 } // namespace visiontools::roi

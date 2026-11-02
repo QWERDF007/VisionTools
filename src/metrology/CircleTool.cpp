@@ -51,19 +51,19 @@ void inRange(double value, double minimum, double maximum, std::string_view id)
 template<class T>
 visionrt::Array array1(std::vector<T> values)
 {
-    return visionrt::Array(visionrt::DataRef<std::vector<T>>(std::move(values)));
+    return visionrt::Array::fromNested(std::move(values));
 }
 
 template<class T>
 visionrt::Array array2(std::vector<std::vector<T>> values)
 {
-    return visionrt::Array(visionrt::DataRef<std::vector<std::vector<T>>>(std::move(values)));
+    return visionrt::Array::fromNested(std::move(values));
 }
 
 template<class T>
 visionrt::Array array3(std::vector<std::vector<std::vector<T>>> values)
 {
-    return visionrt::Array(visionrt::DataRef<std::vector<std::vector<std::vector<T>>>>(std::move(values)));
+    return visionrt::Array::fromNested(std::move(values));
 }
 } // namespace
 
@@ -167,13 +167,22 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
             for (std::size_t index = 0; index < records[image].size(); ++index)
             {
                 const auto &record = records[image][index];
-                if (record.kind != visionrt::RoiKind::Circle || record.values.size() != 3)
-                    fail(MetrologyError::RoiKindMismatch, "第 " + std::to_string(index + 1) + " 个 ROI 必须是 kind=3 的圆");
-                if (!(record.values[2] > 0.0))
+                visionrt::CircleView circle;
+                try
+                {
+                    circle = visionrt::RegionView(record).circle();
+                }
+                catch (const visionrt::ContractError &)
+                {
+                    fail(MetrologyError::RoiKindMismatch,
+                         "第 " + std::to_string(index + 1) + " 个 ROI 必须是 kind=3 的圆");
+                }
+                if (!(circle.radius() > 0.0))
                     fail(MetrologyError::RoiKindMismatch, "第 " + std::to_string(index + 1) + " 个圆 ROI 半径必须为正");
-                double centerX = 0, centerY = 0;
-                matrix.apply(record.values[0], record.values[1], centerX, centerY);
-                const double radius = record.values[2] * scale;
+                const auto   center = circle.center();
+                double       centerX = 0, centerY = 0;
+                matrix.apply(center.x, center.y, centerX, centerY);
+                const double radius = circle.radius() * scale;
                 if (!(radius > options.searchHalfWidth))
                     fail(CommonToolError::InputOutOfRange,
                          "第 " + std::to_string(index + 1) + " 个圆 ROI 名义半径必须大于搜索半宽");

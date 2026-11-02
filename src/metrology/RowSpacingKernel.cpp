@@ -18,10 +18,17 @@ bool insideImage(const cv::Point2d &point, cv::Size size)
 RowMeasurement measureRowRect(const cv::Mat &gray, const roi::Record &rectangle, const RowOptions &options)
 {
     RowMeasurement result;
-    if (rectangle.kind != visionrt::RoiKind::Rectangle || rectangle.values.size() != 5)
+    visionrt::RectangleView view;
+    try
+    {
+        view = visionrt::RegionView(rectangle).rectangle();
+    }
+    catch (const visionrt::ContractError &)
+    {
         throw visionrt::ContractError("行间距测量要求每个 ROI 为 kind=2 的旋转矩形");
-    const double width  = rectangle.values[2];
-    const double height = rectangle.values[3];
+    }
+    const double width  = view.width();
+    const double height = view.height();
     if (!(width > 0.0) || !(height > 0.0))
         throw visionrt::ContractError("行间距 ROI 宽度和高度必须为正");
     if (width < 4.0 || height < 1.0)
@@ -29,9 +36,8 @@ RowMeasurement measureRowRect(const cv::Mat &gray, const roi::Record &rectangle,
         result.reason = "ROI 宽高不足以支持滤波";
         return result;
     }
-    const double angle = rectangle.values[4] * kPi / 180.0;
-    const auto   center
-        = cv::Point2d{rectangle.values[0] + width / 2.0, rectangle.values[1] + height / 2.0};
+    const double angle = view.angle() * kPi / 180.0;
+    const auto   center = view.center();
     const auto direction = cv::Point2d{std::cos(angle), std::sin(angle)};
     const auto normal    = cv::Point2d{-std::sin(angle), std::cos(angle)};
 

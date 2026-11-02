@@ -426,7 +426,7 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             const auto detections = postprocess(heads, geometry, parameters, trace ? &trace->candidates : nullptr);
             if (trace)
                 trace->detections = detections;
-            std::vector<std::vector<double>> imageRois;
+            visionrt::RegionGroup imageRois;
             std::vector<float>        imageScores;
             std::vector<std::int64_t> imageClasses;
             std::vector<std::string>  imageNames;
@@ -438,8 +438,9 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             for (const auto &detection : detections)
             {
                 const auto &box = detection.box;
-                imageRois.push_back({2, static_cast<double>(box.x1), static_cast<double>(box.y1),
-                                     static_cast<double>(box.x2) - box.x1, static_cast<double>(box.y2) - box.y1, 0});
+                imageRois.push_back(visionrt::makeRectangle(static_cast<double>(box.x1), static_cast<double>(box.y1),
+                                                            static_cast<double>(box.x2) - box.x1,
+                                                            static_cast<double>(box.y2) - box.y1));
                 imageScores.push_back(detection.score);
                 imageClasses.push_back(detection.classId);
                 imageNames.push_back(state.names[static_cast<std::size_t>(detection.classId)]);
@@ -451,9 +452,9 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
         }
         return toolResult({{yolo_ports::out::IMAGES, images},
                            {yolo_ports::out::ROIS, DataRef<ROI>(std::move(rois))},
-                           {yolo_ports::out::SCORES, Array(std::move(scores))},
-                           {yolo_ports::out::CLASSES, Array(std::move(classes))},
-                           {yolo_ports::out::CLASS_NAMES, Array(std::move(names))}},
+                           {yolo_ports::out::SCORES, Array::fromNested(std::move(scores))},
+                           {yolo_ports::out::CLASSES, Array::fromNested(std::move(classes))},
+                           {yolo_ports::out::CLASS_NAMES, Array::fromNested(std::move(names))}},
                           executionSuccess());
     }
     catch (const visiontools::ToolFailure &error)

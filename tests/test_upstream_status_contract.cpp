@@ -70,7 +70,7 @@ void unselectedBranchDoesNothing()
          {"gain", 2.0},
          {"offset", 0.0},
          {"rois", DataRef<ROI>(ROI{})},
-         {"alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{}))},
+         {"alignment", Array::fromNested(NestedVector<double, 3>{})},
          {"emit_mask", false},
          {"upstream_status", std::int64_t{-3}}};
     const auto brightness = runBrightness(brightnessInputs, {"images", "applied_mask"});
@@ -102,7 +102,7 @@ void unselectedBranchStillValidatesItsContract()
                   {"gain", 1.0},
                   {"offset", 0.0},
                   {"rois", DataRef<ROI>(ROI{})},
-                  {"alignment", Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{}))},
+                  {"alignment", Array::fromNested(NestedVector<double, 3>{})},
                   {"emit_mask", false},
                   {"upstream_status", std::int64_t{0}}};
     const auto result = runBrightness(inputs, {"images", "applied_mask"});

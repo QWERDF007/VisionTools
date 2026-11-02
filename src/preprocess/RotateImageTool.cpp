@@ -37,7 +37,7 @@ std::optional<cv::Point2d> requestedCenter(const visionrt::Values &inputs)
     const auto *array = std::get_if<visionrt::Array>(&found->second);
     if (!array || array->type() != visionrt::TypeSpec{visionrt::Type::Array, visionrt::DType::Float64, 1})
         fail(CommonToolError::InputTypeMismatch, std::string(p::in::CENTER) + " 必须是 Array(float64, rank=1)");
-    const auto &values = array->get<visionrt::NestedVector<double, 1>>();
+    const auto values = array->elements<double>();
     if (values.empty())
         return std::nullopt;
     if (values.size() != 2)

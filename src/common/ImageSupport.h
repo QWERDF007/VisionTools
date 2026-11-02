@@ -64,7 +64,7 @@ inline cv::Scalar borderScalar(const visionrt::PortValue &value, int channels, i
     const auto *array = std::get_if<visionrt::Array>(&value);
     if (!array || array->type() != visionrt::TypeSpec{visionrt::Type::Array, visionrt::DType::Float64, 1})
         fail(CommonToolError::InputTypeMismatch, "border_value 必须是 Array(float64, rank=1)");
-    const auto &values = array->get<visionrt::NestedVector<double, 1>>();
+    const auto values = array->elements<double>();
     if (values.size() != 1 && values.size() != static_cast<std::size_t>(channels))
         fail(CommonToolError::InputOutOfRange, "border_value 长度必须为 1 或图像通道数");
     const auto [minimum, maximum] = requireDepthRange(depth);

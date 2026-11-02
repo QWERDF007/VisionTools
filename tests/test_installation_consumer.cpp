@@ -258,10 +258,10 @@ int main(int argc, char **argv)
         inputs.emplace("rois", visionrt::DataRef<visionrt::ROI>(visionrt::ROI{
                                    {roi, roi}
         }));
-        inputs.emplace("scores", visionrt::Array(std::vector<std::vector<float>>{scores}));
-        inputs.emplace("classes", visionrt::Array(std::vector<std::vector<std::int64_t>>{classes}));
-        inputs.emplace("class_names", visionrt::Array(std::vector<std::vector<std::string>>{names}));
-        inputs.emplace("allowed_classes", visionrt::Array(std::move(allowed)));
+        inputs.emplace("scores", visionrt::Array::fromNested(std::vector<std::vector<float>>{scores}));
+        inputs.emplace("classes", visionrt::Array::fromNested(std::vector<std::vector<std::int64_t>>{classes}));
+        inputs.emplace("class_names", visionrt::Array::fromNested(std::vector<std::vector<std::string>>{names}));
+        inputs.emplace("allowed_classes", visionrt::Array::fromNested(std::move(allowed)));
         inputs.emplace("min_score", 0.5);
         inputs.emplace("min_area", 0.0);
 
@@ -375,7 +375,8 @@ int main(int argc, char **argv)
 
         REQUIRE(testview::status(res).code == 0, "Image read execution must succeed");
         REQUIRE(testview::status(res).message == "运行成功", "Image read success message must be shared");
-        const auto &paths = std::get<visionrt::Array>(res.outputs.at("paths")).get<std::vector<std::string>>();
+        const auto paths = visionrt::nestedOf<std::vector<std::string>>(
+            std::get<visionrt::Array>(res.outputs.at("paths")));
         REQUIRE(paths[0].ends_with(utf8Path), "Image path must preserve Unicode UTF-8");
         const auto *batch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
         REQUIRE(batch && batch->get().size() == 1, "Must read 1 image");
@@ -398,14 +399,11 @@ int main(int argc, char **argv)
         visionrt::Values inputs;
         inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{cv::Mat(16, 16, CV_8UC1, cv::Scalar(7))}));
         inputs.emplace("angle_deg", 90.0);
-        inputs.emplace("center", visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 1>>(
-                                      visionrt::NestedVector<double, 1>{})));
+        inputs.emplace("center", visionrt::Array::fromNested(visionrt::NestedVector<double, 1>{}));
         inputs.emplace("canvas", std::string("keep"));
         inputs.emplace("interpolation", std::string("linear"));
-        inputs.emplace("border_value", visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 1>>(
-                                           visionrt::NestedVector<double, 1>{0.0})));
-        inputs.emplace("alignment", visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 3>>(
-                                        visionrt::NestedVector<double, 3>{})));
+        inputs.emplace("border_value", visionrt::Array::fromNested(visionrt::NestedVector<double, 1>{0.0}));
+        inputs.emplace("alignment", visionrt::Array::fromNested(visionrt::NestedVector<double, 3>{}));
         auto res = inst->execute(inputs);
         REQUIRE_ABI(testview::status(res).code == 0, "Execution of rotate must succeed");
         const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
@@ -426,8 +424,7 @@ int main(int argc, char **argv)
         inputs.emplace("offset", 0.0);
         inputs.emplace("rois", visionrt::DataRef<visionrt::ROI>(visionrt::ROI{}));
         inputs.emplace("mask", visionrt::Missing{});
-        inputs.emplace("alignment", visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 3>>(
-                                        visionrt::NestedVector<double, 3>{})));
+        inputs.emplace("alignment", visionrt::Array::fromNested(visionrt::NestedVector<double, 3>{}));
         inputs.emplace("emit_mask", false);
         auto res = inst->execute(inputs);
         REQUIRE_ABI(testview::status(res).code == 0, "Execution of brightness must succeed");

@@ -32,7 +32,7 @@ AssistRequest readRequest(const visionrt::Values &inputs)
     const auto *array = std::get_if<visionrt::Array>(&found->second);
     if (!array || array->type() != visionrt::TypeSpec{visionrt::Type::Array, visionrt::DType::Float64, 1})
         fail(CommonToolError::InputTypeMismatch, std::string(p::in::CURSOR) + " 必须是 Array(float64, rank=1)");
-    const auto &values = array->get<visionrt::NestedVector<double, 1>>();
+    const auto values = array->elements<double>();
     if (values.size() != 2 || !std::isfinite(values[0]) || !std::isfinite(values[1]))
         fail(CommonToolError::InputOutOfRange, std::string(p::in::CURSOR) + " 必须恰好包含两个有限像素坐标");
     request.cursor = {values[0], values[1]};

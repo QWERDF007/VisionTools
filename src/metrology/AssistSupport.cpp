@@ -27,9 +27,11 @@ roi::Record toReferenceCircle(const roi::Record &current, const geometry::Alignm
     const auto inverse = toReference.inverse();
     if (!inverse)
         throw visionrt::ContractError("alignment 线性部分必须可逆");
-    double x = 0, y = 0;
-    inverse->apply(current.values[0], current.values[1], x, y);
-    return roi::circle(x, y, current.values[2] / toReference.scale());
+    const auto circle = visionrt::RegionView(current).circle();
+    const auto center = circle.center();
+    double     x = 0, y = 0;
+    inverse->apply(center.x, center.y, x, y);
+    return roi::circle(x, y, circle.radius() / toReference.scale());
 }
 
 roi::Record toReferenceRectangle(const roi::Record &current, const geometry::Alignment &toReference)
@@ -37,14 +39,14 @@ roi::Record toReferenceRectangle(const roi::Record &current, const geometry::Ali
     const auto inverse = toReference.inverse();
     if (!inverse)
         throw visionrt::ContractError("alignment 线性部分必须可逆");
-    const double centerX = current.values[0] + current.values[2] / 2.0;
-    const double centerY = current.values[1] + current.values[3] / 2.0;
+    const auto   rectangle = visionrt::RegionView(current).rectangle();
+    const auto   center    = rectangle.center();
     double       x = 0, y = 0;
-    inverse->apply(centerX, centerY, x, y);
+    inverse->apply(center.x, center.y, x, y);
     const double rotation = std::atan2(toReference.m[3], toReference.m[0]) * 180.0 / kPi;
     const double scale    = toReference.scale();
-    return roi::rectangle(x, y, current.values[2] / scale, current.values[3] / scale,
-                          current.values[4] - rotation);
+    return roi::rectangle(x, y, rectangle.width() / scale, rectangle.height() / scale,
+                          rectangle.angle() - rotation);
 }
 
 double medianOffset(std::vector<double> values)
@@ -127,12 +129,20 @@ AssistResult assistCircle(const cv::Mat &gray, const AssistRequest &request)
     double                     seededRadius = 0;
     for (const auto &seed : request.seeds)
     {
-        if (seed.kind != visionrt::RoiKind::Circle || seed.values.size() != 3)
+        visionrt::CircleView circle;
+        try
+        {
+            circle = visionrt::RegionView(seed).circle();
+        }
+        catch (const visionrt::ContractError &)
+        {
             continue;
-        double x = 0, y = 0;
-        request.alignment.apply(seed.values[0], seed.values[1], x, y);
+        }
+        const auto center = circle.center();
+        double     x = 0, y = 0;
+        request.alignment.apply(center.x, center.y, x, y);
         seededCenter = cv::Point2d{x, y};
-        seededRadius = seed.values[2] * request.alignment.scale();
+        seededRadius = circle.radius() * request.alignment.scale();
         break;
     }
 

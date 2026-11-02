@@ -51,4 +51,24 @@ inline std::size_t businessCount(const visionrt::ToolResult &result)
     return count;
 }
 
+// Runs an execution the contract cannot satisfy. Such a run has no tool answer, so the failure
+// surfaces as the exception the host turns into a diagnostic; this returns that message.
+template<class Instance>
+std::string executionFailure(Instance &instance, visionrt::Values inputs = {})
+{
+    try
+    {
+        instance.execute(inputs);
+    }
+    catch (const std::exception &error)
+    {
+        return error.what();
+    }
+    return {};
+}
+
 } // namespace testview
+
+// Reading several outputs of one run is the common case in these tests, so the readable nested form
+// of an Array stays visible unqualified next to the fixture code instead of repeated on every line.
+using visionrt::nestedOf;

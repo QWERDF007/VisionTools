@@ -41,6 +41,28 @@ visionrt::Values missingOutputs()
 }
 } // namespace
 
+namespace {
+std::size_t rowCount(const visionrt::Array &array)
+{
+    if (array.layout() == visionrt::ArrayLayout::Dense)
+        return array.shape().empty() ? 0 : static_cast<std::size_t>(array.shape()[0]);
+    return array.offsets().empty() ? 0 : static_cast<std::size_t>(array.offsets()[0].size() - 1);
+}
+
+template<class T>
+std::span<const T> rowOf(const visionrt::Array &array, std::size_t row)
+{
+    if (array.layout() == visionrt::ArrayLayout::Dense)
+    {
+        const auto columns = array.shape().size() > 1 ? static_cast<std::size_t>(array.shape()[1]) : 0;
+        return array.elements<T>().subspan(row * columns, columns);
+    }
+    const auto &bounds = array.offsets()[0];
+    return array.elements<T>().subspan(static_cast<std::size_t>(bounds[row]),
+                                       static_cast<std::size_t>(bounds[row + 1] - bounds[row]));
+}
+} // namespace
+
 visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs)
 {
     // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
@@ -49,10 +71,10 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
     Readings   readings(inputs);
     const auto images       = readings.image(p::in::IMAGES);
     const auto roisRef      = readings.roi(p::in::ROIS);
-    const auto scoresRef    = readings.array<visionrt::NestedVector<float, 2>>(p::in::SCORES);
-    const auto classesRef   = readings.array<visionrt::NestedVector<std::int64_t, 2>>(p::in::CLASSES);
-    const auto namesRef     = readings.array<visionrt::NestedVector<std::string, 2>>(p::in::CLASS_NAMES);
-    const auto allowedRef   = readings.array<std::vector<std::int64_t>>(p::in::ALLOWED_CLASSES);
+    const auto scoresRef    = readings.array(p::in::SCORES);
+    const auto classesRef   = readings.array(p::in::CLASSES);
+    const auto namesRef     = readings.array(p::in::CLASS_NAMES);
+    const auto allowedRef   = readings.array(p::in::ALLOWED_CLASSES);
     const auto minimumScore = readings.real(p::in::MIN_SCORE);
     const auto minimumArea  = readings.real(p::in::MIN_AREA);
     if (readings.failed())
@@ -65,18 +87,18 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
                        std::string(p::in::MIN_AREA) + " 必须为非负有限数值，实际值：" + std::to_string(minimumArea));
 
-    const auto &rois    = roisRef.get();
-    const auto &scores  = scoresRef.get();
-    const auto &classes = classesRef.get();
-    const auto &names   = namesRef.get();
-    const auto &allowed = allowedRef.get();
-    const auto batchSize = images.get().size();
-    if (rois.size() != batchSize || scores.size() != batchSize || classes.size() != batchSize
-        || names.size() != batchSize)
+    const auto &rois      = roisRef.get();
+    const auto &scores    = scoresRef;
+    const auto &classes   = classesRef;
+    const auto &names     = namesRef;
+    const auto  allowed   = allowedRef.elements<std::int64_t>();
+    const auto  batchSize = images.get().size();
+    if (rois.size() != batchSize || rowCount(scores) != batchSize || rowCount(classes) != batchSize
+        || rowCount(names) != batchSize)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
                        "检测批次长度不一致：images=" + std::to_string(batchSize) + "，rois=" + std::to_string(rois.size())
-                           + "，scores=" + std::to_string(scores.size()) + "，classes=" + std::to_string(classes.size())
-                           + "，class_names=" + std::to_string(names.size()));
+                           + "，scores=" + std::to_string(rowCount(scores)) + "，classes=" + std::to_string(rowCount(classes))
+                           + "，class_names=" + std::to_string(rowCount(names)));
     try
     {
 
@@ -94,9 +116,9 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
         for (std::size_t batch = 0; batch < batchSize; ++batch)
         {
             const auto &imageRois    = rois[batch];
-            const auto &imageScores  = scores[batch];
-            const auto &imageClasses = classes[batch];
-            const auto &imageNames   = names[batch];
+            const auto  imageScores  = rowOf<float>(scores, batch);
+            const auto  imageClasses = rowOf<std::int64_t>(classes, batch);
+            const auto  imageNames   = rowOf<std::string>(names, batch);
             if (imageScores.size() != imageRois.size() || imageClasses.size() != imageRois.size()
                 || imageNames.size() != imageRois.size())
                 fail(CommonToolError::InputOutOfRange,
@@ -119,12 +141,18 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
                     fail(CommonToolError::InputOutOfRange,
                          "批次索引 " + std::to_string(batch) + " 的检测索引 " + std::to_string(detection)
                              + " 的得分或类别无效");
-                if (visionrt::roiKind(imageRois[detection]) != visionrt::RoiKind::Rectangle)
+                visionrt::RectangleView rectangle;
+                try
+                {
+                    rectangle = visionrt::RegionView(imageRois[detection]).rectangle();
+                }
+                catch (const visionrt::ContractError &)
+                {
                     fail(CommonToolError::InputTypeMismatch,
                          "批次索引 " + std::to_string(batch) + " 的检测索引 " + std::to_string(detection)
                              + " 的 ROI 必须是矩形");
-                const auto  &encoded = imageRois[detection];
-                const double area    = encoded[3] * encoded[4];
+                }
+                const double area = rectangle.width() * rectangle.height();
                 const bool   classAllowed
                     = allowed.empty()
                    || std::find(allowed.begin(), allowed.end(), imageClasses[detection]) != allowed.end();
@@ -142,10 +170,10 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
         visionrt::Values outputs;
         outputs.emplace(p::out::IMAGES, images);
         outputs.emplace(p::out::ROIS, visionrt::DataRef<visionrt::ROI>(std::move(filteredRois)));
-        outputs.emplace(p::out::SCORES, visionrt::Array(std::move(filteredScores)));
-        outputs.emplace(p::out::CLASSES, visionrt::Array(std::move(filteredClasses)));
-        outputs.emplace(p::out::CLASS_NAMES, visionrt::Array(std::move(filteredNames)));
-        outputs.emplace(p::out::COUNTS, visionrt::Array(std::move(counts)));
+        outputs.emplace(p::out::SCORES, visionrt::Array::fromNested(std::move(filteredScores)));
+        outputs.emplace(p::out::CLASSES, visionrt::Array::fromNested(std::move(filteredClasses)));
+        outputs.emplace(p::out::CLASS_NAMES, visionrt::Array::fromNested(std::move(filteredNames)));
+        outputs.emplace(p::out::COUNTS, visionrt::Array::fromNested(std::move(counts)));
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &)

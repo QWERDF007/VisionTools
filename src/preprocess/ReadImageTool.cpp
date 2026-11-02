@@ -122,7 +122,7 @@ void ReadImageOutputs::writeFields(visionrt::OutputWriter &writer)
     }
     writer.optionalImage(p::out::IMAGES, images);
     if (paths)
-        writer.array(p::out::PATHS, *paths);
+        writer.array(p::out::PATHS, visionrt::Array::fromNested(paths->get()));
     else
         writer.missing(p::out::PATHS);
     writer.integer(p::out::CURRENT_INDEX, currentIndex);

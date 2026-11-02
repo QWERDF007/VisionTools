@@ -131,16 +131,14 @@ public:
         return take(reader_.nullableRoi(id));
     }
 
-    template<class T>
-    visionrt::DataRef<T> array(std::string_view id)
+    visionrt::Array array(std::string_view id)
     {
-        return take(reader_.template array<T>(id));
+        return take(reader_.array(id));
     }
 
-    template<class T>
-    std::optional<visionrt::DataRef<T>> nullableArray(std::string_view id)
+    std::optional<visionrt::Array> nullableArray(std::string_view id)
     {
-        return take(reader_.template nullableArray<T>(id));
+        return take(reader_.nullableArray(id));
     }
 
     // The first failed read, or nothing when every read succeeded.

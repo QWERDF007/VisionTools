@@ -95,13 +95,13 @@ int main()
                 Values values = inputs;
                 values.emplace(rotate_ports::in::ANGLE_DEG, 90.0);
                 values.emplace(rotate_ports::in::CENTER,
-                               Array(DataRef<NestedVector<double, 1>>(NestedVector<double, 1>{})));
+                               Array::fromNested(NestedVector<double, 1>{}));
                 values.emplace(rotate_ports::in::CANVAS, std::string("keep"));
                 values.emplace(rotate_ports::in::INTERPOLATION, std::string("nearest"));
                 values.emplace(rotate_ports::in::BORDER_VALUE,
-                               Array(DataRef<NestedVector<double, 1>>(NestedVector<double, 1>{0.0})));
+                               Array::fromNested(NestedVector<double, 1>{0.0}));
                 values.emplace(rotate_ports::in::ALIGNMENT,
-                               Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{})));
+                               Array::fromNested(NestedVector<double, 3>{}));
                 return tool.execute(values);
             };
             requireSelfContained("rotate must return pixels it owns", run, image);
@@ -117,7 +117,7 @@ int main()
                 values.emplace(bright_ports::in::OFFSET, 0.0);
                 values.emplace(bright_ports::in::ROIS, DataRef<ROI>(ROI{}));
                 values.emplace(bright_ports::in::ALIGNMENT,
-                               Array(DataRef<NestedVector<double, 3>>(NestedVector<double, 3>{})));
+                               Array::fromNested(NestedVector<double, 3>{}));
                 values.emplace(bright_ports::in::EMIT_MASK, false);
                 return brightnessTool(values, ToolServices{});
             };

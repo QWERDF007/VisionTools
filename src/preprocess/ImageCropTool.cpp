@@ -85,14 +85,17 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
                                     readings.status(ImageCropError::RoiStructure, CommonToolError::InputTypeMismatch));
 
     const auto &groups = rectangleValue.get();
-    if (groups.size() != 1 || groups[0].size() != 1 || groups[0][0][0] != 2)
+    if (groups.size() != 1 || groups[0].size() != 1)
         return failure(missingOutputs(), ImageCropError::RoiStructure,
                        std::string(p::in::RECT) + " 必须包含一组一个矩形 ROI");
-    const auto &rectangle = groups[0][0];
+    const auto region = visionrt::RegionView(groups[0][0]);
+    if (region.kind() != visionrt::RoiKind::Rectangle)
+        return failure(missingOutputs(), ImageCropError::RoiStructure,
+                       std::string(p::in::RECT) + " 必须包含一组一个矩形 ROI");
     std::array<cv::Point2d, 4> corners;
     try
     {
-        corners = visionrt::rectangleCorners(rectangle);
+        corners = region.rectangle().corners();
     }
     catch (const std::exception &error)
     {
@@ -117,7 +120,7 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
                         <= 32 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(value))
                      ? nearest : value;
         };
-        const bool   axisAligned = std::remainder(static_cast<double>(rectangle[5]), 360.0) == 0.0;
+        const bool   axisAligned = std::remainder(region.rectangle().angle(), 360.0) == 0.0;
         const double epsilon = 32 * std::numeric_limits<double>::epsilon()
                              * std::max({1.0, std::abs(minimumX), std::abs(minimumY), std::abs(maximumX), std::abs(maximumY)});
         visionrt::Image                   output;
@@ -186,7 +189,7 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
         }
         visionrt::Values results;
         results.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(std::move(output), std::move(outputOwners)));
-        results.emplace(p::out::ORIGINS, visionrt::Array(std::move(origins)));
+        results.emplace(p::out::ORIGINS, visionrt::Array::fromNested(std::move(origins)));
         return visionrt::toolResult(std::move(results), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &)

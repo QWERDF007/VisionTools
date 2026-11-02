@@ -12,7 +12,7 @@ int main()
 try
 {
     using namespace visionrt;
-    static_assert(MODULE_ABI_MAJOR == 7);
+    static_assert(MODULE_ABI_MAJOR == 8);
     const auto *api = visiontoolsModuleApi();
     assert(api && api->abi_major == MODULE_ABI_MAJOR);
     TestRegistry registry;
@@ -49,7 +49,7 @@ try
         assert(images[0].step[0] == 4 && images[0].cols == 2 && images[0].rows == 2);
         const auto &origins = std::get<Array>(result.outputs.at("origins"));
         assert((origins.type() == TypeSpec{Type::Array, DType::Float64, 2}));
-        assert((origins.get<NestedVector<double, 2>>()
+        assert((nestedOf<NestedVector<double, 2>>(origins)
                 == NestedVector<double, 2>{
                     {1, 0},
                     {1, 0}

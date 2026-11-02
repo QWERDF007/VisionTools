@@ -20,6 +20,8 @@ INVALID_INPUT = 1002
 
 def _check_batch(images):
     """Returns the first unusable image as a readable sentence, or None for a valid batch."""
+    if not isinstance(images, (list, tuple)):
+        return f"输入端口 'images' 需要图像批次列表，实际 {type(images).__name__}"
     for index, image in enumerate(images):
         if not isinstance(image, np.ndarray):
             return (f"输入端口 'images' 批次索引 {index} 需要 NumPy ndarray，"

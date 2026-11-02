@@ -21,10 +21,10 @@ Values detectionInputs()
     inputs.emplace(filter_ports::in::ROIS, DataRef<ROI>(ROI{
                                                {roi, roi}
     }));
-    inputs.emplace(filter_ports::in::SCORES, Array(std::vector<std::vector<float>>{scores}));
-    inputs.emplace(filter_ports::in::CLASSES, Array(std::vector<std::vector<std::int64_t>>{classes}));
-    inputs.emplace(filter_ports::in::CLASS_NAMES, Array(std::vector<std::vector<std::string>>{names}));
-    inputs.emplace(filter_ports::in::ALLOWED_CLASSES, Array(std::vector<std::int64_t>{1, 2}));
+    inputs.emplace(filter_ports::in::SCORES, Array::fromNested(std::vector<std::vector<float>>{scores}));
+    inputs.emplace(filter_ports::in::CLASSES, Array::fromNested(std::vector<std::vector<std::int64_t>>{classes}));
+    inputs.emplace(filter_ports::in::CLASS_NAMES, Array::fromNested(std::vector<std::vector<std::string>>{names}));
+    inputs.emplace(filter_ports::in::ALLOWED_CLASSES, Array::fromNested(std::vector<std::int64_t>{1, 2}));
     inputs.emplace(filter_ports::in::MIN_SCORE, 0.5);
     inputs.emplace(filter_ports::in::MIN_AREA, 0.0);
     return inputs;
@@ -82,18 +82,18 @@ void testDetectionFilterTool()
         requireSuccess(res, "Filter must succeed");
         const auto *rois = std::get_if<DataRef<ROI>>(&res.outputs[filter_ports::out::ROIS]);
         REQUIRE(rois != nullptr && rois->get()[0].size() == 1, "Only score >= 0.5 passes");
-        const auto counts = std::get<Array>(res.outputs[filter_ports::out::COUNTS]).get<std::vector<std::int64_t>>();
+        const auto counts = nestedOf<std::vector<std::int64_t>>(std::get<Array>(res.outputs[filter_ports::out::COUNTS]));
         REQUIRE(counts[0] == 1, "Counts must report the filtered count");
     }
     {
         auto inputs = detectionInputs();
-        inputs.insert_or_assign(filter_ports::in::ALLOWED_CLASSES, Array(std::vector<std::int64_t>{1}));
+        inputs.insert_or_assign(filter_ports::in::ALLOWED_CLASSES, Array::fromNested(std::vector<std::int64_t>{1}));
         auto res = tool.execute(inputs);
         requireSuccess(res, "Allowed-class filter must succeed");
         const auto *rois = std::get_if<DataRef<ROI>>(&res.outputs[filter_ports::out::ROIS]);
         REQUIRE(rois->get()[0].size() == 1, "Only the allowed class passes");
-        const auto names = std::get<Array>(res.outputs[filter_ports::out::CLASS_NAMES])
-                               .get<std::vector<std::vector<std::string>>>()[0];
+        const auto names = nestedOf<std::vector<std::vector<std::string>>>(
+            std::get<Array>(res.outputs[filter_ports::out::CLASS_NAMES]))[0];
         REQUIRE(names[0] == "cat", "Filtered class name must be retained");
     }
     {
@@ -101,9 +101,9 @@ void testDetectionFilterTool()
         std::vector<float>        one      = {0.5F};
         std::vector<std::int64_t> oneClass = {1};
         std::vector<std::string>  oneName  = {"cat"};
-        inputs.insert_or_assign(filter_ports::in::SCORES, Array(std::vector<std::vector<float>>{one}));
-        inputs.insert_or_assign(filter_ports::in::CLASSES, Array(std::vector<std::vector<std::int64_t>>{oneClass}));
-        inputs.insert_or_assign(filter_ports::in::CLASS_NAMES, Array(std::vector<std::vector<std::string>>{oneName}));
+        inputs.insert_or_assign(filter_ports::in::SCORES, Array::fromNested(std::vector<std::vector<float>>{one}));
+        inputs.insert_or_assign(filter_ports::in::CLASSES, Array::fromNested(std::vector<std::vector<std::int64_t>>{oneClass}));
+        inputs.insert_or_assign(filter_ports::in::CLASS_NAMES, Array::fromNested(std::vector<std::vector<std::string>>{oneName}));
         auto res = tool.execute(inputs);
         requireFailure(res, "长度不一致", "Field length mismatch must fail");
         REQUIRE(testview::status(res).message.find("批次索引 0") != std::string::npos, "Error must name the batch index");
@@ -120,7 +120,7 @@ void testDetectionFilterTool()
     {
         auto                      inputs   = detectionInputs();
         std::vector<std::int64_t> negative = {-1, 2};
-        inputs.insert_or_assign(filter_ports::in::CLASSES, Array(std::vector<std::vector<std::int64_t>>{negative}));
+        inputs.insert_or_assign(filter_ports::in::CLASSES, Array::fromNested(std::vector<std::vector<std::int64_t>>{negative}));
         auto res = tool.execute(inputs);
         requireFailure(res, "得分或类别", "Negative class must be rejected");
     }
@@ -128,10 +128,10 @@ void testDetectionFilterTool()
         Values inputs;
         inputs.emplace(filter_ports::in::IMAGES, DataRef<Image>(Image{}));
         inputs.emplace(filter_ports::in::ROIS, DataRef<ROI>(ROI{}));
-        inputs.emplace(filter_ports::in::SCORES, Array(std::vector<std::vector<float>>{}));
-        inputs.emplace(filter_ports::in::CLASSES, Array(std::vector<std::vector<std::int64_t>>{}));
-        inputs.emplace(filter_ports::in::CLASS_NAMES, Array(std::vector<std::vector<std::string>>{}));
-        inputs.emplace(filter_ports::in::ALLOWED_CLASSES, Array(std::vector<std::int64_t>{}));
+        inputs.emplace(filter_ports::in::SCORES, Array::fromNested(std::vector<std::vector<float>>{}));
+        inputs.emplace(filter_ports::in::CLASSES, Array::fromNested(std::vector<std::vector<std::int64_t>>{}));
+        inputs.emplace(filter_ports::in::CLASS_NAMES, Array::fromNested(std::vector<std::vector<std::string>>{}));
+        inputs.emplace(filter_ports::in::ALLOWED_CLASSES, Array::fromNested(std::vector<std::int64_t>{}));
         inputs.emplace(filter_ports::in::MIN_SCORE, 0.5);
         inputs.emplace(filter_ports::in::MIN_AREA, 0.0);
         auto res = tool.execute(inputs);

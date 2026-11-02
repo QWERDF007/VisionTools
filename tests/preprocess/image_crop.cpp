@@ -110,8 +110,8 @@ void testImageCropTool()
         REQUIRE(batch[0].at<unsigned char>(0, 0) == 31, "First image order must be retained");
         REQUIRE(batch[1].at<unsigned char>(0, 0) == 79, "Second image order must be retained");
         REQUIRE(result.outputs.count("source_indices") == 0, "Scalar rectangle crop has no expanded ROI indices");
-        const auto &origin
-            = std::get<Array>(result.outputs.at(crop_ports::out::ORIGINS)).get<std::vector<std::vector<double>>>();
+        const auto origin
+            = nestedOf<std::vector<std::vector<double>>>(std::get<Array>(result.outputs.at(crop_ports::out::ORIGINS)));
         REQUIRE(origin.size() == 2 && origin[0].size() == 2 && origin[1].size() == 2, "Origins must have B by 2 shape");
         const auto coordinates = origin;
         REQUIRE(coordinates[0][0] == 0 && coordinates[0][1] == 1 && coordinates[1][0] == 0 && coordinates[1][1] == 1,
@@ -150,7 +150,7 @@ void testImageCropTool()
         REQUIRE(std::get<DataRef<Image>>(empty.outputs.at(crop_ports::out::IMAGES)).get().empty(),
                 "Empty batch must produce an empty crop batch");
         REQUIRE(
-            std::get<Array>(empty.outputs.at(crop_ports::out::ORIGINS)).get<std::vector<std::vector<double>>>().empty(),
+            nestedOf<std::vector<std::vector<double>>>(std::get<Array>(empty.outputs.at(crop_ports::out::ORIGINS))).empty(),
             "An empty batch must have zero origin rows");
         inputs.insert_or_assign(crop_ports::in::IMAGES,
                                 DataRef<Image>(Image{(cv::Mat(4, 4, CV_8UC1, cv::Scalar(8))).clone(),
@@ -193,7 +193,7 @@ void testImageCropTool()
         REQUIRE(cropped.rows == expected.rows && cropped.cols == expected.cols, "Rotated bounds must match gold");
         REQUIRE(cv::countNonZero(cropped != expected) == 0, "Rotated crop must match pixel-center gold");
         const auto coordinates
-            = std::get<Array>(result.outputs.at(crop_ports::out::ORIGINS)).get<std::vector<std::vector<double>>>()[0];
+            = nestedOf<std::vector<std::vector<double>>>(std::get<Array>(result.outputs.at(crop_ports::out::ORIGINS)))[0];
         REQUIRE(coordinates == std::vector<double>({0., 1.}), "Rotated origin must match the pixel-center gold");
     }
 
@@ -209,7 +209,7 @@ void testImageCropTool()
         const auto  expected = pixelCenterGold(image, {0, 0}, {"###.", "###.", "##..", "...."});
         REQUIRE(cropped.size() == expected.size() && cv::countNonZero(cropped != expected) == 0,
                 "Clipped rotated pixels must match independent gold");
-        REQUIRE((std::get<Array>(result.outputs.at(crop_ports::out::ORIGINS)).get<NestedVector<double, 2>>()
+        REQUIRE((nestedOf<NestedVector<double, 2>>(std::get<Array>(result.outputs.at(crop_ports::out::ORIGINS)))
                     == NestedVector<double, 2>{{0., 0.}}), "Clipped rotated origin must match gold");
     }
     {
@@ -225,7 +225,7 @@ void testImageCropTool()
         const auto  expected = pixelCenterGold(image, {0, 0}, {".##.", "####", "####", ".##."});
         REQUIRE(cropped.size() == expected.size() && cv::countNonZero(cropped != expected) == 0,
                 "Rotated boundary centers must match independent gold");
-        REQUIRE((std::get<Array>(result.outputs.at(crop_ports::out::ORIGINS)).get<NestedVector<double, 2>>()
+        REQUIRE((nestedOf<NestedVector<double, 2>>(std::get<Array>(result.outputs.at(crop_ports::out::ORIGINS)))
                     == NestedVector<double, 2>{{0., 0.}}), "Rotated boundary origin must match gold");
     }
 

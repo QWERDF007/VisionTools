@@ -125,18 +125,26 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
             for (std::size_t index = 0; index < records[image].size(); ++index)
             {
                 const auto &record = records[image][index];
-                if (record.kind != visionrt::RoiKind::Rectangle || record.values.size() != 5)
-                    fail(MetrologyError::RoiKindMismatch, "第 " + std::to_string(index + 1) + " 个 ROI 必须是 kind=2 的旋转矩形");
+                visionrt::RectangleView rectangle;
+                try
+                {
+                    rectangle = visionrt::RegionView(record).rectangle();
+                }
+                catch (const visionrt::ContractError &)
+                {
+                    fail(MetrologyError::RoiKindMismatch,
+                         "第 " + std::to_string(index + 1) + " 个 ROI 必须是 kind=2 的旋转矩形");
+                }
                 // Map the reference rectangle into current image coordinates; a
                 // similarity transform keeps the rectangle a rectangle.
                 if (!matrix.isSimilarity())
                     fail(MetrologyError::RoiKindMismatch, "alignment 必须是保向相似变换");
-                double centerX = 0, centerY = 0;
-                matrix.apply(record.values[0] + record.values[2] / 2.0, record.values[1] + record.values[3] / 2.0,
-                             centerX, centerY);
-                const double angle = record.values[4] + std::atan2(matrix.m[3], matrix.m[0]) * 180.0 / kPi;
-                const auto   current
-                    = roi::rectangle(centerX, centerY, record.values[2] * scale, record.values[3] * scale, angle);
+                const auto   recordCenter = rectangle.center();
+                double       centerX = 0, centerY = 0;
+                matrix.apply(recordCenter.x, recordCenter.y, centerX, centerY);
+                const double angle = rectangle.angle() + std::atan2(matrix.m[3], matrix.m[0]) * 180.0 / kPi;
+                const auto   current = roi::rectangle(centerX, centerY, rectangle.width() * scale,
+                                                      rectangle.height() * scale, angle);
                 const auto measurement = measureRowRect(gray, current, options);
 
                 validRoi.back().push_back(measurement.valid);
@@ -161,14 +169,13 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
                 gapValues.back().push_back(std::move(gapConverted));
                 pitchValues.back().push_back(std::move(pitchConverted));
 
-                const double radians = current.values[4] * kPi / 180.0;
-                const auto   direction = cv::Point2d{std::cos(radians), std::sin(radians)};
-                const auto   normal    = cv::Point2d{-std::sin(radians), std::cos(radians)};
-                const auto   rectCenter
-                    = cv::Point2d{current.values[0] + current.values[2] / 2.0,
-                                  current.values[1] + current.values[3] / 2.0};
+                const auto   currentView = visionrt::RectangleView(current);
+                const double radians     = currentView.angle() * kPi / 180.0;
+                const auto   direction   = cv::Point2d{std::cos(radians), std::sin(radians)};
+                const auto   normal      = cv::Point2d{-std::sin(radians), std::cos(radians)};
+                const auto   rectCenter  = currentView.center();
                 std::vector<std::vector<double>> points;
-                const double                     halfLength = std::max(1.0, std::min(current.values[3] / 2.0, 8.0));
+                const double halfLength = std::max(1.0, std::min(currentView.height() / 2.0, 8.0));
                 for (const auto &pair : measurement.pairs)
                 {
                     const auto first  = cv::Point2d{rectCenter.x + direction.x * pair.first,
@@ -192,33 +199,31 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
                         visionrt::DataRef<visionrt::Image>(
                             visionrt::Image(images), {imagesRef.owner()}));
         outputs.emplace(p::out::VALID_ROI,
-                        visionrt::Array(visionrt::DataRef<visionrt::NestedVector<bool, 2>>(std::move(validRoi))));
+                        visionrt::Array::fromNested(std::move(validRoi)));
         outputs.emplace(p::out::REASONS,
-                        visionrt::Array(visionrt::DataRef<visionrt::NestedVector<std::string, 2>>(std::move(reasons))));
+                        visionrt::Array::fromNested(std::move(reasons)));
         outputs.emplace(p::out::PAIR_COUNT,
-                        visionrt::Array(visionrt::DataRef<visionrt::NestedVector<std::int64_t, 2>>(std::move(pairCounts))));
+                        visionrt::Array::fromNested(std::move(pairCounts)));
         outputs.emplace(p::out::ACCEPTED_COUNT,
-                        visionrt::Array(visionrt::DataRef<visionrt::NestedVector<std::int64_t, 2>>(
-                            std::move(acceptedCounts))));
+                        visionrt::Array::fromNested(std::move(acceptedCounts)));
         outputs.emplace(p::out::UNPAIRED_COUNT,
-                        visionrt::Array(visionrt::DataRef<visionrt::NestedVector<std::int64_t, 2>>(
-                            std::move(unpairedCounts))));
+                        visionrt::Array::fromNested(std::move(unpairedCounts)));
         outputs.emplace(p::out::ACCEPTED,
-                        visionrt::Array(visionrt::DataRef<visionrt::NestedVector<bool, 3>>(std::move(accepted))));
+                        visionrt::Array::fromNested(std::move(accepted)));
         outputs.emplace(p::out::WIDTH_PX,
-                        visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 3>>(std::move(widthPixels))));
+                        visionrt::Array::fromNested(std::move(widthPixels)));
         outputs.emplace(p::out::GAP_PX,
-                        visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 3>>(std::move(gapPixels))));
+                        visionrt::Array::fromNested(std::move(gapPixels)));
         outputs.emplace(p::out::PITCH_PX,
-                        visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 3>>(std::move(pitchPixels))));
+                        visionrt::Array::fromNested(std::move(pitchPixels)));
         outputs.emplace(p::out::WIDTH,
-                        visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 3>>(std::move(widthValues))));
+                        visionrt::Array::fromNested(std::move(widthValues)));
         outputs.emplace(p::out::GAP,
-                        visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 3>>(std::move(gapValues))));
+                        visionrt::Array::fromNested(std::move(gapValues)));
         outputs.emplace(p::out::PITCH,
-                        visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 3>>(std::move(pitchValues))));
+                        visionrt::Array::fromNested(std::move(pitchValues)));
         outputs.emplace(p::out::PAIR_POINTS,
-                        visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 4>>(std::move(pairPoints))));
+                        visionrt::Array::fromNested(std::move(pairPoints)));
         outputs.emplace(p::out::OVERLAY_SEGMENTS, roi::roiValue(std::move(segments)));
         outputs.emplace(p::out::UNIT, unit);
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());

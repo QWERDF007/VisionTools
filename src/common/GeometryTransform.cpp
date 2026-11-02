@@ -13,25 +13,7 @@ constexpr double kPi = 3.14159265358979323846;
 
 double element(const visionrt::PortValue &value, std::size_t index)
 {
-    const auto &array = std::get<visionrt::Array>(value);
-    return array.get<visionrt::NestedVector<double, 3>>().at(index / 9).at((index % 9) / 3).at(index % 3);
-}
-
-std::optional<Alignment> decodeMatrix(const std::vector<std::vector<double>> &rows)
-{
-    if (rows.size() != 3)
-        return std::nullopt;
-    std::array<double, 9> values{};
-    for (std::size_t row = 0; row < 3; ++row)
-    {
-        if (rows[row].size() != 3)
-            return std::nullopt;
-        for (std::size_t column = 0; column < 3; ++column)
-            values[row * 3 + column] = rows[row][column];
-    }
-    Alignment alignment;
-    alignment.m = values;
-    return alignment;
+    return std::get<visionrt::Array>(value).elements<double>()[index];
 }
 } // namespace
 
@@ -143,16 +125,18 @@ std::vector<Alignment> alignmentsFromValue(const visionrt::PortValue &value, std
     const auto &array = std::get<visionrt::Array>(value);
     if (array.type() != visionrt::TypeSpec{visionrt::Type::Array, visionrt::DType::Float64, 3})
         fail(CommonToolError::InputTypeMismatch, "alignment 必须是 Array(float64, rank=3)");
-    const auto &matrices = array.get<visionrt::NestedVector<double, 3>>();
+    const auto matrices = array.elements<double>();
     if (matrices.empty())
     {
         result.assign(std::max<std::size_t>(1, imageCount), Alignment::identity());
         return result;
     }
-    result.reserve(matrices.size());
-    for (const auto &rows : matrices)
+    if (matrices.size() % 9 != 0)
+        fail(CommonToolError::InputOutOfRange, "alignment 的元素数量必须是 9 的整数倍");
+    result.reserve(matrices.size() / 9);
+    for (std::size_t offset = 0; offset < matrices.size(); offset += 9)
     {
-        auto alignment = decodeMatrix(rows);
+        auto alignment = Alignment::fromRows(matrices.subspan(offset, 9));
         if (!alignment || !alignment->isAffine())
             fail(GeometryError::AlignmentInvalid, "每个元素必须是有限仿射矩阵，最后一行为 [0,0,1]");
         if (!alignment->invertible())
@@ -168,13 +152,12 @@ std::vector<Alignment> alignmentsFromValue(const visionrt::PortValue &value, std
 
 visionrt::Array alignmentArray(const std::vector<Alignment> &alignments)
 {
-    visionrt::NestedVector<double, 3> rows;
-    rows.reserve(alignments.size());
+    std::vector<double> values;
+    values.reserve(alignments.size() * 9);
     for (const auto &alignment : alignments)
-        rows.push_back({{alignment.m[0], alignment.m[1], alignment.m[2]},
-                        {alignment.m[3], alignment.m[4], alignment.m[5]},
-                        {alignment.m[6], alignment.m[7], alignment.m[8]}});
-    return visionrt::Array(visionrt::DataRef<visionrt::NestedVector<double, 3>>(std::move(rows)));
+        values.insert(values.end(), alignment.m.begin(), alignment.m.end());
+    return visionrt::Array::dense(visionrt::DType::Float64,
+                                  {static_cast<std::int64_t>(alignments.size()), 3, 3}, std::move(values));
 }
 
 visionrt::Array alignmentArray(const Alignment &alignment)

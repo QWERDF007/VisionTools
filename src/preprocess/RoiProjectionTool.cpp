@@ -133,18 +133,20 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
                 }
             }
 
-            std::vector<std::vector<double>> rois;
+            visionrt::RegionGroup rois;
             const auto append = [&](int start, int end)
             {
                 if (end - start < extentMin)
                     return;
                 const int left = start - std::min(paddingPx, start);
                 const int right = end + std::min(paddingPx, length - end);
-                rois.push_back(
-                    horizontal ? std::vector<double>{2, static_cast<double>(left), 0, static_cast<double>(right - left),
-                                                     static_cast<double>(image.rows), 0}
-                               : std::vector<double>{2, 0, static_cast<double>(left), static_cast<double>(image.cols),
-                                                     static_cast<double>(right - left), 0});
+                rois.push_back(horizontal
+                                   ? visionrt::makeRectangle(static_cast<double>(left), 0.0,
+                                                             static_cast<double>(right - left),
+                                                             static_cast<double>(image.rows))
+                                   : visionrt::makeRectangle(0.0, static_cast<double>(left),
+                                                             static_cast<double>(image.cols),
+                                                             static_cast<double>(right - left)));
             };
 
             int start = -1;

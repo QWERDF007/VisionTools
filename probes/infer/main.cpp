@@ -392,11 +392,11 @@ std::vector<std::vector<PublicDetection>> outputContract(const ToolResult &resul
     const auto *returned = std::get_if<DataRef<Image>>(&result.outputs.at("images"));
     require(rois && scores && classes && names && returned, "Invalid public output types");
 
-    const auto &roiBatch   = rois->get();
-    const auto &scoreData  = scores->get<std::vector<std::vector<float>>>();
-    const auto &classData  = classes->get<std::vector<std::vector<std::int64_t>>>();
-    const auto &nameData   = names->get<std::vector<std::vector<std::string>>>();
-    const auto  count      = images.get().size();
+    const auto &roiBatch  = rois->get();
+    const auto  scoreData = nestedOf<std::vector<std::vector<float>>>(*scores);
+    const auto  classData = nestedOf<std::vector<std::vector<std::int64_t>>>(*classes);
+    const auto  nameData  = nestedOf<std::vector<std::vector<std::string>>>(*names);
+    const auto  count     = images.get().size();
     require(roiBatch.size() == count && scoreData.size() == count && classData.size() == count
                 && nameData.size() == count && returned->get().size() == count,
             "Mismatched batch size in outputs");

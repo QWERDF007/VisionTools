@@ -170,14 +170,14 @@ void testReadImageTool()
         // 第 1 轮: 取 2 张 (img_1, img_2)
         auto res = dirTool.execute(inputs);
         requireSuccess(res, "Loop round 1 must succeed");
-        auto paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        auto paths = nestedOf<std::vector<std::string>>(std::get<Array>(res.outputs.at(read_ports::out::PATHS)));
         REQUIRE(paths.size() == 2, "Round 1 must take 2 images");
         REQUIRE(paths[0].ends_with("img_1.png") && paths[1].ends_with("img_2.png"), "Round 1: img_1, img_2");
 
         // 第 2 轮: 跨尾循环取 2 张 (img_3, img_1)
         res = dirTool.execute(inputs);
         requireSuccess(res, "Loop round 2 must succeed");
-        paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        paths = nestedOf<std::vector<std::string>>(std::get<Array>(res.outputs.at(read_ports::out::PATHS)));
         REQUIRE(paths.size() == 2, "Round 2 must take 2 images");
         REQUIRE(paths[0].ends_with("img_3.png") && paths[1].ends_with("img_1.png"), "Round 2: img_3, img_1 (wrapped)");
 
@@ -185,7 +185,7 @@ void testReadImageTool()
         inputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(5));
         res = dirTool.execute(inputs);
         requireSuccess(res, "Count > total in loop must succeed");
-        paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        paths = nestedOf<std::vector<std::string>>(std::get<Array>(res.outputs.at(read_ports::out::PATHS)));
         REQUIRE(paths.size() == 5, "Count 5 must return 5 images");
         const auto &mats = std::get<DataRef<Image>>(res.outputs.at(read_ports::out::IMAGES)).get();
         REQUIRE(mats.size() == 5, "Images size must be 5");
@@ -195,7 +195,7 @@ void testReadImageTool()
         inputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(2));
         res = dirTool.execute(inputs);
         requireSuccess(res, "Reverse order must succeed");
-        paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        paths = nestedOf<std::vector<std::string>>(std::get<Array>(res.outputs.at(read_ports::out::PATHS)));
         REQUIRE(paths.size() == 2, "Reverse round 1 must return 2 images");
         REQUIRE(paths[0].ends_with("img_3.png") && paths[1].ends_with("img_2.png"), "Reverse starts from end: img_3, img_2");
 
@@ -213,7 +213,7 @@ void testReadImageTool()
         // 第 2 轮: 仅剩 1 张 (img_3)
         res = onceTool.execute(onceInputs);
         requireSuccess(res, "Once round 2 must succeed with remaining 1 image");
-        paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        paths = nestedOf<std::vector<std::string>>(std::get<Array>(res.outputs.at(read_ports::out::PATHS)));
         REQUIRE(paths.size() == 1, "Remaining count must be 1");
         REQUIRE(paths[0].ends_with("img_3.png"), "Last image must be img_3");
         REQUIRE(std::get<bool>(res.outputs.at(read_ports::out::END_REACHED)), "End reached must be true");
@@ -259,7 +259,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         writePng(corruptFile, cv::Mat(8, 8, CV_8UC3, cv::Scalar(4, 4, 4)));
         res = atomicTool.execute(atomicInputs);
         requireSuccess(res, "After fix, read must succeed from original position");
-        paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        paths = nestedOf<std::vector<std::string>>(std::get<Array>(res.outputs.at(read_ports::out::PATHS)));
         REQUIRE(paths[0].ends_with("img_corrupt.png"), "Resumed from corrupt index");
         std::filesystem::remove(corruptFile);
     }
@@ -327,7 +327,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         auto res = cnTool.execute(inputsNoRec);
         requireSuccess(res, "Non-recursive CN dir read must succeed");
         REQUIRE(std::get<std::int64_t>(res.outputs.at(read_ports::out::TOTAL_COUNT)) == 1, "Non-recursive total_count must be 1");
-        auto paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        auto paths = nestedOf<std::vector<std::string>>(std::get<Array>(res.outputs.at(read_ports::out::PATHS)));
         REQUIRE(paths.size() == 1, "Non-recursive must find exactly 1 image");
 
         // 递归: 包含子目录, 共 2 张
@@ -338,7 +338,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         res = cnTool.execute(inputsRec);
         requireSuccess(res, "Recursive CN dir read must succeed");
         REQUIRE(std::get<std::int64_t>(res.outputs.at(read_ports::out::TOTAL_COUNT)) == 2, "Recursive total_count must be 2");
-        paths = std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        paths = nestedOf<std::vector<std::string>>(std::get<Array>(res.outputs.at(read_ports::out::PATHS)));
         REQUIRE(paths.size() == 2, "Recursive must find 2 images");
     }
 
@@ -402,7 +402,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         requireSuccess(first, "the first batch must succeed");
         const auto firstBatch = std::get<DataRef<Image>>(first.outputs.at(read_ports::out::IMAGES));
         const auto firstPixels = firstBatch.get()[0].data;
-        const auto firstPaths = std::get<Array>(first.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        const auto firstPaths = nestedOf<std::vector<std::string>>(std::get<Array>(first.outputs.at(read_ports::out::PATHS)));
         REQUIRE(firstPaths.size() == 2, "the first batch must contain two images");
 
         // A reload batch whose second file is corrupt: the decoded first file must not reach the
@@ -422,7 +422,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         inputs.insert_or_assign(read_ports::in::RELOAD, false);
         auto resumed = atomicTool.execute(inputs);
         requireSuccess(resumed, "the repaired sequence must resume");
-        auto resumedPaths = std::get<Array>(resumed.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>();
+        auto resumedPaths = nestedOf<std::vector<std::string>>(std::get<Array>(resumed.outputs.at(read_ports::out::PATHS)));
         REQUIRE(resumedPaths.size() == 1 && resumedPaths[0].ends_with("c.png"),
                 "the resumed batch must start at the file that failed");
         const auto &resumedImages = std::get<DataRef<Image>>(resumed.outputs.at(read_ports::out::IMAGES)).get();
@@ -446,7 +446,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         {
             auto res = tool.execute(inputs);
             requireSuccess(res, "single-step read must succeed");
-            return std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>()[0];
+            return nestedOf<std::vector<std::string>>(std::get<Array>(res.outputs.at(read_ports::out::PATHS)))[0];
         };
 
         // 8.1 forward, non-looping: the next file is deleted and the last delivered file is the tail.
@@ -533,7 +533,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         {
             auto res = tool.execute(inputs);
             requireSuccess(res, "atomic read must succeed");
-            return std::get<Array>(res.outputs.at(read_ports::out::PATHS)).get<std::vector<std::string>>()[0];
+            return nestedOf<std::vector<std::string>>(std::get<Array>(res.outputs.at(read_ports::out::PATHS)))[0];
         };
 
         ReadImageTool tool(services);
