@@ -30,6 +30,84 @@
 - ...
 -->
 
+### 2026-11-04 — R45：工具声明与实现迁移到数字 PortId 与 schema 6
+
+**目标**
+- 按 R45 把 22 份工具声明、C++ 工具读写、Python SDK 与测试从字符串端口名切到数字 PortId，声明升到 schema 6，并同步 Contracts ABI 9。
+
+**当前状态**
+- 已完成声明：22 份 `assets/tools/**` 全部 schema 6，业务端口写 `id` 并新增 `next_port_id`；输出 0/1 为状态码与状态信息、业务输出从 2 起，输入 0 为上游状态。
+- 已完成 C++ 侧：`InputValues`/`ToolOutputs`/`UpstreamStatus` 及各 preprocess/metrology/infer 工具按 `PortId` 取参与写输出，不再按名称查找。
+- 已完成 Python 侧：author_sdk 的 `UPSTREAM_STATUS_PORT = 0`、`RESERVED_PORTS = (0, 1)`，输出字典使用整数键；内置与示例工具同步，去掉名称键与隐式字符串强转。
+- 已完成测试与探针：断言头、各工具测试、逻辑引擎与安装消费测试改用数字端口。
+- 已完成子模块：`3rdparty/VisionRTContracts` 指向 ABI 9（139c09b，已推送）。
+- 未完成：本轮未重跑全量测试矩阵；GPU/trace 按既有 skip 规则，未在本轮执行。
+
+**验证证据**
+- `dist/visiontools-deploy.zip` 由本工作树构建（`build_info` commit `e69a2ed`，dirty=true），经宿主 `visionrt_validate_tool.exe` 校验通过；部署到 `F:\tmp\VisionRT` 后注册 22 个工具、3 个模块（见 VisionRT 部署日志）。
+- 22 份 `assets/tools/**` 声明扫描结果均为 schema 6。
+- `build/Testing/Temporary/LastTest.log`：2026-11-03 17:15 `test_geometry_contract` 通过；其余组本轮未重跑。
+
+**下一步**
+- 下次改动工具实现时按 backend/bridge 分组补跑受影响测试；GPU 项按所选 profile 执行。
+
+### 2026-11-02 — R43：测试按需构建与断言头改名
+
+**目标**
+- 按 T43-06 把测试可执行移出默认构建，按 T43-09 改掉易误读的 `result_view.h`。
+
+**当前状态**
+- `visiontools_add_test` 统一 `EXCLUDE_FROM_ALL`，新增 `visiontools_tests` 目标覆盖全部测试可执行（含多场景 runner）；`tools/build.cmd --test` 先构建该目标；README 与 `tools/README` 更新。
+- `tests/result_view.h → tests/ToolResultAssertions.h`，6 处测试与 `probes/infer/main.cpp` 的 include 同步。
+- 默认构建只产出产品与探针；测试需显式 `--target visiontools_tests`（或 `--test`）。
+
+**验证证据**
+- 删除 `image_read_cache_test.exe` 后默认构建未重建；`visiontools_tests` 构建成功（13 个测试可执行）。
+- 代表性 6 项测试通过（缓存快速/基准、追踪两场景、几何、模块契约），0.96 s。
+
+**下一步**
+- 打包与发布流程继续用默认构建；测试入口统一走 `visiontools_tests`。
+
+### 2026-11-02 — R43：缓存/追踪测试分层与逻辑 ndarray 输入
+
+**目标**
+- 按 VisionRT `docs/R43` 的 T43-02、T43-13 拆分测试成本并接通逻辑工具的 ndarray 输入。
+
+**当前状态**
+- 已完成 T43-02：`python/builtin/logic/common/engine.py` 在唯一输入归一入口接受 `numpy.ndarray`：先校验 rank/dtype/容器数/累计预算，再一次 `tolist()` 并原地校验；list 路径语义不变。`tests/test_logic_engine.py` 增 7 项（list/ndarray 等价、rank2 int32、分支、dtype/rank 拒绝、预算、`shape=(n,0)` 容器上限、NaN/字符串）。
+- 已完成 T43-13：`test_read_cache_contract` 拆为 `image_read_cache_test`（三张小图、LRU/保护/reload/失败回滚/第二实例/唯一临时目录）与 `image_read_cache_benchmark`（`--perf`，尺寸/图数/轮次/证据目录显式传入，`LABELS perf`）。
+- 已完成 T43-13：`test_infer_whitebox_trace` → `infer_trace_test`，按 `--case geometry|uninitialized|initialized-trace` 注册三个条目；`geometry`/`uninitialized` 归 `smoke`，`initialized` 归 `gpu` 并保留 `SKIP_RETURN_CODE 77`。
+- `cmake/AddTest.cmake` 的 `visiontools_add_test` 增加 `NO_TEST`/`TEST_NAME`/`LABELS`/`SKIP_RETURN_CODE`，供一个二进制注册多个场景，不引入新框架。
+
+**验证证据**
+- `ctest -R "^(image_read_cache_test|image_read_cache_benchmark|infer_trace_geometry|infer_trace_uninitialized|test_geometry_contract)$"` → **5/5 通过**（0.89 s）；快速缓存项 0.20 s、基准 0.66 s（12×1600×900、120 帧，证据 `build/evidence/read_cache_evidence.json`）。
+- `ctest -R "^infer_trace_initialized$"` → Skipped（77，无引擎/权重）。
+- 反向验证：让引擎拒绝 ndarray → `NumpyInputs` 5 失败 2 错误（后续已恢复正常实现）。
+- 未验证：GPU 实机 trace（缺 fixture 时按 skip 记录）、全量 ctest。
+
+**下一步**
+- 候选发布时按需运行 GPU/trace 与完整包测试；其余命名建议随实际修改局部迁移。
+
+### 2026-10-30 — U05：ROI 消费方迁移到 Contracts 语义视图
+
+**目标**
+- 配合 VisionRT 统一方案 S01：Tools 不再维护自己的 ROI 解码 DTO 和魔数索引，改为直接使用 `visionrt::EncodedRegion` 与命名视图；ROI 存储与端口格式不变。
+
+**当前状态**
+- 已完成：
+  - `roi::Record` 改为 `visionrt::EncodedRegion` 别名，删除 `kind + values` DTO 与 `encoded()` 二次编码；`groups()` 在入口用 `RegionView` 一次校验（空记录、非法 kind/长度/非有限值仍报错），下游直接持有已校验编码的副本。
+  - `contains/regionMask` 改用 `RectangleView/CircleView/PolygonView`；裁剪、ROI 投影、检测过滤、YOLO 检测输出、圆测量、行间距测量、Assist 种子/转换改用视图与 `make*` 构造。
+  - `3rdparty/VisionRTContracts` 同步 Contracts 的 ROI 视图与 `RegionEditor::translate/setVertex`。
+- 未完成：无（本仓 U05 范围）。
+
+**验证证据**
+- `cmake --build build --target visiontools_preprocess visiontools_metrology visiontools_infer` 通过。
+- `ctest -R "^(test_writable_tools_contract|test_upstream_status_contract|test_preprocess_contract|test_read_cache_contract|test_output_ownership_contract|test_geometry_contract|test_module_contract|test_installation_consumer|test_yolo_postprocess|test_infer_contract)$"` → 10/10 通过；`test_infer_whitebox_trace` 无 GPU 跳过。
+- ROI 解码搜索：`src` 下不再出现 `Record.values/kind` 或 `record[...]` 形式几何解码。
+
+**下一步**
+- 随 VisionRT U11/U12 的 Array 协议批次同步 Python 作者 SDK。
+
 ### 2026-10-28 — 亮度可空输入、出包集合完整性与 Python 作者 SDK 单源
 
 **目标**

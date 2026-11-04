@@ -8,19 +8,19 @@ namespace ports::roi_projection {
 inline constexpr char TOOL_ID[] = "visionrt.roi.projection";
 
 namespace in {
-inline constexpr char AXIS[]       = "axis";
-inline constexpr char IMAGES[]     = "images";
-inline constexpr char MERGE_GAP[]  = "merge_gap";
-inline constexpr char MIN_EXTENT[] = "min_extent";
-inline constexpr char MIN_PIXELS[] = "min_pixels";
-inline constexpr char PADDING[]    = "padding";
-inline constexpr char POLARITY[]   = "polarity";
-inline constexpr char THRESHOLD[]  = "threshold";
+inline constexpr visionrt::PortId AXIS = 2;
+inline constexpr visionrt::PortId IMAGES = 1;
+inline constexpr visionrt::PortId MERGE_GAP = 7;
+inline constexpr visionrt::PortId MIN_EXTENT = 6;
+inline constexpr visionrt::PortId MIN_PIXELS = 5;
+inline constexpr visionrt::PortId PADDING = 8;
+inline constexpr visionrt::PortId POLARITY = 3;
+inline constexpr visionrt::PortId THRESHOLD = 4;
 }
 
 namespace out {
-inline constexpr char IMAGES[] = "images";
-inline constexpr char ROIS[]   = "rois";
+inline constexpr visionrt::PortId IMAGES = 2;
+inline constexpr visionrt::PortId ROIS = 3;
 }
 }
 

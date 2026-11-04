@@ -31,22 +31,22 @@ void testYoloMissingInitParameters()
     auto empty = tool.initialize({});
     REQUIRE(empty.code == 1001, "Missing init parameters must fail before any GPU work");
     REQUIRE(empty.message.find("输入缺失") != std::string::npos, "Missing init error must be Chinese");
-    REQUIRE(empty.message.find("model_name") != std::string::npos, "Missing init error must name the port");
+    REQUIRE(empty.message.find(visionrt::portLabel(0)) != std::string::npos, "Missing init error must name the port");
 
     visionrt::Values partial;
-    partial.emplace("model_name", std::string("yolov8n"));
-    partial.emplace("load_mode", std::string("engine"));
-    partial.emplace("model_path", std::string("missing.engine"));
-    partial.emplace("engine_output_path", std::string(""));
-    partial.emplace("precision", std::string("fp16"));
-    partial.emplace("gpu_index", std::int64_t(0));
-    partial.emplace("input_width", std::int64_t(640));
-    partial.emplace("input_height", std::int64_t(640));
-    partial.emplace("num_classes", std::int64_t(80));
+    partial.emplace(0, std::string("yolov8n"));
+    partial.emplace(1, std::string("engine"));
+    partial.emplace(2, std::string("missing.engine"));
+    partial.emplace(3, std::string(""));
+    partial.emplace(5, std::string("fp16"));
+    partial.emplace(6, std::int64_t(0));
+    partial.emplace(7, std::int64_t(640));
+    partial.emplace(8, std::int64_t(640));
+    partial.emplace(9, std::int64_t(80));
     auto missingLabels = tool.initialize(partial);
     // labels_path is a required initialization parameter, so its absence is a missing input.
     REQUIRE(missingLabels.code == 1001, "Missing labels_path must fail before GPU work");
-    REQUIRE(missingLabels.message.find("labels_path") != std::string::npos,
+    REQUIRE(missingLabels.message.find(visionrt::portLabel(4)) != std::string::npos,
             "Missing labels_path must be named");
     std::cout << "[PASS] testYoloMissingInitParameters passed." << std::endl;
 }

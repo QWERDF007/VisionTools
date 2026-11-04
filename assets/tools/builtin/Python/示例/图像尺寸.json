@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visiontools.python.image_sizes",
   "name_zh": "图像尺寸",
   "version": "1.0.0",
@@ -15,17 +15,22 @@
       "示例"
     ]
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 2,
+    "outputs": 3
+  },
   "ports": {
     "inputs": [
       {
-        "name_en": "images",
+        "id": 1,
         "name_zh": "输入图像",
         "type": "image"
       }
     ],
     "outputs": [
       {
-        "name_en": "sizes",
+        "id": 2,
         "name_zh": "图像尺寸",
         "type": "vec_vec_int"
       }

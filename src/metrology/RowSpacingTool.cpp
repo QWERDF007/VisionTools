@@ -63,21 +63,21 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
     const auto &images = imagesRef.get();
     if (!std::isfinite(options.sigma) || options.sigma < 0.1 || options.sigma > 20.0)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::SIGMA) + " 必须在 [0.1, 20] 内，实际值：" + std::to_string(options.sigma));
+                       visionrt::portLabel(p::in::SIGMA) + " 必须在 [0.1, 20] 内，实际值：" + std::to_string(options.sigma));
     if (!std::isfinite(options.minGradient) || options.minGradient < 0.0 || options.minGradient > 255.0)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::MIN_GRADIENT) + " 必须在 [0, 255] 内，实际值："
+                       visionrt::portLabel(p::in::MIN_GRADIENT) + " 必须在 [0, 255] 内，实际值："
                            + std::to_string(options.minGradient));
     if (polarity != "bright" && polarity != "dark")
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::OBJECT_POLARITY) + " 只接受 bright/dark，实际值：" + polarity);
+                       visionrt::portLabel(p::in::OBJECT_POLARITY) + " 只接受 bright/dark，实际值：" + polarity);
     if (!std::isfinite(options.widthMin) || options.widthMin < 0.0 || !std::isfinite(options.widthMax)
         || options.widthMax < 0.0 || options.widthMax < options.widthMin)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange, "width 范围不合法：需满足 0 ≤ width_min ≤ width_max");
     if (!std::isfinite(unitsPerPixel) || unitsPerPixel < 1.0e-9 || unitsPerPixel > 1.0e9)
-        return failure(missingOutputs(), CommonToolError::InputOutOfRange, std::string(p::in::UNITS_PER_PIXEL) + " 超出允许范围");
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::UNITS_PER_PIXEL) + " 超出允许范围");
     if (unit.empty())
-        return failure(missingOutputs(), CommonToolError::InputOutOfRange, std::string(p::in::UNIT) + " 不能为空");
+        return failure(missingOutputs(), CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::UNIT) + " 不能为空");
     if (!alignmentValue || !roiValue)
         return failure(missingOutputs(), CommonToolError::InputMissing, !alignmentValue ? p::in::ALIGNMENT : p::in::ROIS);
     options.brightObject = polarity == "bright";

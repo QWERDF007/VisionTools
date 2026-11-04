@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visiontools.image.rotate",
   "name_zh": "旋转图像",
   "version": "1.0.0",
@@ -12,15 +12,20 @@
       "图像处理"
     ]
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 8,
+    "outputs": 4
+  },
   "ports": {
     "inputs": [
       {
-        "name_en": "images",
+        "id": 1,
         "name_zh": "输入图像",
         "type": "image"
       },
       {
-        "name_en": "angle_deg",
+        "id": 2,
         "name_zh": "顺时针角度",
         "type": "float",
         "ui": {
@@ -29,7 +34,7 @@
         }
       },
       {
-        "name_en": "center",
+        "id": 3,
         "name_zh": "旋转中心",
         "type": "vec_float",
         "ui": {
@@ -37,7 +42,7 @@
         }
       },
       {
-        "name_en": "canvas",
+        "id": 4,
         "name_zh": "画布模式",
         "type": "string",
         "default": "keep",
@@ -52,7 +57,7 @@
         }
       },
       {
-        "name_en": "interpolation",
+        "id": 5,
         "name_zh": "插值方式",
         "type": "string",
         "default": "linear",
@@ -68,7 +73,7 @@
         }
       },
       {
-        "name_en": "border_value",
+        "id": 6,
         "name_zh": "边界填充值",
         "type": "vec_float",
         "default": [
@@ -79,7 +84,7 @@
         }
       },
       {
-        "name_en": "alignment",
+        "id": 7,
         "name_zh": "参考到当前变换",
         "type": "vec_vec_vec_float",
         "ui": {
@@ -89,12 +94,12 @@
     ],
     "outputs": [
       {
-        "name_en": "images",
+        "id": 2,
         "name_zh": "旋转图像",
         "type": "image"
       },
       {
-        "name_en": "alignment",
+        "id": 3,
         "name_zh": "参考到输出变换",
         "type": "vec_vec_vec_float"
       }

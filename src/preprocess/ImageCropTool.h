@@ -10,13 +10,13 @@ namespace ports::image_crop {
 inline constexpr char TOOL_ID[] = "visionrt.image.crop";
 
 namespace in {
-inline constexpr char IMAGES[] = "images";
-inline constexpr char RECT[]   = "rect";
+inline constexpr visionrt::PortId IMAGES = 1;
+inline constexpr visionrt::PortId RECT = 2;
 }
 
 namespace out {
-inline constexpr char IMAGES[]  = "images";
-inline constexpr char ORIGINS[] = "origins";
+inline constexpr visionrt::PortId IMAGES = 2;
+inline constexpr visionrt::PortId ORIGINS = 3;
 }
 }
 

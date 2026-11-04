@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visionrt.image.preprocess",
   "name_zh": "图像预处理",
   "version": "1.0.0",
@@ -12,15 +12,20 @@
       "图像处理"
     ]
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 5,
+    "outputs": 3
+  },
   "ports": {
     "inputs": [
       {
-        "name_en": "images",
+        "id": 1,
         "name_zh": "图像",
         "type": "image"
       },
       {
-        "name_en": "operation",
+        "id": 2,
         "name_zh": "操作类型",
         "type": "string",
         "default": "identity",
@@ -37,7 +42,7 @@
         }
       },
       {
-        "name_en": "kernel",
+        "id": 3,
         "name_zh": "高斯核大小",
         "type": "int",
         "default": 3,
@@ -51,7 +56,7 @@
         }
       },
       {
-        "name_en": "threshold",
+        "id": 4,
         "name_zh": "二值化阈值",
         "type": "int",
         "default": 128,
@@ -68,11 +73,14 @@
     ],
     "outputs": [
       {
-        "name_en": "images",
+        "id": 2,
         "name_zh": "处理后图像",
         "type": "image",
         "relations": {
-          "same_geometry_as": "inputs.images"
+          "same_geometry_as": {
+            "stage": "inputs",
+            "id": 1
+          }
         },
         "display": {
           "color_order": "BGR"

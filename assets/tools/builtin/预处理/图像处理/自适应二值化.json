@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visiontools.preprocess.adaptive_binary",
   "name_zh": "自适应二值化",
   "version": "1.0.0",
@@ -12,15 +12,20 @@
       "图像处理"
     ]
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 4,
+    "outputs": 3
+  },
   "ports": {
     "inputs": [
       {
-        "name_en": "images",
+        "id": 1,
         "name_zh": "输入图像",
         "type": "image"
       },
       {
-        "name_en": "block_size",
+        "id": 2,
         "name_zh": "邻域大小",
         "type": "int",
         "default": 3,
@@ -34,7 +39,7 @@
         }
       },
       {
-        "name_en": "constant_offset",
+        "id": 3,
         "name_zh": "偏移常量",
         "type": "float",
         "default": 5,
@@ -46,11 +51,14 @@
     ],
     "outputs": [
       {
-        "name_en": "images",
+        "id": 2,
         "name_zh": "二值图像",
         "type": "image",
         "relations": {
-          "same_geometry_as": "inputs.images"
+          "same_geometry_as": {
+            "stage": "inputs",
+            "id": 1
+          }
         },
         "display": {
           "color_order": "Gray"

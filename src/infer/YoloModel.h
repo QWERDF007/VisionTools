@@ -39,31 +39,31 @@ namespace ports::yolo {
 inline constexpr char TOOL_ID[] = "visionrt.dl.yolo";
 
 namespace init {
-inline constexpr char ENGINE_OUTPUT_PATH[] = "engine_output_path";
-inline constexpr char GPU_INDEX[]          = "gpu_index";
-inline constexpr char INPUT_HEIGHT[]       = "input_height";
-inline constexpr char INPUT_WIDTH[]        = "input_width";
-inline constexpr char LABELS_PATH[]        = "labels_path";
-inline constexpr char LOAD_MODE[]          = "load_mode";
-inline constexpr char MODEL_NAME[]         = "model_name";
-inline constexpr char MODEL_PATH[]         = "model_path";
-inline constexpr char NUM_CLASSES[]        = "num_classes";
-inline constexpr char PRECISION[]          = "precision";
+inline constexpr visionrt::PortId ENGINE_OUTPUT_PATH = 3;
+inline constexpr visionrt::PortId GPU_INDEX = 6;
+inline constexpr visionrt::PortId INPUT_HEIGHT = 8;
+inline constexpr visionrt::PortId INPUT_WIDTH = 7;
+inline constexpr visionrt::PortId LABELS_PATH = 4;
+inline constexpr visionrt::PortId LOAD_MODE = 1;
+inline constexpr visionrt::PortId MODEL_NAME = 0;
+inline constexpr visionrt::PortId MODEL_PATH = 2;
+inline constexpr visionrt::PortId NUM_CLASSES = 9;
+inline constexpr visionrt::PortId PRECISION = 5;
 }
 
 namespace in {
-inline constexpr char CONF_THRESHOLD[] = "conf_threshold";
-inline constexpr char IMAGES[]         = "images";
-inline constexpr char MAX_DETECTIONS[] = "max_detections";
-inline constexpr char NMS_THRESHOLD[]  = "nms_threshold";
+inline constexpr visionrt::PortId CONF_THRESHOLD = 2;
+inline constexpr visionrt::PortId IMAGES = 1;
+inline constexpr visionrt::PortId MAX_DETECTIONS = 4;
+inline constexpr visionrt::PortId NMS_THRESHOLD = 3;
 }
 
 namespace out {
-inline constexpr char CLASS_NAMES[] = "class_names";
-inline constexpr char CLASSES[]     = "classes";
-inline constexpr char IMAGES[]      = "images";
-inline constexpr char ROIS[]        = "rois";
-inline constexpr char SCORES[]      = "scores";
+inline constexpr visionrt::PortId CLASS_NAMES = 6;
+inline constexpr visionrt::PortId CLASSES = 5;
+inline constexpr visionrt::PortId IMAGES = 2;
+inline constexpr visionrt::PortId ROIS = 3;
+inline constexpr visionrt::PortId SCORES = 4;
 }
 }
 

@@ -93,7 +93,7 @@ class TypeSpec:
 
 @dataclass(frozen=True)
 class Variable:
-    port_id: str
+    port_id: int
     symbol: str
     spec: TypeSpec
     allow_missing: bool
@@ -101,7 +101,7 @@ class Variable:
 
 @dataclass(frozen=True)
 class Result:
-    port_id: str
+    port_id: int
     symbol: str
     expression: str
     spec: TypeSpec
@@ -455,6 +455,20 @@ class CompiledResult:
     tree: object  # ast.Expression body node reused by simpleeval
 
 
+def port_cell(value, location: str) -> int:
+    """Read the port number out of one table cell.
+
+    The initialization tables stay vec_vec_string — every cell is text — so the number travels as
+    its canonical decimal digits and the engine reads it back here. Anything else is a host bug and
+    is reported instead of being guessed at.
+    """
+    if isinstance(value, bool) or not isinstance(value, str):
+        raise EngineError(f"{location}首列必须是端口编号的十进制数字")
+    if not value.isdigit() or str(int(value)) != value:
+        raise EngineError(f"{location}首列必须是端口编号的十进制数字，实际为 {value!r}")
+    return int(value)
+
+
 class Program:
     """Compiled variable table plus ordered program."""
 
@@ -474,8 +488,9 @@ class Program:
             if not isinstance(row, list) or len(row) != 6:
                 raise EngineError("变量表每行需要 6 列")
             port_id, symbol, type_name, dtype, rank, allow_missing = row
-            if not isinstance(port_id, str) or not isinstance(symbol, str):
-                raise EngineError("变量表的前两列必须是字符串")
+            port_id = port_cell(port_id, "变量表")
+            if not isinstance(symbol, str):
+                raise EngineError("变量表第二列必须是字符串")
             if port_id in port_ids:
                 raise EngineError(f"变量端口重复：{port_id}")
             if symbol in symbols:
@@ -495,8 +510,9 @@ class Program:
             if not isinstance(row, list) or len(row) != 7:
                 raise EngineError("公式表每行需要 7 列")
             port_id, symbol, expression, type_name, dtype, rank, exposed = row
-            if not isinstance(port_id, str) or not isinstance(symbol, str) or not isinstance(expression, str):
-                raise EngineError("公式表的前三列必须是字符串")
+            port_id = port_cell(port_id, "公式表")
+            if not isinstance(symbol, str) or not isinstance(expression, str):
+                raise EngineError("公式表的符号与表达式必须是字符串")
             if port_id in port_ids:
                 raise EngineError(f"端口重复：{port_id}")
             if symbol in known:
@@ -553,5 +569,5 @@ class Program:
                                                            compiled.result.symbol, budget)
         return outputs
 
-    def exposed_ports(self) -> list[str]:
+    def exposed_ports(self) -> list[int]:
         return [result.port_id for result in self.results if result.exposed]

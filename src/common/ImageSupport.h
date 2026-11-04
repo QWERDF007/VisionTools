@@ -15,16 +15,16 @@ namespace visiontools {
 
 // Shared image boundary for the tools that do not use the typed parameter view. A failure here is
 // an expected business failure: it leaves through the tool's own execute() as a status.
-inline const std::vector<cv::Mat> &requireImages(const visionrt::Values &inputs, std::string_view id = "images")
+inline const std::vector<cv::Mat> &requireImages(const visionrt::Values &inputs, visionrt::PortId id)
 {
     const auto found = inputs.find(id);
     if (found == inputs.end() || visionrt::isMissing(found->second))
         fail(CommonToolError::InputMissing, id);
     const auto *images = std::get_if<visionrt::DataRef<visionrt::Image>>(&found->second);
     if (!images)
-        fail(CommonToolError::InputTypeMismatch, std::string(id) + " 必须是图像");
+        fail(CommonToolError::InputTypeMismatch, visionrt::portLabel(id) + " 必须是图像");
     if (images->get().empty())
-        fail(CommonToolError::InputMissing, std::string(id) + " 没有图像");
+        fail(CommonToolError::InputMissing, visionrt::portLabel(id) + " 没有图像");
     return images->get();
 }
 

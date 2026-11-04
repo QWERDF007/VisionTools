@@ -18,20 +18,20 @@ namespace ports::image_read {
 inline constexpr char TOOL_ID[] = "visionrt.image.read";
 
 namespace in {
-inline constexpr char PATH[]      = "path";
-inline constexpr char RECURSIVE[] = "recursive";
-inline constexpr char TRAVERSAL[] = "traversal";
-inline constexpr char ORDER[]     = "order";
-inline constexpr char COUNT[]     = "count";
-inline constexpr char RELOAD[]    = "reload";
+inline constexpr visionrt::PortId PATH = 1;
+inline constexpr visionrt::PortId RECURSIVE = 2;
+inline constexpr visionrt::PortId TRAVERSAL = 3;
+inline constexpr visionrt::PortId ORDER = 4;
+inline constexpr visionrt::PortId COUNT = 5;
+inline constexpr visionrt::PortId RELOAD = 6;
 }
 
 namespace out {
-inline constexpr char IMAGES[]        = "images";
-inline constexpr char PATHS[]         = "paths";
-inline constexpr char CURRENT_INDEX[] = "current_index";
-inline constexpr char TOTAL_COUNT[]   = "total_count";
-inline constexpr char END_REACHED[]   = "end_reached";
+inline constexpr visionrt::PortId IMAGES = 2;
+inline constexpr visionrt::PortId PATHS = 3;
+inline constexpr visionrt::PortId CURRENT_INDEX = 4;
+inline constexpr visionrt::PortId TOTAL_COUNT = 5;
+inline constexpr visionrt::PortId END_REACHED = 6;
 }
 }
 

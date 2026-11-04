@@ -14,12 +14,12 @@ namespace testview {
 
 inline std::int64_t code(const visionrt::ToolResult &result)
 {
-    return std::get<std::int64_t>(result.outputs.at(std::string(visionrt::kStatusCodePort)));
+    return std::get<std::int64_t>(result.outputs.at(visionrt::kStatusCodePort));
 }
 
 inline const std::string &message(const visionrt::ToolResult &result)
 {
-    return std::get<std::string>(result.outputs.at(std::string(visionrt::kStatusMessagePort)));
+    return std::get<std::string>(result.outputs.at(visionrt::kStatusMessagePort));
 }
 
 inline visionrt::ToolStatus status(const visionrt::ToolResult &result)

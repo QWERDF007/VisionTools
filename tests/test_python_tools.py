@@ -35,15 +35,15 @@ def load_module_from_file(file_path: pathlib.Path):
 def status(result):
     """The one status an execution reports. Strict direct indexing."""
     return {
-        "code": result["outputs"]["__status_code"],
-        "message": result["outputs"]["__status_message"],
+        "code": result["outputs"][0],
+        "message": result["outputs"][1],
         "detail": result["detail"],
     }
 
 
 def outputs(result):
     """The declared business ports, never the status. Strips only the two exact system ports."""
-    return {k: v for k, v in result["outputs"].items() if k not in ("__status_code", "__status_message")}
+    return {k: v for k, v in result["outputs"].items() if k not in (0, 1)}
 
 
 class TestPythonToolContracts(unittest.TestCase):
@@ -75,12 +75,12 @@ class TestPythonToolContracts(unittest.TestCase):
         instance = mod.ToolInstance()
         instance.initialize({})
 
-        for inputs in ({}, {"images": None}):
+        for inputs in ({}, {1: None}):
             with self.subTest(inputs=inputs):
                 result = instance.execute(inputs)
                 self.assertEqual(status(result)["code"], 1001)
-                self.assertIn("输入端口 'images' 缺失", status(result)["message"])
-                self.assertNotIn("means", outputs(result))
+                self.assertIn("输入端口 1 缺失", status(result)["message"])
+                self.assertNotIn(2, outputs(result))
 
         instance.release()
 
@@ -90,11 +90,11 @@ class TestPythonToolContracts(unittest.TestCase):
         image = np.ones((2, 3), dtype=np.uint8)
         for images in (image, (image,), {"image": image}, 7):
             with self.subTest(container=type(images).__name__):
-                result = instance.execute({"images": images})
+                result = instance.execute({1: images})
                 self.assertEqual(status(result)["code"], 1002)
-                self.assertIn("输入端口 'images'", status(result)["message"])
+                self.assertIn("输入端口 1", status(result)["message"])
                 self.assertIn("列表", status(result)["message"])
-                self.assertNotIn("means", outputs(result))
+                self.assertNotIn(2, outputs(result))
 
     def test_mean_rejects_non_image_elements(self):
         instance = load_module_from_file(self.mean_py).ToolInstance()
@@ -102,12 +102,12 @@ class TestPythonToolContracts(unittest.TestCase):
         image = np.ones((2, 3), dtype=np.uint8)
         for invalid in (np.float32(2), "bad", [[1, 2]], None):
             with self.subTest(element=type(invalid).__name__):
-                result = instance.execute({"images": [image, invalid]})
+                result = instance.execute({1: [image, invalid]})
                 self.assertEqual(status(result)["code"], 1002)
-                self.assertIn("输入端口 'images'", status(result)["message"])
+                self.assertIn("输入端口 1", status(result)["message"])
                 self.assertIn("批次索引 1", status(result)["message"])
                 self.assertIn("ndarray", status(result)["message"])
-                self.assertNotIn("means", outputs(result))
+                self.assertNotIn(2, outputs(result))
 
     def test_mean_rejects_invalid_image_shapes(self):
         instance = load_module_from_file(self.mean_py).ToolInstance()
@@ -115,13 +115,13 @@ class TestPythonToolContracts(unittest.TestCase):
         valid = np.ones((2, 3), dtype=np.uint8)
         for shape in ((), (3,), (1, 2, 3, 4), (0, 3), (2, 0), (2, 3, 0)):
             with self.subTest(shape=shape):
-                result = instance.execute({"images": [valid, np.zeros(shape, dtype=np.uint8)]})
+                result = instance.execute({1: [valid, np.zeros(shape, dtype=np.uint8)]})
                 self.assertEqual(status(result)["code"], 1002)
-                self.assertIn("输入端口 'images'", status(result)["message"])
+                self.assertIn("输入端口 1", status(result)["message"])
                 self.assertIn("批次索引 1", status(result)["message"])
                 self.assertIn("图像形状", status(result)["message"])
                 self.assertIn(str(shape), status(result)["message"])
-                self.assertNotIn("means", outputs(result))
+                self.assertNotIn(2, outputs(result))
 
     def test_mean_rejects_non_real_pixels(self):
         instance = load_module_from_file(self.mean_py).ToolInstance()
@@ -130,23 +130,23 @@ class TestPythonToolContracts(unittest.TestCase):
         for dtype in (np.str_, object, np.bool_, np.complex64):
             with self.subTest(dtype=dtype):
                 invalid = np.full((2, 3), 2, dtype=dtype)
-                result = instance.execute({"images": [image, invalid]})
+                result = instance.execute({1: [image, invalid]})
                 self.assertEqual(status(result)["code"], 1002)
-                self.assertIn("输入端口 'images'", status(result)["message"])
+                self.assertIn("输入端口 1", status(result)["message"])
                 self.assertIn("批次索引 1", status(result)["message"])
                 self.assertIn("实数数值", status(result)["message"])
                 self.assertIn(str(invalid.dtype), status(result)["message"])
-                self.assertNotIn("means", outputs(result))
+                self.assertNotIn(2, outputs(result))
 
     def test_mean_empty_batch(self):
         mod = load_module_from_file(self.mean_py)
         instance = mod.ToolInstance()
         instance.initialize({})
 
-        result = instance.execute({"images": []})
+        result = instance.execute({1: []})
         self.assertEqual(status(result)["code"], 0)
         self.assertEqual(status(result)["message"], "运行成功")
-        means = outputs(result)["means"]
+        means = outputs(result)[2]
         self.assertIsInstance(means, list)
         self.assertEqual(means, [])
 
@@ -160,10 +160,10 @@ class TestPythonToolContracts(unittest.TestCase):
         img2 = np.array([[6.0, 7.0], [7.0, 8.0]], dtype=np.uint8)
         img2.setflags(write=False)  # Read-only view
 
-        result = instance.execute({"images": [img1, img2]})
+        result = instance.execute({1: [img1, img2]})
         self.assertEqual(status(result)["code"], 0)
         self.assertEqual(status(result)["message"], "运行成功")
-        means = outputs(result)["means"]
+        means = outputs(result)[2]
         self.assertIsInstance(means, list)
         self.assertEqual(len(means), 2)
         self.assertTrue(all(isinstance(value, float) for value in means))
@@ -180,12 +180,12 @@ class TestPythonToolContracts(unittest.TestCase):
                 color = np.arange(24, dtype=dtype).reshape(2, 4, 3)[::-1, ::2, :]
                 gray.setflags(write=False)
                 color.setflags(write=False)
-                result = instance.execute({"images": [gray, color]})
+                result = instance.execute({1: [gray, color]})
                 self.assertEqual(status(result)["code"], 0)
                 self.assertEqual(status(result)["message"], "运行成功")
-                self.assertIsInstance(outputs(result)["means"], list)
-                self.assertEqual(outputs(result)["means"], [5.0, 10.0])
-                self.assertTrue(all(isinstance(value, float) for value in outputs(result)["means"]))
+                self.assertIsInstance(outputs(result)[2], list)
+                self.assertEqual(outputs(result)[2], [5.0, 10.0])
+                self.assertTrue(all(isinstance(value, float) for value in outputs(result)[2]))
                 np.testing.assert_array_equal(gray, [[0, 2, 4], [6, 8, 10]])
                 np.testing.assert_array_equal(color,
                                               [[[12, 13, 14], [18, 19, 20]],
@@ -201,12 +201,12 @@ class TestPythonToolContracts(unittest.TestCase):
         r1 = instance.execute({})
         self.assertEqual(status(r1)["code"], 0)
         self.assertEqual(status(r1)["message"], "运行成功")
-        self.assertEqual(outputs(r1)["count"], 1)
+        self.assertEqual(outputs(r1)[2], 1)
 
         r2 = instance.execute({})
         self.assertEqual(status(r2)["code"], 0)
         self.assertEqual(status(r2)["message"], "运行成功")
-        self.assertEqual(outputs(r2)["count"], 2)
+        self.assertEqual(outputs(r2)[2], 2)
 
         rel = instance.release()
         self.assertEqual(rel["code"], 0)
@@ -215,75 +215,75 @@ class TestPythonToolContracts(unittest.TestCase):
         declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/ROI几何/ROI几何.json").read_text(encoding="utf-8"))
         execute = getattr(load_module_from_file(self.roi_py), declaration["implementation"]["symbol"])
         images = [np.zeros((4, 5), dtype=np.uint8), np.zeros((3, 7, 3), dtype=np.uint8)]
-        result = execute({"images": images})
+        result = execute({1: images})
         self.assertEqual(status(result)["code"], 0)
         self.assertEqual(status(result)["message"], "运行成功")
-        self.assertEqual(outputs(result)["rois"], [
+        self.assertEqual(outputs(result)[2], [
             [[2.0, 0.0, 0.0, 5.0, 4.0, 0.0]],
             [[2.0, 0.0, 0.0, 7.0, 3.0, 0.0]],
         ])
         self.assertTrue(all(type(value) is float
-                            for group in outputs(result)["rois"]
+                            for group in outputs(result)[2]
                             for record in group
                             for value in record))
-        self.assertEqual(outputs(execute({"images": []}))["rois"], [])
-        rejected = execute({"images": [np.zeros((0, 5), dtype=np.uint8)]})
+        self.assertEqual(outputs(execute({1: []}))[2], [])
+        rejected = execute({1: [np.zeros((0, 5), dtype=np.uint8)]})
         self.assertEqual(status(rejected)["code"], 1002)
-        self.assertNotIn("rois", outputs(rejected))
+        self.assertNotIn(2, outputs(rejected))
 
     def test_image_add_distinguishes_copy_and_inplace(self):
         declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一/图像加一.json").read_text(encoding="utf-8"))
         execute = getattr(load_module_from_file(self.image_add_py), declaration["implementation"]["symbol"])
         source = np.full((2, 3), 10, dtype=np.uint8)
-        copied = execute({"images": [source], "mode": "copy"})
+        copied = execute({1: [source], 2: "copy"})
         self.assertEqual(status(copied)["code"], 0)
         self.assertTrue(np.array_equal(source, np.full((2, 3), 10, dtype=np.uint8)))
-        self.assertTrue(np.array_equal(outputs(copied)["images"][0], np.full((2, 3), 11, dtype=np.uint8)))
+        self.assertTrue(np.array_equal(outputs(copied)[2][0], np.full((2, 3), 11, dtype=np.uint8)))
 
         original = np.full((2, 3), 20, dtype=np.uint8)
-        inplace = execute({"images": [original], "mode": "inplace"})
+        inplace = execute({1: [original], 2: "inplace"})
         self.assertEqual(status(inplace)["code"], 0)
         self.assertTrue(np.array_equal(original, np.full((2, 3), 21, dtype=np.uint8)))
-        self.assertIs(outputs(inplace)["images"][0], original)
+        self.assertIs(outputs(inplace)[2][0], original)
 
-        self.assertEqual(outputs(execute({"images": [], "mode": "copy"}))["images"], [])
-        invalid = execute({"images": [source], "mode": "other"})
+        self.assertEqual(outputs(execute({1: [], 2: "copy"}))[2], [])
+        invalid = execute({1: [source], 2: "other"})
         self.assertEqual(status(invalid)["code"], 1003)
         # The tool omits a port it never produced; the host materialises the declared default.
-        self.assertNotIn("images", outputs(invalid))
+        self.assertNotIn(2, outputs(invalid))
 
     def test_image_add_honours_upstream_status(self):
         declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一/图像加一.json").read_text(encoding="utf-8"))
         execute = getattr(load_module_from_file(self.image_add_py), declaration["implementation"]["symbol"])
         source = np.full((2, 3), 10, dtype=np.uint8)
-        skipped = execute({"images": [source], "mode": "inplace", "upstream_status": 7})
+        skipped = execute({1: [source], 2: "inplace", 0: 7})
         self.assertEqual(status(skipped)["code"], 7)
         self.assertEqual(status(skipped)["message"], "上游未选中本分支，工具未执行")
-        self.assertNotIn("images", outputs(skipped))
+        self.assertNotIn(2, outputs(skipped))
         self.assertTrue(np.array_equal(source, np.full((2, 3), 10, dtype=np.uint8)),
                         "a non-zero upstream status must not modify the source image")
-        recovered = execute({"images": [source], "mode": "copy", "upstream_status": 0})
+        recovered = execute({1: [source], 2: "copy", 0: 0})
         self.assertEqual(status(recovered)["code"], 0)
-        self.assertTrue(np.array_equal(outputs(recovered)["images"][0], np.full((2, 3), 11, dtype=np.uint8)))
+        self.assertTrue(np.array_equal(outputs(recovered)[2][0], np.full((2, 3), 11, dtype=np.uint8)))
         # A non-integer upstream status is a mistyped port, not a missing one.
-        self.assertEqual(status(execute({"images": [source], "upstream_status": True}))["code"], 1002)
-        none_zero = execute({"images": None, "mode": "copy", "upstream_status": 0})
+        self.assertEqual(status(execute({1: [source], 0: True}))["code"], 1002)
+        none_zero = execute({1: None, 2: "copy", 0: 0})
         self.assertEqual(status(none_zero)["code"], 1001)
         self.assertIn("缺失", status(none_zero)["message"])
-        none_seven = execute({"images": None, "mode": "copy", "upstream_status": 7})
+        none_seven = execute({1: None, 2: "copy", 0: 7})
         self.assertEqual(status(none_seven)["code"], 7)
         self.assertEqual(status(none_seven)["message"], "上游未选中本分支，工具未执行")
-        bad_type_zero = execute({"images": 12345, "mode": "copy", "upstream_status": 0})
+        bad_type_zero = execute({1: 12345, 2: "copy", 0: 0})
         self.assertEqual(status(bad_type_zero)["code"], 1002)
-        bad_type_seven = execute({"images": 12345, "mode": "copy", "upstream_status": 7})
+        bad_type_seven = execute({1: 12345, 2: "copy", 0: 7})
         self.assertEqual(status(bad_type_seven)["code"], 1002)
 
     def test_mean_keeps_measuring_after_upstream_failure(self):
         instance = load_module_from_file(self.mean_py).ToolInstance()
         instance.initialize({})
-        result = instance.execute({"images": [np.full((2, 2), 3.0)], "upstream_status": 7})
+        result = instance.execute({1: [np.full((2, 2), 3.0)], 0: 7})
         self.assertEqual(status(result)["code"], 0)
-        self.assertEqual(outputs(result)["means"], [3.0])
+        self.assertEqual(outputs(result)[2], [3.0])
 
     def test_builtin_function_uses_its_json_entry_and_returns_native_lists(self):
         declaration = json.loads((ROOT / "assets/tools/builtin/Python/示例/图像尺寸.json").read_text(encoding="utf-8"))
@@ -292,11 +292,11 @@ class TestPythonToolContracts(unittest.TestCase):
         module = load_module_from_file(ROOT / "python/builtin" / entry["package"] / entry["file"])
         execute = getattr(module, entry["symbol"])
         images = [np.zeros((2, 3, 3), dtype=np.uint8), np.zeros((4, 1), dtype=np.float32)]
-        result = execute({"images": images})
+        result = execute({1: images})
         self.assertEqual(status(result)["code"], 0)
-        self.assertEqual(outputs(result)["sizes"], [[2, 3], [4, 1]])
-        self.assertTrue(all(type(value) is int for size in outputs(result)["sizes"] for value in size))
-        self.assertEqual(outputs(execute({"images": []}))["sizes"], [])
+        self.assertEqual(outputs(result)[2], [[2, 3], [4, 1]])
+        self.assertTrue(all(type(value) is int for size in outputs(result)[2] for value in size))
+        self.assertEqual(outputs(execute({1: []}))[2], [])
     def test_sdk_preserves_raw_status_types_without_coercion(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("vt_sdk", ROOT / "python/author_sdk/visiontools_sdk/__init__.py")
@@ -305,17 +305,17 @@ class TestPythonToolContracts(unittest.TestCase):
 
         # bool must not be coerced to int 1
         res = sdk.result(code=True, message=None, detail=None)
-        self.assertIs(res["outputs"]["__status_code"], True)
-        self.assertIsNone(res["outputs"]["__status_message"])
+        self.assertIs(res["outputs"][0], True)
+        self.assertIsNone(res["outputs"][1])
         self.assertIsNone(res["detail"])
 
         # float must not be coerced to int 2
         res2 = sdk.result(code=2.9)
-        self.assertEqual(res2["outputs"]["__status_code"], 2.9)
+        self.assertEqual(res2["outputs"][0], 2.9)
 
         # str must not be coerced to int 7
         res3 = sdk.result(code="7")
-        self.assertEqual(res3["outputs"]["__status_code"], "7")
+        self.assertEqual(res3["outputs"][0], "7")
 
     def test_logic_status_executed_requires_complete_status(self):
         import importlib.util
@@ -332,32 +332,29 @@ class TestPythonToolContracts(unittest.TestCase):
             logic_status.executed({"code": 0, "message": ""}, {})
 
         # Complete status works
-        complete = logic_status.executed({"code": 0, "message": "ok", "detail": "d"}, {"data": 123})
-        self.assertEqual(complete["outputs"]["__status_code"], 0)
-        self.assertEqual(complete["outputs"]["__status_message"], "ok")
+        complete = logic_status.executed({"code": 0, "message": "ok", "detail": "d"}, {7: 123})
+        self.assertEqual(complete["outputs"][0], 0)
+        self.assertEqual(complete["outputs"][1], "ok")
         self.assertEqual(complete["detail"], "d")
-        self.assertEqual(complete["outputs"]["data"], 123)
+        self.assertEqual(complete["outputs"][7], 123)
 
-    def test_testview_helpers_reject_missing_fields_and_unknown_system_keys(self):
+    def test_testview_helpers_reject_missing_fields(self):
         # Missing outputs
         with self.assertRaises(KeyError):
             status({})
-        # Missing __status_code
+        # Missing status code
         with self.assertRaises(KeyError):
-            status({"outputs": {"__status_message": ""}, "detail": ""})
-        # Missing __status_message
+            status({"outputs": {1: ""}, "detail": ""})
+        # Missing status message
         with self.assertRaises(KeyError):
-            status({"outputs": {"__status_code": 0}, "detail": ""})
+            status({"outputs": {0: 0}, "detail": ""})
         # Missing detail
         with self.assertRaises(KeyError):
-            status({"outputs": {"__status_code": 0, "__status_message": ""}})
+            status({"outputs": {0: 0, 1: ""}})
 
-        # outputs() only strips exact system keys, not arbitrary __status_ prefix
-        out = outputs({"outputs": {"__status_code": 0, "__status_message": "", "__status_extra": 42, "normal": 1}})
-        self.assertIn("__status_extra", out)
-        self.assertEqual(out["__status_extra"], 42)
-        self.assertNotIn("__status_code", out)
-        self.assertNotIn("__status_message", out)
+        # outputs() strips exactly the two status numbers and keeps every business port.
+        out = outputs({"outputs": {0: 0, 1: "", 9: 42, 7: 1}})
+        self.assertEqual(out, {9: 42, 7: 1})
 
 
 if __name__ == '__main__':

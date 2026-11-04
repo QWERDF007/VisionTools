@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visionrt.detection.filter",
   "name_zh": "缺陷过滤",
   "version": "1.0.0",
@@ -12,38 +12,46 @@
       "检测"
     ]
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 9,
+    "outputs": 8
+  },
   "ports": {
     "inputs": [
       {
-        "name_en": "images",
+        "id": 1,
         "name_zh": "图像",
         "type": "image"
       },
       {
-        "name_en": "rois",
+        "id": 2,
         "name_zh": "候选ROI",
         "type": "roi",
         "relations": {
-          "image": "inputs.images"
+          "image": {
+            "stage": "inputs",
+            "id": 1
+          }
         }
       },
       {
-        "name_en": "scores",
+        "id": 3,
         "name_zh": "置信度得分",
         "type": "vec_vec_float32"
       },
       {
-        "name_en": "classes",
+        "id": 4,
         "name_zh": "类别ID",
         "type": "vec_vec_int"
       },
       {
-        "name_en": "class_names",
+        "id": 5,
         "name_zh": "类别名称",
         "type": "vec_vec_string"
       },
       {
-        "name_en": "min_score",
+        "id": 6,
         "name_zh": "最低置信度",
         "type": "float",
         "default": 0.5,
@@ -57,7 +65,7 @@
         }
       },
       {
-        "name_en": "min_area",
+        "id": 7,
         "name_zh": "最小面积",
         "type": "float",
         "default": 1,
@@ -70,7 +78,7 @@
         }
       },
       {
-        "name_en": "allowed_classes",
+        "id": 8,
         "name_zh": "保留类别",
         "type": "vec_int",
         "ui": {
@@ -80,41 +88,47 @@
     ],
     "outputs": [
       {
-        "name_en": "images",
+        "id": 2,
         "name_zh": "输出图像",
         "type": "image",
         "relations": {
-          "same_geometry_as": "inputs.images"
+          "same_geometry_as": {
+            "stage": "inputs",
+            "id": 1
+          }
         },
         "display": {
           "color_order": "BGR"
         }
       },
       {
-        "name_en": "rois",
+        "id": 3,
         "name_zh": "过滤后ROI",
         "type": "roi",
         "relations": {
-          "image": "outputs.images"
+          "image": {
+            "stage": "outputs",
+            "id": 2
+          }
         }
       },
       {
-        "name_en": "scores",
+        "id": 4,
         "name_zh": "过滤后得分",
         "type": "vec_vec_float32"
       },
       {
-        "name_en": "classes",
+        "id": 5,
         "name_zh": "过滤后类别",
         "type": "vec_vec_int"
       },
       {
-        "name_en": "class_names",
+        "id": 6,
         "name_zh": "过滤后类别名",
         "type": "vec_vec_string"
       },
       {
-        "name_en": "counts",
+        "id": 7,
         "name_zh": "目标数量",
         "type": "vec_int"
       }

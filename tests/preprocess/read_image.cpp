@@ -86,13 +86,13 @@ void testReadImageTool()
         inputs = defaultInputs(filesDir);
         inputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(0));
         res = tool.execute(inputs);
-        requireFailure(res, "count", "count < 1 must be rejected");
+        requireFailure(res, read_ports::in::COUNT, "count < 1 must be rejected");
 
         // 1.4 无效遍历模式拒绝
         inputs = defaultInputs(filesDir);
         inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("random"));
         res = tool.execute(inputs);
-        requireFailure(res, "traversal", "Invalid traversal must be rejected");
+        requireFailure(res, read_ports::in::TRAVERSAL, "Invalid traversal must be rejected");
 
         // 1.5 空目录明确失败
         inputs = defaultInputs(emptyDir);

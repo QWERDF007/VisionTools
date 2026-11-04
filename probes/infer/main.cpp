@@ -336,27 +336,29 @@ Tool create(const std::filesystem::path &modulePath = "")
 
 Values configuration(const Arguments &args, bool build)
 {
+    // 初始化端口按声明顺序编号：0 模型名、1 加载方式、2 模型路径、3 引擎输出、4 标签、
+    // 5 精度、6 GPU、7/8 输入尺寸、9 类别数。
     return {
-        {        "model_name",                                    std::string("yolov8n")},
-        {         "load_mode",               std::string(build ? "build_wts" : "engine")},
-        {        "model_path", std::string(absolute(build ? args.weights : args.engine))},
-        {"engine_output_path",                        std::string(absolute(args.engine))},
-        {         "precision",                               std::string(args.precision)},
-        {       "labels_path",                                          std::string("")},
-        {         "gpu_index",                          std::int64_t(args.device)},
-        {       "input_width",                           std::int64_t(args.width)},
-        {      "input_height",                          std::int64_t(args.height)},
-        {       "num_classes",                         std::int64_t(args.classes)}
+        {0, std::string("yolov8n")},
+        {1, std::string(build ? "build_wts" : "engine")},
+        {2, std::string(absolute(build ? args.weights : args.engine))},
+        {3, std::string(absolute(args.engine))},
+        {5, std::string(args.precision)},
+        {4, std::string("")},
+        {6, std::int64_t(args.device)},
+        {7, std::int64_t(args.width)},
+        {8, std::int64_t(args.height)},
+        {9, std::int64_t(args.classes)}
     };
 }
 
 Values inputs(const DataRef<Image> &images, const DetectionParameters &parameters)
 {
     return {
-        {        "images",                images},
-        {"conf_threshold", parameters.confidence},
-        { "nms_threshold",        parameters.nms},
-        {"max_detections",    parameters.maximum}
+        {1, images},
+        {2, parameters.confidence},
+        {3, parameters.nms},
+        {4, parameters.maximum}
     };
 }
 
@@ -385,11 +387,11 @@ std::vector<std::vector<PublicDetection>> outputContract(const ToolResult &resul
 {
     success(testview::status(result));
     require(testview::businessCount(result) == 5, "Public detection output contract must expose 5 business outputs");
-    const auto *rois     = std::get_if<DataRef<ROI>>(&result.outputs.at("rois"));
-    const auto *scores   = std::get_if<Array>(&result.outputs.at("scores"));
-    const auto *classes  = std::get_if<Array>(&result.outputs.at("classes"));
-    const auto *names    = std::get_if<Array>(&result.outputs.at("class_names"));
-    const auto *returned = std::get_if<DataRef<Image>>(&result.outputs.at("images"));
+    const auto *rois     = std::get_if<DataRef<ROI>>(&result.outputs.at(3));
+    const auto *scores   = std::get_if<Array>(&result.outputs.at(4));
+    const auto *classes  = std::get_if<Array>(&result.outputs.at(5));
+    const auto *names    = std::get_if<Array>(&result.outputs.at(6));
+    const auto *returned = std::get_if<DataRef<Image>>(&result.outputs.at(2));
     require(rois && scores && classes && names && returned, "Invalid public output types");
 
     const auto &roiBatch  = rois->get();
@@ -652,16 +654,16 @@ int main(int argc, char **argv)
 
         const auto emptyInputs = inputs(DataRef<Image>(Image{}), args.detection);
         const auto emptyResult = built->execute(emptyInputs);
-        outputContract(emptyResult, std::get<DataRef<Image>>(emptyInputs.at("images")));
+        outputContract(emptyResult, std::get<DataRef<Image>>(emptyInputs.at(1)));
 
-        auto bad      = batchInputs;
-        bad["images"] = Missing{};
+        auto bad = batchInputs;
+        bad[1]   = Missing{};
         allMissing(built->execute(bad));
-        bad                  = batchInputs;
-        bad["nms_threshold"] = std::numeric_limits<double>::infinity();
+        bad    = batchInputs;
+        bad[3] = std::numeric_limits<double>::infinity();
         allMissing(built->execute(bad));
-        bad           = batchInputs;
-        bad["images"] = DataRef<Image>(Image{images.get()[0], cv::Mat(4, 4, CV_32FC1, cv::Scalar(0))});
+        bad    = batchInputs;
+        bad[1] = DataRef<Image>(Image{images.get()[0], cv::Mat(4, 4, CV_32FC1, cv::Scalar(0))});
         allMissing(built->execute(bad));
 
         bool thresholdEqualKeeps = false, thresholdAboveExcludes = false;
@@ -675,12 +677,12 @@ int main(int argc, char **argv)
             const double boundaryScore = target.score;
             const auto   single        = DataRef<Image>(Image{images.get()[b]});
             auto         boundary      = inputs(single, args.detection);
-            boundary["conf_threshold"] = boundaryScore;
+            boundary[2]                = boundaryScore;
             const auto equalResult     = built->execute(boundary);
             const auto equalDets       = outputContract(equalResult, single);
             thresholdEqualKeeps        = !equalDets.empty() && !equalDets[0].empty();
 
-            boundary["conf_threshold"] = std::nextafter(boundaryScore, 1.0);
+            boundary[2]          = std::nextafter(boundaryScore, 1.0);
             const auto aboveResult     = built->execute(boundary);
             const auto aboveDets       = outputContract(aboveResult, single);
             thresholdAboveExcludes
@@ -690,8 +692,8 @@ int main(int argc, char **argv)
             break;
         }
 
-        auto stricter              = batchInputs;
-        stricter["conf_threshold"] = 1.0;
+        auto stricter = batchInputs;
+        stricter[2]   = 1.0;
         success(testview::status(built->execute(stricter)));
 
         // Snapshot persistence across release and destroy

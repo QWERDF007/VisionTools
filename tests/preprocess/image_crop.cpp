@@ -38,9 +38,9 @@ void testImageCropTool()
     ToolServices  services;
     ImageCropTool tool(services);
 
-    static_assert(std::string_view(crop_ports::in::IMAGES) == "images");
-    static_assert(std::string_view(crop_ports::in::RECT) == "rect");
-    static_assert(std::string_view(crop_ports::out::ORIGINS) == "origins");
+    static_assert(crop_ports::in::IMAGES == 1);
+    static_assert(crop_ports::in::RECT == 2);
+    static_assert(crop_ports::out::ORIGINS == 3);
 
     // 1. Integer rectangle: zero-copy view and input owner release
     cv::Mat savedCropped;
@@ -109,7 +109,7 @@ void testImageCropTool()
         REQUIRE(batch[0].cols == 4 && batch[1].rows == 3, "Crop must clip partial bounds");
         REQUIRE(batch[0].at<unsigned char>(0, 0) == 31, "First image order must be retained");
         REQUIRE(batch[1].at<unsigned char>(0, 0) == 79, "Second image order must be retained");
-        REQUIRE(result.outputs.count("source_indices") == 0, "Scalar rectangle crop has no expanded ROI indices");
+        REQUIRE(result.outputs.count(4) == 0, "Scalar rectangle crop has no expanded ROI indices");
         const auto origin
             = nestedOf<std::vector<std::vector<double>>>(std::get<Array>(result.outputs.at(crop_ports::out::ORIGINS)));
         REQUIRE(origin.size() == 2 && origin[0].size() == 2 && origin[1].size() == 2, "Origins must have B by 2 shape");

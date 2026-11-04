@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "custom.python.image_add",
   "name_zh": "图像加一",
   "version": "1.0.0",
@@ -15,15 +15,20 @@
       "示例"
     ]
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 3,
+    "outputs": 3
+  },
   "ports": {
     "inputs": [
       {
-        "name_en": "images",
+        "id": 1,
         "name_zh": "输入图像",
         "type": "image"
       },
       {
-        "name_en": "mode",
+        "id": 2,
         "name_zh": "处理方式",
         "type": "string",
         "default": "copy",
@@ -37,7 +42,7 @@
     ],
     "outputs": [
       {
-        "name_en": "images",
+        "id": 2,
         "name_zh": "输出图像",
         "type": "image"
       }

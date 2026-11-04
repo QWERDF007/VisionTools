@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "custom.call.counter",
   "name_zh": "调用计数器",
   "version": "1.0.0",
@@ -15,10 +15,15 @@
       "示例"
     ]
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 1,
+    "outputs": 3
+  },
   "ports": {
     "outputs": [
       {
-        "name_en": "count",
+        "id": 2,
         "name_zh": "累计调用次数",
         "type": "int"
       }

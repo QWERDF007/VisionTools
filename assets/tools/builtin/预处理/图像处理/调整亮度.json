@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visiontools.image.brightness",
   "name_zh": "调整亮度",
   "version": "1.0.0",
@@ -12,15 +12,20 @@
       "图像处理"
     ]
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 8,
+    "outputs": 4
+  },
   "ports": {
     "inputs": [
       {
-        "name_en": "images",
+        "id": 1,
         "name_zh": "输入图像",
         "type": "image"
       },
       {
-        "name_en": "gain",
+        "id": 2,
         "name_zh": "增益",
         "type": "float",
         "default": 1.0,
@@ -33,7 +38,7 @@
         }
       },
       {
-        "name_en": "offset",
+        "id": 3,
         "name_zh": "偏移",
         "type": "float",
         "ui": {
@@ -42,7 +47,7 @@
         }
       },
       {
-        "name_en": "rois",
+        "id": 4,
         "name_zh": "测量区域",
         "type": "roi",
         "default": [],
@@ -50,17 +55,23 @@
           "editor": "array"
         },
         "relations": {
-          "image": "inputs.images",
-          "alignment": "inputs.alignment"
+          "image": {
+            "stage": "inputs",
+            "id": 1
+          },
+          "alignment": {
+            "stage": "inputs",
+            "id": 6
+          }
         }
       },
       {
-        "name_en": "mask",
+        "id": 5,
         "name_zh": "输入掩码",
         "type": "image"
       },
       {
-        "name_en": "alignment",
+        "id": 6,
         "name_zh": "参考到当前变换",
         "type": "vec_vec_vec_float",
         "ui": {
@@ -68,7 +79,7 @@
         }
       },
       {
-        "name_en": "emit_mask",
+        "id": 7,
         "name_zh": "输出应用区域",
         "type": "bool",
         "ui": {
@@ -78,15 +89,18 @@
     ],
     "outputs": [
       {
-        "name_en": "images",
+        "id": 2,
         "name_zh": "输出图像",
         "type": "image",
         "relations": {
-          "same_geometry_as": "inputs.images"
+          "same_geometry_as": {
+            "stage": "inputs",
+            "id": 1
+          }
         }
       },
       {
-        "name_en": "applied_mask",
+        "id": 3,
         "name_zh": "应用区域",
         "type": "image",
         "display": {

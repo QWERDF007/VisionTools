@@ -9,18 +9,20 @@ import numpy as np
 from .visiontools_sdk import failure, success
 
 
+IMAGES = 1
+ROIS = 2
 INVALID_INPUT = 1002
 
 def execute(inputs):
-    images = inputs.get("images")
+    images = inputs.get(IMAGES)
     if not isinstance(images, list):
-        return failure(INVALID_INPUT, "输入端口 'images' 需要图像 list")
+        return failure(INVALID_INPUT, "输入端口 1 需要图像 list")
     rois = []
     for index, image in enumerate(images):
         if not isinstance(image, np.ndarray) or image.size == 0 or image.ndim not in (2, 3):
             return failure(INVALID_INPUT,
-                           f"输入端口 'images' 批次索引 {index} 需要非空 HxW 或 HxWxC ndarray",
+                           f"输入端口 1 批次索引 {index} 需要非空 HxW 或 HxWxC ndarray",
                            outputs={})
         height, width = int(image.shape[0]), int(image.shape[1])
         rois.append([[2.0, 0.0, 0.0, float(width), float(height), 0.0]])
-    return success({"rois": rois})
+    return success({ROIS: rois})

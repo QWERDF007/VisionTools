@@ -40,11 +40,11 @@ EdgePolarity parsePolarity(const std::string &value)
 
 // One place for "this parameter is usable": the declaration also carries the range, but a direct
 // consumer can call the tool without one.
-void inRange(double value, double minimum, double maximum, std::string_view id)
+void inRange(double value, double minimum, double maximum, visionrt::PortId id)
 {
     if (!std::isfinite(value) || value < minimum || value > maximum)
         fail(CommonToolError::InputOutOfRange,
-             std::string(id) + " 必须在 [" + std::to_string(minimum) + ", " + std::to_string(maximum)
+             visionrt::portLabel(id) + " 必须在 [" + std::to_string(minimum) + ", " + std::to_string(maximum)
                  + "] 内，实际值：" + std::to_string(value));
 }
 
@@ -118,7 +118,7 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
         inRange(unitsPerPixel, 1.0e-9, 1.0e9, p::in::UNITS_PER_PIXEL);
         options.polarity = parsePolarity(polarityName);
         if (unit.empty())
-            fail(CommonToolError::InputOutOfRange, std::string(p::in::UNIT) + " 不能为空");
+            fail(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::UNIT) + " 不能为空");
         if (options.radiusMax < options.radiusMin)
             fail(CommonToolError::InputOutOfRange, "radius_max 必须不小于 radius_min");
         if (options.minPoints > options.calipers)

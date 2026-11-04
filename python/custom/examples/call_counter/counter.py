@@ -8,6 +8,8 @@ calls return the status dict alone; only ``execute`` publishes the envelope.
 
 from .visiontools_sdk import OutputParametersBase, status
 
+COUNT = 2
+
 
 class CounterOutputs(OutputParametersBase):
     def __init__(self):
@@ -15,7 +17,7 @@ class CounterOutputs(OutputParametersBase):
         self.count = 0
 
     def write_fields(self, writer):
-        writer.integer("count", self.count)
+        writer.integer(COUNT, self.count)
 
 class CounterTool:
     def __init__(self):

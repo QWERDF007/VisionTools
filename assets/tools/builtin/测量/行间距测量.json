@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visiontools.measure.row_spacing",
   "name_zh": "测量行间距",
   "version": "1.0.0",
@@ -12,15 +12,20 @@
       "尺寸测量"
     ]
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 11,
+    "outputs": 18
+  },
   "ports": {
     "inputs": [
       {
-        "name_en": "images",
+        "id": 1,
         "name_zh": "图像",
         "type": "image"
       },
       {
-        "name_en": "rois",
+        "id": 2,
         "name_zh": "测量区域",
         "type": "roi",
         "default": [],
@@ -28,12 +33,18 @@
           "editor": "array"
         },
         "relations": {
-          "image": "inputs.images",
-          "alignment": "inputs.alignment"
+          "image": {
+            "stage": "inputs",
+            "id": 1
+          },
+          "alignment": {
+            "stage": "inputs",
+            "id": 3
+          }
         }
       },
       {
-        "name_en": "alignment",
+        "id": 3,
         "name_zh": "参考到当前变换",
         "type": "vec_vec_vec_float",
         "ui": {
@@ -41,7 +52,7 @@
         }
       },
       {
-        "name_en": "sigma",
+        "id": 4,
         "name_zh": "平滑标准差",
         "type": "float",
         "default": 1.0,
@@ -55,7 +66,7 @@
         }
       },
       {
-        "name_en": "min_gradient",
+        "id": 5,
         "name_zh": "最小梯度",
         "type": "float",
         "default": 8.0,
@@ -69,7 +80,7 @@
         }
       },
       {
-        "name_en": "object_polarity",
+        "id": 6,
         "name_zh": "物体极性",
         "type": "string",
         "default": "bright",
@@ -84,7 +95,7 @@
         }
       },
       {
-        "name_en": "width_min",
+        "id": 7,
         "name_zh": "合格宽度下限",
         "type": "float",
         "default": 1.0,
@@ -97,7 +108,7 @@
         }
       },
       {
-        "name_en": "width_max",
+        "id": 8,
         "name_zh": "合格宽度上限",
         "type": "float",
         "default": 1000000.0,
@@ -110,7 +121,7 @@
         }
       },
       {
-        "name_en": "units_per_pixel",
+        "id": 9,
         "name_zh": "每像素物理长度",
         "type": "float",
         "default": 1.0,
@@ -123,7 +134,7 @@
         }
       },
       {
-        "name_en": "unit",
+        "id": 10,
         "name_zh": "单位",
         "type": "string",
         "default": "px",
@@ -134,7 +145,7 @@
     ],
     "outputs": [
       {
-        "name_en": "images",
+        "id": 2,
         "name_zh": "显示图像",
         "type": "image",
         "display": {
@@ -142,80 +153,83 @@
         }
       },
       {
-        "name_en": "valid_roi",
+        "id": 3,
         "name_zh": "逐ROI有效性",
         "type": "vec_vec_bool"
       },
       {
-        "name_en": "reasons",
+        "id": 4,
         "name_zh": "逐ROI说明",
         "type": "vec_vec_string"
       },
       {
-        "name_en": "pair_count",
+        "id": 5,
         "name_zh": "完整物体数量",
         "type": "vec_vec_int"
       },
       {
-        "name_en": "accepted_count",
+        "id": 6,
         "name_zh": "宽度合格数量",
         "type": "vec_vec_int"
       },
       {
-        "name_en": "unpaired_count",
+        "id": 7,
         "name_zh": "未配对边缘数量",
         "type": "vec_vec_int"
       },
       {
-        "name_en": "accepted",
+        "id": 8,
         "name_zh": "逐物体宽度合格",
         "type": "vec_vec_vec_bool"
       },
       {
-        "name_en": "width_px",
+        "id": 9,
         "name_zh": "宽度像素值",
         "type": "vec_vec_vec_float"
       },
       {
-        "name_en": "gap_px",
+        "id": 10,
         "name_zh": "间隙像素值",
         "type": "vec_vec_vec_float"
       },
       {
-        "name_en": "pitch_px",
+        "id": 11,
         "name_zh": "节距像素值",
         "type": "vec_vec_vec_float"
       },
       {
-        "name_en": "width",
+        "id": 12,
         "name_zh": "宽度物理值",
         "type": "vec_vec_vec_float"
       },
       {
-        "name_en": "gap",
+        "id": 13,
         "name_zh": "间隙物理值",
         "type": "vec_vec_vec_float"
       },
       {
-        "name_en": "pitch",
+        "id": 14,
         "name_zh": "节距物理值",
         "type": "vec_vec_vec_float"
       },
       {
-        "name_en": "pair_points",
+        "id": 15,
         "name_zh": "物体边缘中点",
         "type": "vec_vec_vec_vec_float"
       },
       {
-        "name_en": "overlay_segments",
+        "id": 16,
         "name_zh": "边缘显示线段",
         "type": "roi",
         "relations": {
-          "image": "outputs.images"
+          "image": {
+            "stage": "outputs",
+            "id": 2
+          }
         }
       },
       {
-        "name_en": "unit",
+        "id": 17,
         "name_zh": "单位",
         "type": "string"
       }
@@ -223,17 +237,59 @@
   },
   "interaction": {
     "helper": "visiontools.assist.row_spacing",
-    "inputs": {
-      "images": "inputs.images",
-      "seed_rois": "inputs.rois",
-      "alignment": "inputs.alignment"
-    },
-    "proposals": {
-      "proposal_rois": "inputs.rois",
-      "suggested_polarity": "inputs.object_polarity",
-      "suggested_width_min": "inputs.width_min",
-      "suggested_width_max": "inputs.width_max"
-    },
+    "inputs": [
+      {
+        "helper_port_id": 1,
+        "source": {
+          "stage": "inputs",
+          "id": 1
+        }
+      },
+      {
+        "helper_port_id": 4,
+        "source": {
+          "stage": "inputs",
+          "id": 2
+        }
+      },
+      {
+        "helper_port_id": 5,
+        "source": {
+          "stage": "inputs",
+          "id": 3
+        }
+      }
+    ],
+    "proposals": [
+      {
+        "helper_port_id": 3,
+        "target": {
+          "stage": "inputs",
+          "id": 2
+        }
+      },
+      {
+        "helper_port_id": 6,
+        "target": {
+          "stage": "inputs",
+          "id": 6
+        }
+      },
+      {
+        "helper_port_id": 7,
+        "target": {
+          "stage": "inputs",
+          "id": 7
+        }
+      },
+      {
+        "helper_port_id": 8,
+        "target": {
+          "stage": "inputs",
+          "id": 8
+        }
+      }
+    ],
     "roi_kinds": [
       "rectangle"
     ]

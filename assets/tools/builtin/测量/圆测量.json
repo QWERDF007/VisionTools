@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visiontools.measure.circle",
   "name_zh": "测量圆",
   "version": "1.0.0",
@@ -12,15 +12,20 @@
       "尺寸测量"
     ]
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 18,
+    "outputs": 15
+  },
   "ports": {
     "inputs": [
       {
-        "name_en": "images",
+        "id": 1,
         "name_zh": "图像",
         "type": "image"
       },
       {
-        "name_en": "rois",
+        "id": 2,
         "name_zh": "测量区域",
         "type": "roi",
         "default": [],
@@ -28,12 +33,18 @@
           "editor": "array"
         },
         "relations": {
-          "image": "inputs.images",
-          "alignment": "inputs.alignment"
+          "image": {
+            "stage": "inputs",
+            "id": 1
+          },
+          "alignment": {
+            "stage": "inputs",
+            "id": 3
+          }
         }
       },
       {
-        "name_en": "alignment",
+        "id": 3,
         "name_zh": "参考到当前变换",
         "type": "vec_vec_vec_float",
         "ui": {
@@ -41,7 +52,7 @@
         }
       },
       {
-        "name_en": "num_calipers",
+        "id": 4,
         "name_zh": "卡尺数量",
         "type": "int",
         "default": 64,
@@ -54,7 +65,7 @@
         }
       },
       {
-        "name_en": "search_half_width",
+        "id": 5,
         "name_zh": "径向半搜索宽度",
         "type": "float",
         "default": 8.0,
@@ -68,7 +79,7 @@
         }
       },
       {
-        "name_en": "average_width",
+        "id": 6,
         "name_zh": "切向平均宽度",
         "type": "float",
         "default": 3.0,
@@ -82,7 +93,7 @@
         }
       },
       {
-        "name_en": "sigma",
+        "id": 7,
         "name_zh": "平滑标准差",
         "type": "float",
         "default": 1.0,
@@ -96,7 +107,7 @@
         }
       },
       {
-        "name_en": "min_gradient",
+        "id": 8,
         "name_zh": "最小梯度",
         "type": "float",
         "default": 8.0,
@@ -110,7 +121,7 @@
         }
       },
       {
-        "name_en": "polarity",
+        "id": 9,
         "name_zh": "边缘极性",
         "type": "string",
         "default": "any",
@@ -126,7 +137,7 @@
         }
       },
       {
-        "name_en": "min_points",
+        "id": 10,
         "name_zh": "最少有效点",
         "type": "int",
         "default": 12,
@@ -139,7 +150,7 @@
         }
       },
       {
-        "name_en": "min_completeness",
+        "id": 11,
         "name_zh": "最小完整度",
         "type": "float",
         "default": 0.6,
@@ -153,7 +164,7 @@
         }
       },
       {
-        "name_en": "min_coverage_deg",
+        "id": 12,
         "name_zh": "最小覆盖角度",
         "type": "float",
         "default": 180.0,
@@ -167,7 +178,7 @@
         }
       },
       {
-        "name_en": "radius_min",
+        "id": 13,
         "name_zh": "最小半径",
         "type": "float",
         "default": 0.5,
@@ -180,7 +191,7 @@
         }
       },
       {
-        "name_en": "radius_max",
+        "id": 14,
         "name_zh": "最大半径",
         "type": "float",
         "default": 1000000.0,
@@ -193,7 +204,7 @@
         }
       },
       {
-        "name_en": "max_rms",
+        "id": 15,
         "name_zh": "最大拟合误差",
         "type": "float",
         "default": 1.0,
@@ -206,7 +217,7 @@
         }
       },
       {
-        "name_en": "units_per_pixel",
+        "id": 16,
         "name_zh": "每像素物理长度",
         "type": "float",
         "default": 1.0,
@@ -219,7 +230,7 @@
         }
       },
       {
-        "name_en": "unit",
+        "id": 17,
         "name_zh": "单位",
         "type": "string",
         "default": "px",
@@ -230,7 +241,7 @@
     ],
     "outputs": [
       {
-        "name_en": "images",
+        "id": 2,
         "name_zh": "显示图像",
         "type": "image",
         "display": {
@@ -238,68 +249,74 @@
         }
       },
       {
-        "name_en": "valid",
+        "id": 3,
         "name_zh": "逐ROI有效性",
         "type": "vec_vec_bool"
       },
       {
-        "name_en": "reasons",
+        "id": 4,
         "name_zh": "逐ROI说明",
         "type": "vec_vec_string"
       },
       {
-        "name_en": "valid_count",
+        "id": 5,
         "name_zh": "逐图有效圆数量",
         "type": "vec_int"
       },
       {
-        "name_en": "source_roi_indices",
+        "id": 6,
         "name_zh": "有效圆来源索引",
         "type": "vec_vec_int"
       },
       {
-        "name_en": "circles",
+        "id": 7,
         "name_zh": "测得圆",
         "type": "roi",
         "relations": {
-          "image": "outputs.images"
+          "image": {
+            "stage": "outputs",
+            "id": 2
+          }
         }
       },
       {
-        "name_en": "centers",
+        "id": 8,
         "name_zh": "圆心坐标",
         "type": "vec_vec_vec_float"
       },
       {
-        "name_en": "radius_px",
+        "id": 9,
         "name_zh": "半径像素值",
         "type": "vec_vec_float"
       },
       {
-        "name_en": "radius",
+        "id": 10,
         "name_zh": "半径物理值",
         "type": "vec_vec_float"
       },
       {
-        "name_en": "rms",
+        "id": 11,
         "name_zh": "拟合误差像素值",
         "type": "vec_vec_float"
       },
       {
-        "name_en": "completeness",
+        "id": 12,
         "name_zh": "完整度",
         "type": "vec_vec_float"
       },
       {
-        "name_en": "used_edges",
+        "id": 13,
         "name_zh": "拟合边缘点",
         "type": "roi",
         "relations": {
-          "image": "outputs.images"
+          "image": {
+            "stage": "outputs",
+            "id": 2
+          }
         }
       },
       {
-        "name_en": "unit",
+        "id": 14,
         "name_zh": "单位",
         "type": "string"
       }
@@ -307,16 +324,52 @@
   },
   "interaction": {
     "helper": "visiontools.assist.circle",
-    "inputs": {
-      "images": "inputs.images",
-      "seed_rois": "inputs.rois",
-      "alignment": "inputs.alignment"
-    },
-    "proposals": {
-      "proposal_rois": "inputs.rois",
-      "suggested_search_half_width": "inputs.search_half_width",
-      "suggested_polarity": "inputs.polarity"
-    },
+    "inputs": [
+      {
+        "helper_port_id": 1,
+        "source": {
+          "stage": "inputs",
+          "id": 1
+        }
+      },
+      {
+        "helper_port_id": 4,
+        "source": {
+          "stage": "inputs",
+          "id": 2
+        }
+      },
+      {
+        "helper_port_id": 5,
+        "source": {
+          "stage": "inputs",
+          "id": 3
+        }
+      }
+    ],
+    "proposals": [
+      {
+        "helper_port_id": 3,
+        "target": {
+          "stage": "inputs",
+          "id": 2
+        }
+      },
+      {
+        "helper_port_id": 7,
+        "target": {
+          "stage": "inputs",
+          "id": 5
+        }
+      },
+      {
+        "helper_port_id": 6,
+        "target": {
+          "stage": "inputs",
+          "id": 9
+        }
+      }
+    ],
     "roi_kinds": [
       "circle"
     ]

@@ -38,16 +38,16 @@ void testDetectionFilterTool()
     ToolServices        services;
     DetectionFilterTool tool(services);
 
-    static_assert(std::string_view(filter_ports::in::MIN_SCORE) == "min_score");
-    static_assert(std::string_view(filter_ports::in::ALLOWED_CLASSES) == "allowed_classes");
-    static_assert(std::string_view(filter_ports::out::COUNTS) == "counts");
+    static_assert(filter_ports::in::MIN_SCORE == 6);
+    static_assert(filter_ports::in::ALLOWED_CLASSES == 8);
+    static_assert(filter_ports::out::COUNTS == 7);
 
     {
         auto inputs = detectionInputs();
         inputs.insert_or_assign(filter_ports::in::MIN_SCORE, std::string("not_a_number"));
         auto res = tool.execute(inputs);
         requireFailure(res, "浮点", "String min_score must be rejected");
-        REQUIRE(testview::status(res).message.find("min_score") != std::string::npos, "Error must mention min_score");
+        REQUIRE(testview::status(res).message.find(portLabel(filter_ports::in::MIN_SCORE)) != std::string::npos, "Error must mention min_score");
     }
     {
         auto inputs = detectionInputs();
@@ -59,21 +59,21 @@ void testDetectionFilterTool()
         auto inputs = detectionInputs();
         inputs.erase(filter_ports::in::MIN_SCORE);
         auto res = tool.execute(inputs);
-        requireFailure(res, "min_score", "Missing min_score must be rejected");
+        requireFailure(res, filter_ports::in::MIN_SCORE, "Missing min_score must be rejected");
         REQUIRE(testview::status(res).message.find("缺失") != std::string::npos, "Missing value must be Chinese");
     }
     {
         auto inputs = detectionInputs();
         inputs.insert_or_assign(filter_ports::in::MIN_SCORE, 1.5);
         auto res = tool.execute(inputs);
-        requireFailure(res, "min_score", "Out-of-range min_score must be rejected");
+        requireFailure(res, filter_ports::in::MIN_SCORE, "Out-of-range min_score must be rejected");
         REQUIRE(testview::status(res).message.find("[0") != std::string::npos, "Range must be stated");
     }
     {
         auto inputs = detectionInputs();
         inputs.insert_or_assign(filter_ports::in::MIN_AREA, -1.0);
         auto res = tool.execute(inputs);
-        requireFailure(res, "min_area", "Negative min_area must be rejected");
+        requireFailure(res, filter_ports::in::MIN_AREA, "Negative min_area must be rejected");
         REQUIRE(testview::status(res).message.find("非负") != std::string::npos, "Error must state non-negative");
     }
     {

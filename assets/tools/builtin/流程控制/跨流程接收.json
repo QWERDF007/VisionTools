@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visionrt.flow.receive",
   "name_zh": "跨流程接收",
   "version": "1.0.0",
@@ -13,25 +13,30 @@
       "跨流程"
     ]
   },
+  "next_port_id": {
+    "init": 4,
+    "inputs": 1,
+    "outputs": 5
+  },
   "ports": {
     "init": [
       {
-        "name_en": "source_flow_id",
+        "id": 0,
         "name_zh": "源流程ID",
         "type": "string"
       },
       {
-        "name_en": "source_node_seq",
+        "id": 1,
         "name_zh": "源节点序号",
         "type": "string"
       },
       {
-        "name_en": "source_port_id",
+        "id": 2,
         "name_zh": "源端口ID",
-        "type": "string"
+        "type": "int"
       },
       {
-        "name_en": "timeout_ms",
+        "id": 3,
         "name_zh": "超时时间(ms)",
         "type": "int",
         "constraints": {
@@ -41,21 +46,30 @@
     ],
     "outputs": [
       {
-        "name_en": "value",
+        "id": 2,
         "name_zh": "接收数据",
         "type_from": {
-          "flow": "init.source_flow_id",
-          "node": "init.source_node_seq",
-          "port": "init.source_port_id"
+          "flow": {
+            "stage": "init",
+            "id": 0
+          },
+          "node": {
+            "stage": "init",
+            "id": 1
+          },
+          "port": {
+            "stage": "init",
+            "id": 2
+          }
         }
       },
       {
-        "name_en": "source_status_code",
+        "id": 3,
         "name_zh": "源状态码",
         "type": "int"
       },
       {
-        "name_en": "source_status_message",
+        "id": 4,
         "name_zh": "源状态消息",
         "type": "string"
       }

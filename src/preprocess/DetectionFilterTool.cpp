@@ -82,10 +82,10 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
                                     readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
     if (!std::isfinite(minimumScore) || minimumScore < 0.0 || minimumScore > 1.0)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::MIN_SCORE) + " 必须在 [0, 1] 内，实际值：" + std::to_string(minimumScore));
+                       visionrt::portLabel(p::in::MIN_SCORE) + " 必须在 [0, 1] 内，实际值：" + std::to_string(minimumScore));
     if (!std::isfinite(minimumArea) || minimumArea < 0.0)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::MIN_AREA) + " 必须为非负有限数值，实际值：" + std::to_string(minimumArea));
+                       visionrt::portLabel(p::in::MIN_AREA) + " 必须为非负有限数值，实际值：" + std::to_string(minimumArea));
 
     const auto &rois      = roisRef.get();
     const auto &scores    = scoresRef;

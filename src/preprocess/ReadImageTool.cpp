@@ -105,7 +105,7 @@ visionrt::ToolStatus ReadImageInputs::readFields(visionrt::InputReader &reader)
     if (readings.failed())
         return readings.status(ReadImageError::PathNotFound, CommonToolError::InputTypeMismatch);
     if (path.empty())
-        return status(ReadImageError::PathNotFound, std::string(p::in::PATH) + " 不能为空");
+        return status(ReadImageError::PathNotFound, visionrt::portLabel(p::in::PATH) + " 不能为空");
     return {};
 }
 
@@ -316,7 +316,7 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         const auto &rawPath = args.path;
         visionrt::validateUtf8(rawPath);
         if (rawPath.empty())
-            fail(ReadImageError::PathNotFound, std::string(p::in::PATH) + " 不能为空");
+            fail(ReadImageError::PathNotFound, visionrt::portLabel(p::in::PATH) + " 不能为空");
         const bool recursive = args.recursive;
         const bool reload    = args.reload;
 
@@ -327,7 +327,7 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         else if (traversal == "不循环" || traversal == "once")
             isLoop = false;
         else
-            fail(CommonToolError::InputOutOfRange, std::string(p::in::TRAVERSAL) + " 只接受 循环/不循环，实际值：" + traversal);
+            fail(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::TRAVERSAL) + " 只接受 循环/不循环，实际值：" + traversal);
 
         const auto &order     = args.order;
         bool       isReverse = false;
@@ -337,12 +337,12 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
             isReverse = false;
         else
             fail(CommonToolError::InputOutOfRange,
-                 std::string(p::in::ORDER) + " 只接受 顺序（下一张）/逆序（上一张），实际值：" + order);
+                 visionrt::portLabel(p::in::ORDER) + " 只接受 顺序（下一张）/逆序（上一张），实际值：" + order);
 
         const auto count = args.count;
         if (count < 1 || count > kMaxCount)
             fail(CommonToolError::InputOutOfRange,
-                 std::string(p::in::COUNT) + " 必须在 1–" + std::to_string(kMaxCount) + " 之间，实际值：" + std::to_string(count));
+                 visionrt::portLabel(p::in::COUNT) + " 必须在 1–" + std::to_string(kMaxCount) + " 之间，实际值：" + std::to_string(count));
 
         const auto resolution = services_.paths.tryResolve(rawPath);
         if (!resolution)

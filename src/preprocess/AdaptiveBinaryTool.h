@@ -8,13 +8,13 @@ namespace ports::adaptive_binary {
 inline constexpr char TOOL_ID[] = "visiontools.preprocess.adaptive_binary";
 
 namespace in {
-inline constexpr char BLOCK_SIZE[]      = "block_size";
-inline constexpr char CONSTANT_OFFSET[] = "constant_offset";
-inline constexpr char IMAGES[]          = "images";
+inline constexpr visionrt::PortId BLOCK_SIZE = 2;
+inline constexpr visionrt::PortId CONSTANT_OFFSET = 3;
+inline constexpr visionrt::PortId IMAGES = 1;
 }
 
 namespace out {
-inline constexpr char IMAGES[] = "images";
+inline constexpr visionrt::PortId IMAGES = 2;
 }
 }
 

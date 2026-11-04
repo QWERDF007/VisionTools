@@ -14,7 +14,7 @@ while wrapping.
 
 The host contract this SDK relies on:
 
-* ``execute`` returns ``{"outputs": {port: value, "__status_code": code, "__status_message": message}, "detail": detail}``;
+* ``execute`` returns ``{"outputs": {port_id: value, 0: code, 1: message}, "detail": detail}``;
 * ``initialize`` and ``release`` return the status dict alone (``{"code": code, "message": message, "detail": detail}``);
 * a missing key and an explicit ``None`` both mean "no value";
 * ``upstream_status`` is read but never acted on by the SDK;
@@ -40,10 +40,26 @@ def _is_array(value):
     return isinstance(value, list) or (_numpy is not None and isinstance(value, _numpy.ndarray))
 
 
-UPSTREAM_STATUS_PORT = "upstream_status"
+# Ports are integers: input 0 is the upstream status, outputs 0 and 1 are the status code and
+# message packed by result(). Business numbers start above them, so one number may appear once per
+# direction. A number, not its spelling, is the identity.
+UPSTREAM_STATUS_PORT = 0
+RESERVED_PORTS = (0, 1)
 
-# The two published status ports packed into outputs by result(); direct business mutation without result() is avoided.
-RESERVED_PORTS = ("__status_code", "__status_message")
+MAX_PORT_ID = 2 ** 32 - 1
+
+
+def _port(key):
+    """The one place an untrusted key becomes a port number; bool is not an integer here."""
+    if type(key) is not int:
+        raise ContractError("端口编号必须是整数，实际为 " + repr(key))
+    if key < 0 or key > MAX_PORT_ID:
+        raise ContractError("端口编号超出范围：" + repr(key))
+    return key
+
+
+def _label(key):
+    return "端口 " + str(key)
 
 
 class ContractError(ValueError):
@@ -58,8 +74,12 @@ def status(code=0, message="", detail=""):
 def result(outputs=None, code=0, message="", detail=""):
     """The envelope ``execute`` returns: business outputs plus the one status."""
     res = {} if outputs is None else dict(outputs)
-    res["__status_code"] = code
-    res["__status_message"] = message
+    for key in res:
+        _port(key)
+        if key in RESERVED_PORTS:
+            raise ContractError("状态由宿主发布，工具不得写入输出" + _label(key))
+    res[0] = code
+    res[1] = message
     return {"outputs": res, "detail": detail}
 
 
@@ -96,7 +116,7 @@ class InputReader:
         return self._values
 
     def _find(self, key):
-        value = self._values.get(key)
+        value = self._values.get(_port(key))
         return None if is_missing(value) else value
 
     def present(self, key):
@@ -105,37 +125,37 @@ class InputReader:
     def _require(self, key):
         value = self._find(key)
         if value is None:
-            raise ContractError("输入端口 '" + key + "' 缺失")
+            raise ContractError("输入" + _label(key) + "缺失")
         return value
 
     def integer(self, key):
         value = self._require(key)
         if isinstance(value, bool) or not isinstance(value, int):
-            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望整数）")
+            raise ContractError("输入" + _label(key) + "类型不匹配（期望整数）")
         return value
 
     def real(self, key):
         value = self._require(key)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望浮点数）")
+            raise ContractError("输入" + _label(key) + "类型不匹配（期望浮点数）")
         return float(value)
 
     def boolean(self, key):
         value = self._require(key)
         if not isinstance(value, bool):
-            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望布尔值）")
+            raise ContractError("输入" + _label(key) + "类型不匹配（期望布尔值）")
         return value
 
     def text(self, key):
         value = self._require(key)
         if not isinstance(value, str):
-            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望字符串）")
+            raise ContractError("输入" + _label(key) + "类型不匹配（期望字符串）")
         return value
 
     def array(self, key):
         value = self._require(key)
         if not _is_array(value):
-            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望 ndarray 或列表）")
+            raise ContractError("输入" + _label(key) + "类型不匹配（期望 ndarray 或列表）")
         return value
 
     def optional_integer(self, key):
@@ -143,7 +163,7 @@ class InputReader:
         if value is None:
             return None
         if isinstance(value, bool) or not isinstance(value, int):
-            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望整数）")
+            raise ContractError("输入" + _label(key) + "类型不匹配（期望整数）")
         return value
 
     def optional_real(self, key):
@@ -151,7 +171,7 @@ class InputReader:
         if value is None:
             return None
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望浮点数）")
+            raise ContractError("输入" + _label(key) + "类型不匹配（期望浮点数）")
         return float(value)
 
     def optional_boolean(self, key):
@@ -159,7 +179,7 @@ class InputReader:
         if value is None:
             return None
         if not isinstance(value, bool):
-            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望布尔值）")
+            raise ContractError("输入" + _label(key) + "类型不匹配（期望布尔值）")
         return value
 
     def optional_text(self, key):
@@ -167,7 +187,7 @@ class InputReader:
         if value is None:
             return None
         if not isinstance(value, str):
-            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望字符串）")
+            raise ContractError("输入" + _label(key) + "类型不匹配（期望字符串）")
         return value
 
     def optional_array(self, key):
@@ -175,7 +195,7 @@ class InputReader:
         if value is None:
             return None
         if not _is_array(value):
-            raise ContractError("输入端口 '" + key + "' 类型不匹配（期望 ndarray 或列表）")
+            raise ContractError("输入" + _label(key) + "类型不匹配（期望 ndarray 或列表）")
         return value
 
     # Raw access for ports a tool inspects without committing to one payload kind.
@@ -193,10 +213,12 @@ class OutputWriter:
         self._write(key, value)
 
     def real(self, key, value):
-        self._write(key, float(value))
+        # No conversion: a wrong author type is reported by the host's value validation instead of
+        # being silently repaired here.
+        self._write(key, value)
 
     def boolean(self, key, value):
-        self._write(key, bool(value))
+        self._write(key, value)
 
     def text(self, key, value):
         self._write(key, value)
@@ -209,10 +231,11 @@ class OutputWriter:
         self._write(key, raw)
 
     def _write(self, key, value):
+        _port(key)
         if key in RESERVED_PORTS:
-            raise ContractError("状态由宿主发布，工具不得写入输出端口：" + key)
+            raise ContractError("状态由宿主发布，工具不得写入" + _label(key))
         if key in self._values:
-            raise ContractError("输出端口重复写入：" + key)
+            raise ContractError("输出" + _label(key) + "重复写入")
         self._values[key] = value
 
     def take(self):
@@ -231,7 +254,7 @@ class InputParametersBase(ABC):
         if raw is None:
             self.upstream_status = 0
         elif isinstance(raw, bool) or not isinstance(raw, int):
-            raise ContractError("输入端口 '" + UPSTREAM_STATUS_PORT + "' 需要整数状态码")
+            raise ContractError("输入" + _label(UPSTREAM_STATUS_PORT) + "需要整数状态码")
         else:
             self.upstream_status = raw
         self.read_fields(reader)

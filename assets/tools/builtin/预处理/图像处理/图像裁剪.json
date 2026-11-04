@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visionrt.image.crop",
   "name_zh": "图像裁剪",
   "version": "2.0.0",
@@ -12,33 +12,41 @@
       "图像处理"
     ]
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 3,
+    "outputs": 4
+  },
   "ports": {
     "inputs": [
       {
-        "name_en": "images",
+        "id": 1,
         "name_zh": "图像",
         "type": "image"
       },
       {
-        "name_en": "rect",
+        "id": 2,
         "name_zh": "矩形区域",
         "type": "roi",
         "ui": {
           "editor": "rect"
         },
         "relations": {
-          "image": "inputs.images"
+          "image": {
+            "stage": "inputs",
+            "id": 1
+          }
         }
       }
     ],
     "outputs": [
       {
-        "name_en": "images",
+        "id": 2,
         "name_zh": "裁剪图像",
         "type": "image"
       },
       {
-        "name_en": "origins",
+        "id": 3,
         "name_zh": "原点坐标",
         "type": "vec_vec_float"
       }

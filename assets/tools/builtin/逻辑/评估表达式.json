@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visiontools.logic.expression",
   "name_zh": "评估表达式",
   "version": "1.0.0",
@@ -15,15 +15,20 @@
       "表达式"
     ]
   },
+  "next_port_id": {
+    "init": 2,
+    "inputs": 1,
+    "outputs": 2
+  },
   "ports": {
     "init": [
       {
-        "name_en": "variables",
+        "id": 0,
         "name_zh": "派生变量表",
         "type": "vec_vec_string"
       },
       {
-        "name_en": "program",
+        "id": 1,
         "name_zh": "派生表达式表",
         "type": "vec_vec_string"
       }

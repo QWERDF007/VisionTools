@@ -74,25 +74,25 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
                                     readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
     if (axis != "x" && axis != "y")
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::AXIS) + " 只接受 x/y，实际值：" + axis);
+                       visionrt::portLabel(p::in::AXIS) + " 只接受 x/y，实际值：" + axis);
     if (polarity != "bright" && polarity != "dark")
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::POLARITY) + " 只接受 bright/dark，实际值：" + polarity);
+                       visionrt::portLabel(p::in::POLARITY) + " 只接受 bright/dark，实际值：" + polarity);
     if (threshold < 0 || threshold > 255)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::THRESHOLD) + " 必须在 [0, 255] 内，实际值：" + std::to_string(threshold));
+                       visionrt::portLabel(p::in::THRESHOLD) + " 必须在 [0, 255] 内，实际值：" + std::to_string(threshold));
     if (minimumPixels < 1)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::MIN_PIXELS) + " 必须为正整数，实际值：" + std::to_string(minimumPixels));
+                       visionrt::portLabel(p::in::MIN_PIXELS) + " 必须为正整数，实际值：" + std::to_string(minimumPixels));
     if (minimumExtent < 1 || minimumExtent > std::numeric_limits<int>::max())
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::MIN_EXTENT) + " 超出整数范围，实际值：" + std::to_string(minimumExtent));
+                       visionrt::portLabel(p::in::MIN_EXTENT) + " 超出整数范围，实际值：" + std::to_string(minimumExtent));
     if (mergeGap < 0 || mergeGap > std::numeric_limits<int>::max())
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::MERGE_GAP) + " 超出整数范围，实际值：" + std::to_string(mergeGap));
+                       visionrt::portLabel(p::in::MERGE_GAP) + " 超出整数范围，实际值：" + std::to_string(mergeGap));
     if (padding < 0 || padding > std::numeric_limits<int>::max())
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::PADDING) + " 超出整数范围，实际值：" + std::to_string(padding));
+                       visionrt::portLabel(p::in::PADDING) + " 超出整数范围，实际值：" + std::to_string(padding));
     try
     {
         const auto &imgBatch = imgBatchRef.get();

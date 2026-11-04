@@ -13,7 +13,7 @@ namespace visiontools {
 // declaration, so anything but an integer means "no upstream status".
 inline std::int64_t upstreamStatus(const visionrt::Values &inputs) noexcept
 {
-    const auto found = inputs.find(std::string(visionrt::kUpstreamStatusPort));
+    const auto found = inputs.find(visionrt::kUpstreamStatusPort);
     if (found == inputs.end())
         return 0;
     const auto *code = std::get_if<std::int64_t>(&found->second);

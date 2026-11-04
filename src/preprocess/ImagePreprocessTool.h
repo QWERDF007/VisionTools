@@ -8,14 +8,14 @@ namespace ports::image_preprocess {
 inline constexpr char TOOL_ID[] = "visionrt.image.preprocess";
 
 namespace in {
-inline constexpr char IMAGES[]    = "images";
-inline constexpr char KERNEL[]    = "kernel";
-inline constexpr char OPERATION[] = "operation";
-inline constexpr char THRESHOLD[] = "threshold";
+inline constexpr visionrt::PortId IMAGES = 1;
+inline constexpr visionrt::PortId KERNEL = 3;
+inline constexpr visionrt::PortId OPERATION = 2;
+inline constexpr visionrt::PortId THRESHOLD = 4;
 }
 
 namespace out {
-inline constexpr char IMAGES[] = "images";
+inline constexpr visionrt::PortId IMAGES = 2;
 }
 }
 

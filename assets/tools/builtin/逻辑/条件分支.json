@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visiontools.logic.branch",
   "name_zh": "条件分支",
   "version": "1.0.0",
@@ -15,20 +15,25 @@
       "分支"
     ]
   },
+  "next_port_id": {
+    "init": 3,
+    "inputs": 1,
+    "outputs": 6
+  },
   "ports": {
     "init": [
       {
-        "name_en": "variables",
+        "id": 0,
         "name_zh": "派生变量表",
         "type": "vec_vec_string"
       },
       {
-        "name_en": "program",
+        "id": 1,
         "name_zh": "派生表达式表",
         "type": "vec_vec_string"
       },
       {
-        "name_en": "condition_mode",
+        "id": 2,
         "name_zh": "条件来源",
         "type": "string",
         "default": "formula",
@@ -45,22 +50,22 @@
     ],
     "outputs": [
       {
-        "name_en": "on_true",
+        "id": 2,
         "name_zh": "条件成立",
         "type": "bool"
       },
       {
-        "name_en": "on_false",
+        "id": 3,
         "name_zh": "否则",
         "type": "bool"
       },
       {
-        "name_en": "on_true_status",
+        "id": 4,
         "name_zh": "成立分支状态",
         "type": "int"
       },
       {
-        "name_en": "on_false_status",
+        "id": 5,
         "name_zh": "否则分支状态",
         "type": "int"
       }

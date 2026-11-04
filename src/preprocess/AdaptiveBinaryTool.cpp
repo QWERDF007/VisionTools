@@ -66,11 +66,11 @@ visionrt::ToolResult AdaptiveBinaryTool::execute(const visionrt::Values &inputs)
                                     readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
     if (blockSize < 3 || blockSize > 999 || blockSize % 2 == 0)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::BLOCK_SIZE) + " 必须在 [3, 999] 内且为奇数，实际值："
+                       visionrt::portLabel(p::in::BLOCK_SIZE) + " 必须在 [3, 999] 内且为奇数，实际值："
                            + std::to_string(blockSize));
     if (!std::isfinite(constantOffset))
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       std::string(p::in::CONSTANT_OFFSET) + " 必须为有限数值");
+                       visionrt::portLabel(p::in::CONSTANT_OFFSET) + " 必须为有限数值");
     for (std::size_t index = 0; index < batchSize; ++index)
     {
         const auto &image = images.get()[index];

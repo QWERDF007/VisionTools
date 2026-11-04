@@ -31,10 +31,10 @@ AssistRequest readRequest(const visionrt::Values &inputs)
         fail(CommonToolError::InputMissing, p::in::CURSOR);
     const auto *array = std::get_if<visionrt::Array>(&found->second);
     if (!array || array->type() != visionrt::TypeSpec{visionrt::Type::Array, visionrt::DType::Float64, 1})
-        fail(CommonToolError::InputTypeMismatch, std::string(p::in::CURSOR) + " 必须是 Array(float64, rank=1)");
+        fail(CommonToolError::InputTypeMismatch, visionrt::portLabel(p::in::CURSOR) + " 必须是 Array(float64, rank=1)");
     const auto values = array->elements<double>();
     if (values.size() != 2 || !std::isfinite(values[0]) || !std::isfinite(values[1]))
-        fail(CommonToolError::InputOutOfRange, std::string(p::in::CURSOR) + " 必须恰好包含两个有限像素坐标");
+        fail(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::CURSOR) + " 必须恰好包含两个有限像素坐标");
     request.cursor = {values[0], values[1]};
 
     Readings   readings(inputs);
@@ -46,10 +46,10 @@ AssistRequest readRequest(const visionrt::Values &inputs)
     if (readings.failed())
         fail(CommonToolError::InputMissing, readings.issue()->describe());
     if (phase != "hover" && phase != "learn")
-        fail(CommonToolError::InputOutOfRange, std::string(p::in::PHASE) + " 只接受 hover/learn，实际值：" + phase);
+        fail(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::PHASE) + " 只接受 hover/learn，实际值：" + phase);
     if (searchExtent < 16 || searchExtent > 2048)
         fail(CommonToolError::InputOutOfRange,
-             std::string(p::in::SEARCH_EXTENT) + " 必须在 [16, 2048] 内，实际值：" + std::to_string(searchExtent));
+             visionrt::portLabel(p::in::SEARCH_EXTENT) + " 必须在 [16, 2048] 内，实际值：" + std::to_string(searchExtent));
     if (!seedValue || !alignValue)
         fail(CommonToolError::InputMissing, !seedValue ? p::in::SEED_ROIS : p::in::ALIGNMENT);
     request.learn        = phase == "learn";
@@ -100,7 +100,7 @@ visionrt::ToolResult AssistCircleTool::execute(const visionrt::Values &inputs)
         const auto request = readRequest(inputs);
         const auto result  = assistCircle(grayscale(requireImages(inputs, p::in::IMAGES).front()), request);
         auto       outputs = baseOutputs(result);
-        outputs.emplace(p::out::SUGGESTED_SEARCH, result.searchHalfWidth);
+        outputs.emplace(p::circle_out::SUGGESTED_SEARCH, result.searchHalfWidth);
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const ToolFailure &error)
@@ -136,8 +136,8 @@ visionrt::ToolResult AssistRowSpacingTool::execute(const visionrt::Values &input
         const auto request = readRequest(inputs);
         const auto result  = assistRowSpacing(grayscale(requireImages(inputs, p::in::IMAGES).front()), request);
         auto       outputs = baseOutputs(result);
-        outputs.emplace(p::out::SUGGESTED_WIDTH_MIN, result.widthMin);
-        outputs.emplace(p::out::SUGGESTED_WIDTH_MAX, result.widthMax);
+        outputs.emplace(p::row_out::SUGGESTED_WIDTH_MIN, result.widthMin);
+        outputs.emplace(p::row_out::SUGGESTED_WIDTH_MAX, result.widthMax);
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const ToolFailure &error)

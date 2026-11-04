@@ -12,6 +12,10 @@ from .errors import (
     NOT_INITIALIZED,
 )
 
+VARIABLES, PROGRAM, CONDITION_MODE = 0, 1, 2
+CONDITION = 1
+ON_TRUE, ON_FALSE, ON_TRUE_STATUS, ON_FALSE_STATUS = 2, 3, 4, 5
+
 FORMULA = "formula"
 UPSTREAM = "upstream"
 
@@ -22,7 +26,7 @@ class BranchTool:
         self._mode: str | None = None
 
     def initialize(self, params):
-        mode = params.get("condition_mode", FORMULA)
+        mode = params.get(CONDITION_MODE, FORMULA)
         if mode not in (FORMULA, UPSTREAM):
             self._program = None
             self._mode = None
@@ -33,7 +37,7 @@ class BranchTool:
             self._program = None
             return status.success()
         try:
-            self._program = Program.from_tables(params.get("variables", []), params.get("program", []),
+            self._program = Program.from_tables(params.get(VARIABLES, []), params.get(PROGRAM, []),
                                                 condition=True)
         except EngineError as error:
             self._program = None
@@ -45,7 +49,7 @@ class BranchTool:
 
     def execute(self, inputs):
         if self._mode == UPSTREAM:
-            value = inputs.get("condition")
+            value = inputs.get(CONDITION)
             if type(value) is not bool:
                 return self._failure(status.failure(CONDITION_NOT_BOOLEAN, "上层条件必须是布尔值"))
             return self._branch(value)
@@ -65,10 +69,10 @@ class BranchTool:
 
     def _branch(self, value: bool):
         outputs = {
-            "on_true": value,
-            "on_false": not value,
-            "on_true_status": 0 if value else 1,
-            "on_false_status": 1 if value else 0,
+            ON_TRUE: value,
+            ON_FALSE: not value,
+            ON_TRUE_STATUS: 0 if value else 1,
+            ON_FALSE_STATUS: 1 if value else 0,
         }
         return status.executed(status.success(), outputs)
 
@@ -76,8 +80,8 @@ class BranchTool:
         # An unproduced branch is omitted; the host materialises the declared default and the
         # per-branch status codes below still say which side ran.
         outputs = {
-            "on_true_status": 1,
-            "on_false_status": 1,
+            ON_TRUE_STATUS: 1,
+            ON_FALSE_STATUS: 1,
         }
         return status.executed(failure, outputs)
 

@@ -61,82 +61,82 @@ public:
         return reader_.values();
     }
 
-    bool present(std::string_view id) const noexcept
+    bool present(visionrt::PortId id) const noexcept
     {
         return reader_.present(id);
     }
 
-    const visionrt::PortValue *find(std::string_view id) const noexcept
+    const visionrt::PortValue *find(visionrt::PortId id) const noexcept
     {
         return reader_.find(id);
     }
 
-    std::int64_t integer(std::string_view id)
+    std::int64_t integer(visionrt::PortId id)
     {
         return take(reader_.integer(id));
     }
 
-    double real(std::string_view id)
+    double real(visionrt::PortId id)
     {
         return take(reader_.real(id));
     }
 
-    bool boolean(std::string_view id)
+    bool boolean(visionrt::PortId id)
     {
         return take(reader_.boolean(id));
     }
 
-    std::string text(std::string_view id)
+    std::string text(visionrt::PortId id)
     {
         return take(reader_.text(id));
     }
 
-    visionrt::DataRef<visionrt::Image> image(std::string_view id)
+    visionrt::DataRef<visionrt::Image> image(visionrt::PortId id)
     {
         return take(reader_.image(id));
     }
 
-    visionrt::DataRef<visionrt::ROI> roi(std::string_view id)
+    visionrt::DataRef<visionrt::ROI> roi(visionrt::PortId id)
     {
         return take(reader_.roi(id));
     }
 
-    std::optional<std::int64_t> optionalInteger(std::string_view id)
+    std::optional<std::int64_t> optionalInteger(visionrt::PortId id)
     {
         return take(reader_.optionalInteger(id));
     }
 
-    std::optional<double> optionalReal(std::string_view id)
+    std::optional<double> optionalReal(visionrt::PortId id)
     {
         return take(reader_.optionalReal(id));
     }
 
-    std::optional<bool> optionalBoolean(std::string_view id)
+    std::optional<bool> optionalBoolean(visionrt::PortId id)
     {
         return take(reader_.optionalBoolean(id));
     }
 
-    std::optional<std::string> optionalText(std::string_view id)
+    std::optional<std::string> optionalText(visionrt::PortId id)
     {
         return take(reader_.optionalText(id));
     }
 
-    std::optional<visionrt::DataRef<visionrt::Image>> nullableImage(std::string_view id)
+    std::optional<visionrt::DataRef<visionrt::Image>> nullableImage(visionrt::PortId id)
     {
         return take(reader_.nullableImage(id));
     }
 
-    std::optional<visionrt::DataRef<visionrt::ROI>> nullableRoi(std::string_view id)
+    std::optional<visionrt::DataRef<visionrt::ROI>> nullableRoi(visionrt::PortId id)
     {
         return take(reader_.nullableRoi(id));
     }
 
-    visionrt::Array array(std::string_view id)
+    visionrt::Array array(visionrt::PortId id)
     {
         return take(reader_.array(id));
     }
 
-    std::optional<visionrt::Array> nullableArray(std::string_view id)
+    std::optional<visionrt::Array> nullableArray(visionrt::PortId id)
     {
         return take(reader_.nullableArray(id));
     }

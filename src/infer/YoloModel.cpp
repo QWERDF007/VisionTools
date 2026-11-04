@@ -35,28 +35,28 @@ constexpr std::array                  strides{8, 16, 32};
 constexpr std::array<const char *, 3> outputNames{"output0", "output1", "output2"};
 
 template<class T>
-T requiredParameter(const Values &values, const char *name)
+T requiredParameter(const Values &values, PortId id)
 {
-    const auto found = values.find(name);
+    const auto found = values.find(id);
     if (found == values.end() || isMissing(found->second))
-        fail(CommonToolError::InputMissing, std::string("初始化参数 ") + name);
+        fail(CommonToolError::InputMissing, std::string("初始化参数 ") + portLabel(id));
     if (const auto *value = std::get_if<T>(&found->second))
         return *value;
-    fail(CommonToolError::InputTypeMismatch, std::string("初始化参数 ") + name);
+    fail(CommonToolError::InputTypeMismatch, std::string("初始化参数 ") + portLabel(id));
 }
 
-int integer(const Values &values, const char *name, int minimum)
+int integer(const Values &values, PortId id, int minimum)
 {
-    const auto value = requiredParameter<std::int64_t>(values, name);
+    const auto value = requiredParameter<std::int64_t>(values, id);
     if (value < minimum || value > std::numeric_limits<int>::max())
         fail(CommonToolError::InputOutOfRange,
-             std::string(name) + " 的值 " + std::to_string(value) + " 超出整数范围");
+             portLabel(id) + " 的值 " + std::to_string(value) + " 超出整数范围");
     return static_cast<int>(value);
 }
 
-std::string text(const Values &values, const char *name)
+std::string text(const Values &values, PortId id)
 {
-    return requiredParameter<std::string>(values, name);
+    return requiredParameter<std::string>(values, id);
 }
 
 std::string utf8Path(const std::filesystem::path &path)
@@ -216,9 +216,9 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         if (modelName != "yolov8n")
             fail(YoloError::ModelUnsupported, "仅支持原生 yolov8n，实际模型：" + modelName);
         if (mode != "engine" && mode != "build_wts")
-            fail(CommonToolError::InputOutOfRange, std::string(yolo_ports::init::LOAD_MODE) + " 只接受 engine/build_wts，实际值：" + mode);
+            fail(CommonToolError::InputOutOfRange, portLabel(yolo_ports::init::LOAD_MODE) + " 只接受 engine/build_wts，实际值：" + mode);
         if (precision != "fp32" && precision != "fp16")
-            fail(CommonToolError::InputOutOfRange, std::string(yolo_ports::init::PRECISION) + " 只接受 fp32/fp16，实际值：" + precision);
+            fail(CommonToolError::InputOutOfRange, portLabel(yolo_ports::init::PRECISION) + " 只接受 fp32/fp16，实际值：" + precision);
         if (modelPath.empty())
             fail(CommonToolError::InputMissing, yolo_ports::init::MODEL_PATH);
         state->device  = integer(parameters, yolo_ports::init::GPU_INDEX, 0);
@@ -352,7 +352,7 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             fail(CommonToolError::InputMissing, yolo_ports::in::IMAGES);
         const auto *imagesPtr = std::get_if<DataRef<Image>>(&found->second);
         if (!imagesPtr)
-            fail(CommonToolError::InputTypeMismatch, std::string(yolo_ports::in::IMAGES) + " 必须是图像");
+            fail(CommonToolError::InputTypeMismatch, portLabel(yolo_ports::in::IMAGES) + " 必须是图像");
         const auto               &images = *imagesPtr;
         const DetectionParameters parameters{requiredParameter<double>(inputs, yolo_ports::in::CONF_THRESHOLD),
                                              requiredParameter<double>(inputs, yolo_ports::in::NMS_THRESHOLD),

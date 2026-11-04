@@ -59,6 +59,14 @@ inline visionrt::ToolStatus status(ErrorCode code, std::string_view context = {}
     return {static_cast<std::int64_t>(code), sentence(message(code), context), std::move(detail)};
 }
 
+template<class ErrorCode>
+    requires std::is_enum_v<ErrorCode>
+inline visionrt::ToolStatus status(ErrorCode code, visionrt::PortId port, std::string detail = {})
+{
+    return {static_cast<std::int64_t>(code), sentence(message(code), visionrt::portLabel(port)),
+            std::move(detail)};
+}
+
 // Reports an expected failure from inside an algorithm. It is thrown only to leave nested helpers
 // and is caught by that tool's own execute(), which turns it into a ToolResult status; it never
 // crosses the IToolInstance boundary.
@@ -71,6 +79,15 @@ template<class ErrorCode>
 [[noreturn]] inline void fail(ErrorCode code, std::string_view context = {}, std::string detail = {})
 {
     raise(static_cast<std::int64_t>(code), sentence(message(code), context), std::move(detail));
+}
+
+// Port context names the number so the sentence stays legible without a name lookup.
+template<class ErrorCode>
+    requires std::is_enum_v<ErrorCode>
+[[noreturn]] inline void fail(ErrorCode code, visionrt::PortId port, std::string detail = {})
+{
+    raise(static_cast<std::int64_t>(code), sentence(message(code), visionrt::portLabel(port)),
+          std::move(detail));
 }
 
 // The mechanical port-read issues every tool can meet, mapped onto that tool's own codes.
@@ -90,6 +107,17 @@ inline visionrt::ToolResult failure(visionrt::Values outputs, ErrorCode code, st
 inline visionrt::ToolResult failureResult(visionrt::Values outputs, const ToolFailure &error)
 {
     return visionrt::toolResult(std::move(outputs), status(error));
+}
+
+template<class ErrorCode>
+    requires std::is_enum_v<ErrorCode>
+inline visionrt::ToolResult failure(visionrt::Values outputs, ErrorCode code, visionrt::PortId port,
+                                    std::string detail = {})
+{
+    return visionrt::toolResult(
+        std::move(outputs),
+        {static_cast<std::int64_t>(code), sentence(message(code), visionrt::portLabel(port)),
+         std::move(detail)});
 }
 
 } // namespace visiontools

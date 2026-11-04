@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visiontools.assist.circle",
   "name_zh": "圆智能点选",
   "version": "1.0.0",
@@ -13,15 +13,20 @@
     ],
     "visibility": "assist"
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 7,
+    "outputs": 8
+  },
   "ports": {
     "inputs": [
       {
-        "name_en": "images",
+        "id": 1,
         "name_zh": "当前图像",
         "type": "image"
       },
       {
-        "name_en": "cursor",
+        "id": 2,
         "name_zh": "光标像素坐标",
         "type": "vec_float",
         "ui": {
@@ -29,7 +34,7 @@
         }
       },
       {
-        "name_en": "phase",
+        "id": 3,
         "name_zh": "辅助阶段",
         "type": "string",
         "default": "hover",
@@ -44,7 +49,7 @@
         }
       },
       {
-        "name_en": "seed_rois",
+        "id": 4,
         "name_zh": "候选种子",
         "type": "roi",
         "default": [],
@@ -52,12 +57,18 @@
           "editor": "array"
         },
         "relations": {
-          "image": "inputs.images",
-          "alignment": "inputs.alignment"
+          "image": {
+            "stage": "inputs",
+            "id": 1
+          },
+          "alignment": {
+            "stage": "inputs",
+            "id": 5
+          }
         }
       },
       {
-        "name_en": "alignment",
+        "id": 5,
         "name_zh": "参考到当前变换",
         "type": "vec_vec_vec_float",
         "ui": {
@@ -65,7 +76,7 @@
         }
       },
       {
-        "name_en": "search_extent",
+        "id": 6,
         "name_zh": "最大搜索半径",
         "type": "int",
         "default": 256,
@@ -80,35 +91,38 @@
     ],
     "outputs": [
       {
-        "name_en": "preview_rois",
+        "id": 2,
         "name_zh": "候选轮廓",
         "type": "roi",
         "relations": {
-          "image": "inputs.images"
+          "image": {
+            "stage": "inputs",
+            "id": 1
+          }
         }
       },
       {
-        "name_en": "proposal_rois",
+        "id": 3,
         "name_zh": "拟提交ROI",
         "type": "roi"
       },
       {
-        "name_en": "candidate_valid",
+        "id": 4,
         "name_zh": "候选有效",
         "type": "bool"
       },
       {
-        "name_en": "quality",
+        "id": 5,
         "name_zh": "候选质量说明",
         "type": "string"
       },
       {
-        "name_en": "suggested_polarity",
+        "id": 6,
         "name_zh": "建议极性",
         "type": "string"
       },
       {
-        "name_en": "suggested_search_half_width",
+        "id": 7,
         "name_zh": "建议搜索半宽",
         "type": "float"
       }

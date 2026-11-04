@@ -178,24 +178,24 @@ int main(int argc, char **argv)
             }
         }
         visionrt::Values inputs;
-        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(gray).clone()}));
-        inputs.emplace("block_size", std::int64_t(5));
-        inputs.emplace("constant_offset", 2.0);
+        inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{(gray).clone()}));
+        inputs.emplace(2, std::int64_t(5));
+        inputs.emplace(3, 2.0);
 
         auto res = inst->execute(inputs);
         REQUIRE(testview::status(res).code == 0, "Execution of adaptive_binary must succeed");
         REQUIRE(testview::status(res).message == "运行成功", "Adaptive binary success message must be shared");
 
-        const auto *outBatch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+        const auto *outBatch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs[2]);
         REQUIRE(outBatch != nullptr && !outBatch->get().empty(), "Adaptive binary output must contain images");
         snapshotImage = outBatch->get()[0];
 
         // Contract error test: wrong type for block_size
         auto badInputs = inputs;
-        badInputs.insert_or_assign("block_size", std::string("not_an_int"));
+        badInputs.insert_or_assign(2, std::string("not_an_int"));
         auto badRes = inst->execute(badInputs);
         REQUIRE(testview::status(badRes).code == 1002
-                    && testview::status(badRes).message.find("block_size") != std::string::npos,
+                    && testview::status(badRes).message.find(visionrt::portLabel(2)) != std::string::npos,
                 "Invalid block_size must return the operator-owned type-mismatch error");
 
         REQUIRE(inst->release().code == 0, "Release 1 must succeed");
@@ -217,15 +217,15 @@ int main(int argc, char **argv)
         cv::Mat              colorImg(64, 64, CV_8UC3, cv::Scalar(10, 20, 30));
         cv::Mat              inImg = (colorImg).clone();
         visionrt::Values     inputs;
-        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{inImg}));
+        inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{inImg}));
         auto roi = std::vector<double>{2, 10.0, 10.0, 20.0, 20.0, 0.0};
-        inputs.emplace("rect", visionrt::DataRef<visionrt::ROI>(visionrt::ROI{{roi}}));
+        inputs.emplace(2, visionrt::DataRef<visionrt::ROI>(visionrt::ROI{{roi}}));
 
         auto res = inst->execute(inputs);
         REQUIRE_EXECUTION(testview::status(res).code == 0, "Crop tool execution must succeed");
         REQUIRE_EXECUTION(testview::status(res).message == "运行成功", "Crop success message must be shared");
 
-        const auto *outBatch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+        const auto *outBatch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs[2]);
         REQUIRE_EXECUTION(outBatch != nullptr && !outBatch->get().empty(), "Crop output must contain images");
         const auto &cropped = outBatch->get()[0];
         REQUIRE_EXECUTION(cropped.rows == 20 && cropped.cols == 20, "Cropped size must match ROI (20x20)");
@@ -254,30 +254,30 @@ int main(int argc, char **argv)
         std::vector<std::int64_t> allowed = {1, 2};
 
         visionrt::Values inputs;
-        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
-        inputs.emplace("rois", visionrt::DataRef<visionrt::ROI>(visionrt::ROI{
+        inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
+        inputs.emplace(2, visionrt::DataRef<visionrt::ROI>(visionrt::ROI{
                                    {roi, roi}
         }));
-        inputs.emplace("scores", visionrt::Array::fromNested(std::vector<std::vector<float>>{scores}));
-        inputs.emplace("classes", visionrt::Array::fromNested(std::vector<std::vector<std::int64_t>>{classes}));
-        inputs.emplace("class_names", visionrt::Array::fromNested(std::vector<std::vector<std::string>>{names}));
-        inputs.emplace("allowed_classes", visionrt::Array::fromNested(std::move(allowed)));
-        inputs.emplace("min_score", 0.5);
-        inputs.emplace("min_area", 0.0);
+        inputs.emplace(3, visionrt::Array::fromNested(std::vector<std::vector<float>>{scores}));
+        inputs.emplace(4, visionrt::Array::fromNested(std::vector<std::vector<std::int64_t>>{classes}));
+        inputs.emplace(5, visionrt::Array::fromNested(std::vector<std::vector<std::string>>{names}));
+        inputs.emplace(8, visionrt::Array::fromNested(std::move(allowed)));
+        inputs.emplace(6, 0.5);
+        inputs.emplace(7, 0.0);
 
         auto res = inst->execute(inputs);
         REQUIRE(testview::status(res).code == 0, "Detection filter execution must succeed");
         REQUIRE(testview::status(res).message == "运行成功", "Detection filter success message must be shared");
 
-        const auto *outRois = std::get_if<visionrt::DataRef<visionrt::ROI>>(&res.outputs["rois"]);
+        const auto *outRois = std::get_if<visionrt::DataRef<visionrt::ROI>>(&res.outputs[3]);
         REQUIRE(outRois != nullptr && outRois->get()[0].size() == 1, "Only score >= 0.5 passes");
 
         // Contract error test
         auto badInputs = inputs;
-        badInputs.insert_or_assign("min_score", std::string("not_a_float"));
+        badInputs.insert_or_assign(6, std::string("not_a_float"));
         auto badRes = inst->execute(badInputs);
         REQUIRE(testview::status(badRes).code == 1002
-                    && testview::status(badRes).message.find("min_score") != std::string::npos,
+                    && testview::status(badRes).message.find(visionrt::portLabel(6)) != std::string::npos,
                 "Invalid min_score must return the operator-owned business error");
 
         REQUIRE(inst->release().code == 0, "Filter release must succeed");
@@ -296,20 +296,20 @@ int main(int argc, char **argv)
         img(cv::Rect(30, 30, 40, 40)).setTo(cv::Scalar(255));
 
         visionrt::Values inputs;
-        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
-        inputs.emplace("axis", std::string("x"));
-        inputs.emplace("polarity", std::string("bright"));
-        inputs.emplace("threshold", std::int64_t(128));
-        inputs.emplace("min_pixels", std::int64_t(10));
-        inputs.emplace("min_extent", std::int64_t(10));
-        inputs.emplace("merge_gap", std::int64_t(0));
-        inputs.emplace("padding", std::int64_t(0));
+        inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
+        inputs.emplace(2, std::string("x"));
+        inputs.emplace(3, std::string("bright"));
+        inputs.emplace(4, std::int64_t(128));
+        inputs.emplace(5, std::int64_t(10));
+        inputs.emplace(6, std::int64_t(10));
+        inputs.emplace(7, std::int64_t(0));
+        inputs.emplace(8, std::int64_t(0));
 
         auto res = inst->execute(inputs);
         REQUIRE(testview::status(res).code == 0, "Roi projection execution must succeed");
         REQUIRE(testview::status(res).message == "运行成功", "Roi projection success message must be shared");
 
-        const auto *rois = std::get_if<visionrt::DataRef<visionrt::ROI>>(&res.outputs["rois"]);
+        const auto *rois = std::get_if<visionrt::DataRef<visionrt::ROI>>(&res.outputs[3]);
         REQUIRE(rois != nullptr && rois->get().size() == 1 && rois->get()[0].size() == 1, "Expected 1 projected ROI");
 
         REQUIRE(inst->release().code == 0, "Roi projection release must succeed");
@@ -326,15 +326,15 @@ int main(int argc, char **argv)
 
         cv::Mat          img(50, 50, CV_8UC1, cv::Scalar(150));
         visionrt::Values inputs;
-        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
-        inputs.emplace("operation", std::string("threshold"));
-        inputs.emplace("threshold", std::int64_t(100));
+        inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
+        inputs.emplace(2, std::string("threshold"));
+        inputs.emplace(4, std::int64_t(100));
 
         auto res = inst->execute(inputs);
         REQUIRE(testview::status(res).code == 0, "Image preprocess execution must succeed");
         REQUIRE(testview::status(res).message == "运行成功", "Image preprocess success message must be shared");
 
-        const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+        const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs[2]);
         REQUIRE(out != nullptr && !out->get().empty(), "Output must have ImageBatch");
         REQUIRE(out->get()[0].at<unsigned char>(0, 0) == 255, "150 >= 100 -> 255");
 
@@ -363,12 +363,12 @@ int main(int argc, char **argv)
         }
 
         visionrt::Values inputs;
-        inputs.emplace("path", std::string(utf8Path));
-        inputs.emplace("recursive", false);
-        inputs.emplace("traversal", std::string("循环"));
-        inputs.emplace("order", std::string("顺序（下一张）"));
-        inputs.emplace("count", std::int64_t(1));
-        inputs.emplace("reload", false);
+        inputs.emplace(1, std::string(utf8Path));
+        inputs.emplace(2, false);
+        inputs.emplace(3, std::string("循环"));
+        inputs.emplace(4, std::string("顺序（下一张）"));
+        inputs.emplace(5, std::int64_t(1));
+        inputs.emplace(6, false);
 
         auto res = inst->execute(inputs);
         std::filesystem::remove(tempPath);
@@ -376,9 +376,9 @@ int main(int argc, char **argv)
         REQUIRE(testview::status(res).code == 0, "Image read execution must succeed");
         REQUIRE(testview::status(res).message == "运行成功", "Image read success message must be shared");
         const auto paths = visionrt::nestedOf<std::vector<std::string>>(
-            std::get<visionrt::Array>(res.outputs.at("paths")));
+            std::get<visionrt::Array>(res.outputs.at(3)));
         REQUIRE(paths[0].ends_with(utf8Path), "Image path must preserve Unicode UTF-8");
-        const auto *batch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+        const auto *batch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs[2]);
         REQUIRE(batch && batch->get().size() == 1, "Must read 1 image");
         REQUIRE(batch->get()[0].cols == 24 && batch->get()[0].rows == 24, "Image dims must match 24x24");
 
@@ -397,16 +397,16 @@ int main(int argc, char **argv)
         REQUIRE_ABI(inst != nullptr, "Create rotate must return valid instance");
         REQUIRE_ABI(inst->initialize({}).code == 0, "Initialize rotate must succeed");
         visionrt::Values inputs;
-        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{cv::Mat(16, 16, CV_8UC1, cv::Scalar(7))}));
-        inputs.emplace("angle_deg", 90.0);
-        inputs.emplace("center", visionrt::Array::fromNested(visionrt::NestedVector<double, 1>{}));
-        inputs.emplace("canvas", std::string("keep"));
-        inputs.emplace("interpolation", std::string("linear"));
-        inputs.emplace("border_value", visionrt::Array::fromNested(visionrt::NestedVector<double, 1>{0.0}));
-        inputs.emplace("alignment", visionrt::Array::fromNested(visionrt::NestedVector<double, 3>{}));
+        inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{cv::Mat(16, 16, CV_8UC1, cv::Scalar(7))}));
+        inputs.emplace(2, 90.0);
+        inputs.emplace(3, visionrt::Array::fromNested(visionrt::NestedVector<double, 1>{}));
+        inputs.emplace(4, std::string("keep"));
+        inputs.emplace(5, std::string("linear"));
+        inputs.emplace(6, visionrt::Array::fromNested(visionrt::NestedVector<double, 1>{0.0}));
+        inputs.emplace(7, visionrt::Array::fromNested(visionrt::NestedVector<double, 3>{}));
         auto res = inst->execute(inputs);
         REQUIRE_ABI(testview::status(res).code == 0, "Execution of rotate must succeed");
-        const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+        const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs[2]);
         REQUIRE_ABI(out != nullptr && !out->get().empty(), "Rotate output must contain images");
         REQUIRE_ABI(inst->release().code == 0, "Release rotate must succeed");
         registry.factories.at(reg).destroy(inst);
@@ -419,16 +419,16 @@ int main(int argc, char **argv)
         REQUIRE_ABI(inst != nullptr, "Create brightness must return valid instance");
         REQUIRE_ABI(inst->initialize({}).code == 0, "Initialize brightness must succeed");
         visionrt::Values inputs;
-        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{cv::Mat(8, 8, CV_8UC1, cv::Scalar(20))}));
-        inputs.emplace("gain", 1.5);
-        inputs.emplace("offset", 0.0);
-        inputs.emplace("rois", visionrt::DataRef<visionrt::ROI>(visionrt::ROI{}));
-        inputs.emplace("mask", visionrt::Missing{});
-        inputs.emplace("alignment", visionrt::Array::fromNested(visionrt::NestedVector<double, 3>{}));
-        inputs.emplace("emit_mask", false);
+        inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{cv::Mat(8, 8, CV_8UC1, cv::Scalar(20))}));
+        inputs.emplace(2, 1.5);
+        inputs.emplace(3, 0.0);
+        inputs.emplace(4, visionrt::DataRef<visionrt::ROI>(visionrt::ROI{}));
+        inputs.emplace(5, visionrt::Missing{});
+        inputs.emplace(6, visionrt::Array::fromNested(visionrt::NestedVector<double, 3>{}));
+        inputs.emplace(7, false);
         auto res = inst->execute(inputs);
         REQUIRE_ABI(testview::status(res).code == 0, "Execution of brightness must succeed");
-        const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+        const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs[2]);
         REQUIRE_ABI(out != nullptr && !out->get().empty(), "Brightness output must contain images");
         REQUIRE_ABI(inst->release().code == 0, "Release brightness must succeed");
         registry.factories.at(reg).destroy(inst);

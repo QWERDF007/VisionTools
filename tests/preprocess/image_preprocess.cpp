@@ -14,10 +14,10 @@ void testImagePreprocessTool()
     ToolServices        services;
     ImagePreprocessTool tool(services);
 
-    static_assert(std::string_view(preprocess_ports::in::OPERATION) == "operation");
-    static_assert(std::string_view(preprocess_ports::in::KERNEL) == "kernel");
-    static_assert(std::string_view(preprocess_ports::in::THRESHOLD) == "threshold");
-    static_assert(std::string_view(preprocess_ports::out::IMAGES) == "images");
+    static_assert(preprocess_ports::in::OPERATION == 2);
+    static_assert(preprocess_ports::in::KERNEL == 3);
+    static_assert(preprocess_ports::in::THRESHOLD == 4);
+    static_assert(preprocess_ports::out::IMAGES == 2);
 
     cv::Mat img(50, 50, CV_8UC1, cv::Scalar(150));
     cv::Mat owned = (img).clone();
@@ -62,7 +62,7 @@ void testImagePreprocessTool()
         Values inputs;
         inputs.emplace(preprocess_ports::in::IMAGES, DataRef<Image>(Image{owned}));
         auto res = tool.execute(inputs);
-        requireFailure(res, "operation", "Missing operation must fail");
+        requireFailure(res, preprocess_ports::in::OPERATION, "Missing operation must fail");
         REQUIRE(testview::status(res).message.find("缺失") != std::string::npos, "Missing value must be Chinese");
     }
     {
@@ -70,7 +70,7 @@ void testImagePreprocessTool()
         inputs.emplace(preprocess_ports::in::IMAGES, DataRef<Image>(Image{owned}));
         inputs.emplace(preprocess_ports::in::OPERATION, std::string("unknown"));
         auto res = tool.execute(inputs);
-        requireFailure(res, "operation", "Invalid operation must fail");
+        requireFailure(res, preprocess_ports::in::OPERATION, "Invalid operation must fail");
         REQUIRE(testview::status(res).message.find("unknown") != std::string::npos, "Error must include the invalid value");
     }
     {
@@ -87,7 +87,7 @@ void testImagePreprocessTool()
         inputs.emplace(preprocess_ports::in::OPERATION, std::string("gaussian"));
         inputs.emplace(preprocess_ports::in::KERNEL, std::int64_t(1) << 40);
         auto res = tool.execute(inputs);
-        requireFailure(res, "kernel", "Kernel outside int range must fail before narrowing");
+        requireFailure(res, preprocess_ports::in::KERNEL, "Kernel outside int range must fail before narrowing");
     }
     {
         Values inputs;
@@ -95,7 +95,7 @@ void testImagePreprocessTool()
         inputs.emplace(preprocess_ports::in::OPERATION, std::string("threshold"));
         inputs.emplace(preprocess_ports::in::THRESHOLD, std::int64_t(300));
         auto res = tool.execute(inputs);
-        requireFailure(res, "threshold", "Out-of-range threshold must fail");
+        requireFailure(res, preprocess_ports::in::THRESHOLD, "Out-of-range threshold must fail");
         REQUIRE(testview::status(res).message.find("[0, 255]") != std::string::npos, "Range must be stated");
     }
 

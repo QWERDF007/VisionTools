@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visionrt.roi.projection",
   "name_zh": "投影ROI",
   "version": "1.0.0",
@@ -12,15 +12,20 @@
       "ROI"
     ]
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 9,
+    "outputs": 4
+  },
   "ports": {
     "inputs": [
       {
-        "name_en": "images",
+        "id": 1,
         "name_zh": "图像",
         "type": "image"
       },
       {
-        "name_en": "axis",
+        "id": 2,
         "name_zh": "投影轴",
         "type": "string",
         "default": "x",
@@ -35,7 +40,7 @@
         }
       },
       {
-        "name_en": "polarity",
+        "id": 3,
         "name_zh": "极性",
         "type": "string",
         "default": "bright",
@@ -50,7 +55,7 @@
         }
       },
       {
-        "name_en": "threshold",
+        "id": 4,
         "name_zh": "二值化阈值",
         "type": "int",
         "default": 128,
@@ -65,7 +70,7 @@
         }
       },
       {
-        "name_en": "min_pixels",
+        "id": 5,
         "name_zh": "最小像素数",
         "type": "int",
         "default": 1,
@@ -78,7 +83,7 @@
         }
       },
       {
-        "name_en": "min_extent",
+        "id": 6,
         "name_zh": "最小跨度",
         "type": "int",
         "default": 1,
@@ -91,7 +96,7 @@
         }
       },
       {
-        "name_en": "merge_gap",
+        "id": 7,
         "name_zh": "合并间隙",
         "type": "int",
         "constraints": {
@@ -103,7 +108,7 @@
         }
       },
       {
-        "name_en": "padding",
+        "id": 8,
         "name_zh": "外扩边距",
         "type": "int",
         "constraints": {
@@ -117,19 +122,25 @@
     ],
     "outputs": [
       {
-        "name_en": "images",
+        "id": 2,
         "name_zh": "输出图像",
         "type": "image",
         "relations": {
-          "same_geometry_as": "inputs.images"
+          "same_geometry_as": {
+            "stage": "inputs",
+            "id": 1
+          }
         }
       },
       {
-        "name_en": "rois",
+        "id": 3,
         "name_zh": "ROI批次",
         "type": "roi",
         "relations": {
-          "image": "outputs.images"
+          "image": {
+            "stage": "outputs",
+            "id": 2
+          }
         }
       }
     ]

@@ -13,6 +13,9 @@ import numpy as np
 
 from .visiontools_sdk import ContractError, InputParametersBase, OutputParametersBase
 
+IMAGES, MODE = 1, 2
+OUT_IMAGES = 2
+
 
 class ImageAddInputs(InputParametersBase):
     def __init__(self):
@@ -21,8 +24,8 @@ class ImageAddInputs(InputParametersBase):
         self.mode = "copy"
 
     def read_fields(self, reader):
-        self.images = reader.optional_array("images")
-        mode = reader.optional_text("mode")
+        self.images = reader.optional_array(IMAGES)
+        mode = reader.optional_text(MODE)
         self.mode = mode if mode is not None else "copy"
 
 class ImageAddOutputs(OutputParametersBase):
@@ -34,15 +37,15 @@ class ImageAddOutputs(OutputParametersBase):
         # An unproduced image is simply not written; the host materialises the declared default and
         # the status code above says why nothing was produced.
         if self.images is not None:
-            writer.array("images", self.images)
+            writer.array(OUT_IMAGES, self.images)
 
 def _validate_batch(images):
     """Returns the per-image problem, or None when the whole batch is valid."""
     for index, image in enumerate(images):
         if not isinstance(image, np.ndarray) or image.size == 0 or image.ndim not in (2, 3):
-            return f"输入端口 'images' 批次索引 {index} 需要非空 HxW 或 HxWxC ndarray"
+            return f"输入端口 {IMAGES} 批次索引 {index} 需要非空 HxW 或 HxWxC ndarray"
         if image.dtype != np.uint8:
-            return f"输入端口 'images' 批次索引 {index} 需要 uint8 像素"
+            return f"输入端口 {IMAGES} 批次索引 {index} 需要 uint8 像素"
     return None
 
 def execute(values):
@@ -65,12 +68,12 @@ def execute(values):
 
     if args.images is None:
         out.status_code = 1001
-        out.status_message = "输入端口 'images' 缺失"
+        out.status_message = "输入端口 1 缺失"
         return out.pack()
 
     if args.mode not in ("copy", "inplace"):
         out.status_code = 1003
-        out.status_message = "输入端口 'mode' 只能是 copy 或 inplace"
+        out.status_message = "输入端口 2 只能是 copy 或 inplace"
         return out.pack()
     if (problem := _validate_batch(args.images)) is not None:
         out.status_code = 1002

@@ -87,11 +87,11 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
     const auto &groups = rectangleValue.get();
     if (groups.size() != 1 || groups[0].size() != 1)
         return failure(missingOutputs(), ImageCropError::RoiStructure,
-                       std::string(p::in::RECT) + " 必须包含一组一个矩形 ROI");
+                       visionrt::portLabel(p::in::RECT) + " 必须包含一组一个矩形 ROI");
     const auto region = visionrt::RegionView(groups[0][0]);
     if (region.kind() != visionrt::RoiKind::Rectangle)
         return failure(missingOutputs(), ImageCropError::RoiStructure,
-                       std::string(p::in::RECT) + " 必须包含一组一个矩形 ROI");
+                       visionrt::portLabel(p::in::RECT) + " 必须包含一组一个矩形 ROI");
     std::array<cv::Point2d, 4> corners;
     try
     {
@@ -100,7 +100,7 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
     catch (const std::exception &error)
     {
         return failure(missingOutputs(), ImageCropError::RoiStructure,
-                       std::string(p::in::RECT) + " 的矩形无法解析", error.what());
+                       visionrt::portLabel(p::in::RECT) + " 的矩形无法解析", error.what());
     }
     try
     {

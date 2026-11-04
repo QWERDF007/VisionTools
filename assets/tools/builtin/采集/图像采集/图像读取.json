@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visionrt.image.read",
   "name_zh": "图像读取",
   "version": "1.0.0",
@@ -12,10 +12,15 @@
       "图像采集"
     ]
   },
+  "next_port_id": {
+    "init": 0,
+    "inputs": 7,
+    "outputs": 7
+  },
   "ports": {
     "inputs": [
       {
-        "name_en": "path",
+        "id": 1,
         "name_zh": "图像路径",
         "type": "string",
         "ui": {
@@ -23,15 +28,15 @@
         }
       },
       {
-        "name_en": "recursive",
+        "id": 2,
         "name_zh": "递归选项",
         "type": "bool",
         "ui": {
-          "editor": "bool"
+          "editor": "recursive"
         }
       },
       {
-        "name_en": "traversal",
+        "id": 3,
         "name_zh": "遍历选项",
         "type": "string",
         "default": "循环",
@@ -46,7 +51,7 @@
         }
       },
       {
-        "name_en": "order",
+        "id": 4,
         "name_zh": "遍历顺序",
         "type": "string",
         "default": "顺序（下一张）",
@@ -61,7 +66,7 @@
         }
       },
       {
-        "name_en": "count",
+        "id": 5,
         "name_zh": "图像数量",
         "type": "int",
         "default": 1,
@@ -74,37 +79,37 @@
         }
       },
       {
-        "name_en": "reload",
+        "id": 6,
         "name_zh": "重新读图",
         "type": "bool",
         "ui": {
-          "editor": "bool"
+          "editor": "switch"
         }
       }
     ],
     "outputs": [
       {
-        "name_en": "images",
+        "id": 2,
         "name_zh": "图像",
         "type": "image"
       },
       {
-        "name_en": "paths",
+        "id": 3,
         "name_zh": "文件路径",
         "type": "vec_string"
       },
       {
-        "name_en": "current_index",
+        "id": 4,
         "name_zh": "当前索引",
         "type": "int"
       },
       {
-        "name_en": "total_count",
+        "id": 5,
         "name_zh": "目录总数量",
         "type": "int"
       },
       {
-        "name_en": "end_reached",
+        "id": 6,
         "name_zh": "已到末项",
         "type": "bool"
       }

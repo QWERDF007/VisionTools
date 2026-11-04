@@ -6,6 +6,8 @@ from ..common import status
 from ..common.engine import EngineError, Program
 from .errors import EVALUATION_FAILED, INITIALIZE_FAILED, NOT_INITIALIZED, PROGRAM_INVALID
 
+VARIABLES, PROGRAM = 0, 1
+
 
 class ExpressionTool:
     def __init__(self):
@@ -13,7 +15,7 @@ class ExpressionTool:
 
     def initialize(self, params):
         try:
-            self._program = Program.from_tables(params.get("variables", []), params.get("program", []))
+            self._program = Program.from_tables(params.get(VARIABLES, []), params.get(PROGRAM, []))
         except EngineError as error:
             self._program = None
             return status.failure(PROGRAM_INVALID, str(error))

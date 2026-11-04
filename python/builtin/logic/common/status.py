@@ -1,6 +1,6 @@
 """Status envelope shared by the Python tools.
 
-execute() answers ``{"outputs": {..., "__status_code": code, "__status_message": message}, "detail": detail}``;
+execute() answers ``{"outputs": {..., 0: code, 1: message}, "detail": detail}``;
 initialize() and release() answer a bare status dict (``{"code": code, "message": message, "detail": detail}``).
 Codes are the tool's own positive business codes.
 """
@@ -24,6 +24,6 @@ def failure(code: int, message: str, detail: str = "") -> dict:
 
 def executed(status: dict, outputs: dict) -> dict:
     res = dict(outputs)
-    res["__status_code"] = status["code"]
-    res["__status_message"] = status["message"]
+    res[0] = status["code"]
+    res[1] = status["message"]
     return {"outputs": res, "detail": status["detail"]}

@@ -123,14 +123,14 @@ int main()
 
         cv::Mat          gray(60, 60, CV_8UC1, cv::Scalar(150));
         visionrt::Values in1;
-        in1.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(gray).clone()}));
-        in1.emplace("block_size", std::int64_t(5));
-        in1.emplace("constant_offset", 2.0);
+        in1.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{(gray).clone()}));
+        in1.emplace(2, std::int64_t(5));
+        in1.emplace(3, 2.0);
 
         auto res1 = inst->execute(in1);
         REQUIRE(testview::status(res1).code == 0, "Execute 1 must succeed");
         REQUIRE(testview::status(res1).message == "运行成功", "Execute 1 success message must be shared");
-        const auto *outBatch1 = std::get_if<visionrt::DataRef<visionrt::Image>>(&res1.outputs["images"]);
+        const auto *outBatch1 = std::get_if<visionrt::DataRef<visionrt::Image>>(&res1.outputs[2]);
         REQUIRE(outBatch1 != nullptr && !outBatch1->get().empty(), "Execute 1 must return valid image");
         snapshotImage = outBatch1->get()[0];
 
@@ -144,9 +144,9 @@ int main()
             }
         }
         visionrt::Values in2;
-        in2.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(gray2).clone()}));
-        in2.emplace("block_size", std::int64_t(3));
-        in2.emplace("constant_offset", 1.0);
+        in2.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{(gray2).clone()}));
+        in2.emplace(2, std::int64_t(3));
+        in2.emplace(3, 1.0);
         auto res2 = inst->execute(in2);
         REQUIRE(testview::status(res2).code == 0, "Execute 2 must succeed");
         REQUIRE(testview::status(res2).message == "运行成功", "Execute 2 success message must be shared");
@@ -195,16 +195,16 @@ int main()
                 }
             }
             visionrt::Values inputs;
-            inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
-            inputs.emplace("block_size", std::int64_t(7));
-            inputs.emplace("constant_offset", 3.0);
+            inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
+            inputs.emplace(2, std::int64_t(7));
+            inputs.emplace(3, 3.0);
 
             std::vector<cv::Mat> roundOutputs;
             for (int i = 0; i < 10; ++i)
             {
                 auto res = inst->execute(inputs);
                 REQUIRE(testview::status(res).code == 0, "Execute must succeed");
-                const auto *b = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs["images"]);
+                const auto *b = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs[2]);
                 REQUIRE(b != nullptr && !b->get().empty(), "Output images must be non-empty");
                 REQUIRE(b->get()[0].rows == size && b->get()[0].cols == size, "Concurrent output size match");
                 roundOutputs.push_back(b->get()[0].clone());
@@ -257,9 +257,9 @@ int main()
             }
         }
         visionrt::Values inputs;
-        inputs.emplace("images", visionrt::DataRef<visionrt::Image>(visionrt::Image{(nonUniform).clone()}));
-        inputs.emplace("block_size", std::int64_t(5));
-        inputs.emplace("constant_offset", 1.0);
+        inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{(nonUniform).clone()}));
+        inputs.emplace(2, std::int64_t(5));
+        inputs.emplace(3, 1.0);
 
         // Warmup 5 runs
         for (int w = 0; w < 5; ++w)

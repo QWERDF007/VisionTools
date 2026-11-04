@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "name_en": "visionrt.dl.yolo",
   "name_zh": "YOLO目标检测",
   "version": "1.0.0",
@@ -12,10 +12,15 @@
       "目标检测"
     ]
   },
+  "next_port_id": {
+    "init": 10,
+    "inputs": 5,
+    "outputs": 7
+  },
   "ports": {
     "init": [
       {
-        "name_en": "model_name",
+        "id": 0,
         "name_zh": "模型名称",
         "type": "string",
         "default": "yolov8n",
@@ -26,7 +31,7 @@
         }
       },
       {
-        "name_en": "load_mode",
+        "id": 1,
         "name_zh": "加载模式",
         "type": "string",
         "default": "engine",
@@ -38,7 +43,7 @@
         }
       },
       {
-        "name_en": "model_path",
+        "id": 2,
         "name_zh": "模型路径",
         "type": "string",
         "ui": {
@@ -46,7 +51,7 @@
         }
       },
       {
-        "name_en": "engine_output_path",
+        "id": 3,
         "name_zh": "引擎输出路径",
         "type": "string",
         "ui": {
@@ -54,7 +59,7 @@
         }
       },
       {
-        "name_en": "labels_path",
+        "id": 4,
         "name_zh": "标签路径",
         "type": "string",
         "ui": {
@@ -62,13 +67,13 @@
         }
       },
       {
-        "name_en": "precision",
+        "id": 5,
         "name_zh": "推理精度",
         "type": "string",
         "default": "fp16"
       },
       {
-        "name_en": "gpu_index",
+        "id": 6,
         "name_zh": "GPU编号",
         "type": "int",
         "constraints": {
@@ -76,7 +81,7 @@
         }
       },
       {
-        "name_en": "input_width",
+        "id": 7,
         "name_zh": "输入宽度",
         "type": "int",
         "default": 640,
@@ -85,7 +90,7 @@
         }
       },
       {
-        "name_en": "input_height",
+        "id": 8,
         "name_zh": "输入高度",
         "type": "int",
         "default": 640,
@@ -94,7 +99,7 @@
         }
       },
       {
-        "name_en": "num_classes",
+        "id": 9,
         "name_zh": "类别数量",
         "type": "int",
         "default": 80,
@@ -105,12 +110,12 @@
     ],
     "inputs": [
       {
-        "name_en": "images",
+        "id": 1,
         "name_zh": "图像",
         "type": "image"
       },
       {
-        "name_en": "conf_threshold",
+        "id": 2,
         "name_zh": "置信度阈值",
         "type": "float",
         "default": 0.25,
@@ -124,7 +129,7 @@
         }
       },
       {
-        "name_en": "nms_threshold",
+        "id": 3,
         "name_zh": "NMS阈值",
         "type": "float",
         "default": 0.45,
@@ -138,7 +143,7 @@
         }
       },
       {
-        "name_en": "max_detections",
+        "id": 4,
         "name_zh": "最大检测数",
         "type": "int",
         "default": 300,
@@ -152,36 +157,42 @@
     ],
     "outputs": [
       {
-        "name_en": "images",
+        "id": 2,
         "name_zh": "输出图像",
         "type": "image",
         "relations": {
-          "same_geometry_as": "inputs.images"
+          "same_geometry_as": {
+            "stage": "inputs",
+            "id": 1
+          }
         },
         "display": {
           "color_order": "BGR"
         }
       },
       {
-        "name_en": "rois",
+        "id": 3,
         "name_zh": "目标ROI",
         "type": "roi",
         "relations": {
-          "image": "outputs.images"
+          "image": {
+            "stage": "outputs",
+            "id": 2
+          }
         }
       },
       {
-        "name_en": "scores",
+        "id": 4,
         "name_zh": "目标得分",
         "type": "vec_vec_float32"
       },
       {
-        "name_en": "classes",
+        "id": 5,
         "name_zh": "目标类别",
         "type": "vec_vec_int"
       },
       {
-        "name_en": "class_names",
+        "id": 6,
         "name_zh": "目标类别名",
         "type": "vec_vec_string"
       }

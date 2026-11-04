@@ -8,18 +8,18 @@ namespace ports::image_brightness {
 inline constexpr char TOOL_ID[] = "visiontools.image.brightness";
 
 namespace in {
-inline constexpr char IMAGES[]     = "images";
-inline constexpr char GAIN[]       = "gain";
-inline constexpr char OFFSET[]     = "offset";
-inline constexpr char ROIS[]       = "rois";
-inline constexpr char MASK[]       = "mask";
-inline constexpr char ALIGNMENT[]  = "alignment";
-inline constexpr char EMIT_MASK[]  = "emit_mask";
+inline constexpr visionrt::PortId IMAGES = 1;
+inline constexpr visionrt::PortId GAIN = 2;
+inline constexpr visionrt::PortId OFFSET = 3;
+inline constexpr visionrt::PortId ROIS = 4;
+inline constexpr visionrt::PortId MASK = 5;
+inline constexpr visionrt::PortId ALIGNMENT = 6;
+inline constexpr visionrt::PortId EMIT_MASK = 7;
 }
 
 namespace out {
-inline constexpr char IMAGES[]       = "images";
-inline constexpr char APPLIED_MASK[] = "applied_mask";
+inline constexpr visionrt::PortId IMAGES = 2;
+inline constexpr visionrt::PortId APPLIED_MASK = 3;
 }
 }
 

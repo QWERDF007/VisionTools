@@ -8,18 +8,18 @@ namespace ports::image_rotate {
 inline constexpr char TOOL_ID[] = "visiontools.image.rotate";
 
 namespace in {
-inline constexpr char IMAGES[]        = "images";
-inline constexpr char ANGLE_DEG[]     = "angle_deg";
-inline constexpr char CENTER[]        = "center";
-inline constexpr char CANVAS[]        = "canvas";
-inline constexpr char INTERPOLATION[] = "interpolation";
-inline constexpr char BORDER_VALUE[]  = "border_value";
-inline constexpr char ALIGNMENT[]     = "alignment";
+inline constexpr visionrt::PortId IMAGES = 1;
+inline constexpr visionrt::PortId ANGLE_DEG = 2;
+inline constexpr visionrt::PortId CENTER = 3;
+inline constexpr visionrt::PortId CANVAS = 4;
+inline constexpr visionrt::PortId INTERPOLATION = 5;
+inline constexpr visionrt::PortId BORDER_VALUE = 6;
+inline constexpr visionrt::PortId ALIGNMENT = 7;
 }
 
 namespace out {
-inline constexpr char IMAGES[]    = "images";
-inline constexpr char ALIGNMENT[] = "alignment";
+inline constexpr visionrt::PortId IMAGES = 2;
+inline constexpr visionrt::PortId ALIGNMENT = 3;
 }
 }
 

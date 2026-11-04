@@ -67,17 +67,17 @@ visionrt::ToolStatus BrightnessInputs::readFields(visionrt::InputReader &reader)
     if (readings.failed())
         return readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch);
     if (!inRange(gain, 0.0, 1.0e12))
-        return status(CommonToolError::InputOutOfRange, std::string(p::in::GAIN) + " 必须在 [0, 1e12] 内");
+        return status(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::GAIN) + " 必须在 [0, 1e12] 内");
     if (!inRange(offset, -1.0e12, 1.0e12))
-        return status(CommonToolError::InputOutOfRange, std::string(p::in::OFFSET) + " 必须在 [-1e12, 1e12] 内");
+        return status(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::OFFSET) + " 必须在 [-1e12, 1e12] 内");
     // The shared kernels interpret these two values; the parameter view only keeps the handle.
     const auto *rois = reader.find(p::in::ROIS);
     if (!rois)
-        return status(CommonToolError::InputMissing, std::string(p::in::ROIS));
+        return status(CommonToolError::InputMissing, visionrt::portLabel(p::in::ROIS));
     this->rois = *rois;
     const auto *alignment = reader.find(p::in::ALIGNMENT);
     if (!alignment)
-        return status(CommonToolError::InputMissing, std::string(p::in::ALIGNMENT));
+        return status(CommonToolError::InputMissing, visionrt::portLabel(p::in::ALIGNMENT));
     this->alignment = *alignment;
     return {};
 }
