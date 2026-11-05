@@ -22,7 +22,10 @@
       {
         "id": 1,
         "name_zh": "图像",
-        "type": "image"
+        "type": "image",
+        "display": {
+          "visible": true
+        }
       },
       {
         "id": 2,
@@ -130,6 +133,9 @@
             "stage": "inputs",
             "id": 1
           }
+        },
+        "display": {
+          "visible": true
         }
       },
       {

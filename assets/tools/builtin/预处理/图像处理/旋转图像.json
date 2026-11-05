@@ -22,7 +22,10 @@
       {
         "id": 1,
         "name_zh": "输入图像",
-        "type": "image"
+        "type": "image",
+        "display": {
+          "visible": true
+        }
       },
       {
         "id": 2,
@@ -96,7 +99,10 @@
       {
         "id": 2,
         "name_zh": "旋转图像",
-        "type": "image"
+        "type": "image",
+        "display": {
+          "visible": true
+        }
       },
       {
         "id": 3,

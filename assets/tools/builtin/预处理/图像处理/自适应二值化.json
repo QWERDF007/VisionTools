@@ -22,7 +22,10 @@
       {
         "id": 1,
         "name_zh": "输入图像",
-        "type": "image"
+        "type": "image",
+        "display": {
+          "visible": true
+        }
       },
       {
         "id": 2,
@@ -61,7 +64,8 @@
           }
         },
         "display": {
-          "color_order": "Gray"
+          "color_order": "Gray",
+          "visible": true
         }
       }
     ]

@@ -47,7 +47,7 @@
         "name_zh": "模型路径",
         "type": "string",
         "ui": {
-          "editor": "file"
+          "editor": "path"
         }
       },
       {
@@ -55,7 +55,7 @@
         "name_zh": "引擎输出路径",
         "type": "string",
         "ui": {
-          "editor": "file"
+          "editor": "path"
         }
       },
       {
@@ -63,7 +63,7 @@
         "name_zh": "标签路径",
         "type": "string",
         "ui": {
-          "editor": "file"
+          "editor": "path"
         }
       },
       {
@@ -112,7 +112,10 @@
       {
         "id": 1,
         "name_zh": "图像",
-        "type": "image"
+        "type": "image",
+        "display": {
+          "visible": true
+        }
       },
       {
         "id": 2,
@@ -167,7 +170,8 @@
           }
         },
         "display": {
-          "color_order": "BGR"
+          "color_order": "BGR",
+          "visible": true
         }
       },
       {
