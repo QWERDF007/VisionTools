@@ -21,7 +21,7 @@ class TestPackageTransaction(PackageFixture):
             source.replace('"name_en": "custom.math"', '"name_en": "ignored", "name_en": "custom.math"'),
             source.replace('"type": "int"', '"type": "float", "type": "int"'),
             source.replace('"type": "int"', '"type": "float", "t\\u0079pe": "int"'),
-            source.replace('"schema_version": 5', '"schema_version": NaN'),
+            source.replace('"schema_version": 6', '"schema_version": NaN'),
         )
         for document in invalid:
             with self.subTest(document=document):

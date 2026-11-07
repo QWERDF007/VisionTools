@@ -33,7 +33,7 @@ class PackageFixture(unittest.TestCase):
         self.declaration = self.project / "assets/tools/custom/Math/Arithmetic/tool.json"
         self.declaration.parent.mkdir(parents=True)
         self.document = {
-            "schema_version": 5, "name_en": "custom.math", "name_zh": "Math",
+            "schema_version": 6, "name_en": "custom.math", "name_zh": "Math",
             "version": "1.0.0",
             "implementation": {
                 "kind": "python_function",
@@ -43,7 +43,9 @@ class PackageFixture(unittest.TestCase):
                 "resources": ["bias.dat"],
             },
             "ui": {"category": ["Mathematics", "Arithmetic"]},
-            "ports": {"outputs": [{"name_en": "value", "name_zh": "Value", "type": "int"}]},
+            # Output ids start at 2: the first two output ports belong to the host status envelope.
+            "next_port_id": {"init": 0, "inputs": 0, "outputs": 3},
+            "ports": {"outputs": [{"id": 2, "name_zh": "Value", "type": "int"}]},
         }
         # Every project that ships Python tools carries the one author SDK the packager injects.
         sdk = self.project / "python/author_sdk/visiontools_sdk"
@@ -52,7 +54,8 @@ class PackageFixture(unittest.TestCase):
         self.code = self.project / "python/custom/examples/math"
         self.code.mkdir(parents=True)
         (self.code / "tool.py").write_text(
-            'from .helper import calculate\ndef run(inputs): return {"value": calculate()}\n', encoding="utf-8")
+            'from .helper import calculate\n'
+            'def run(inputs): return {"outputs": {2: calculate()}, "detail": ""}\n', encoding="utf-8")
         (self.code / "helper.py").write_text(
             'from pathlib import Path\ndef calculate(): return int(Path(__file__).with_name("bias.dat").read_text())\n',
             encoding="utf-8")

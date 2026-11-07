@@ -40,20 +40,24 @@ class DistributionContract(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 document = json.loads(result.stdout)
                 self.assertNotIn("registry_name", document.get("implementation", {}))
+                # Status ports are host-owned and occupy the first two output ids; an author
+                # declaration must never claim one of them.
                 outputs = document.get("ports", {}).get("outputs", [])
-                self.assertTrue(all(not port["name_en"].startswith("__") for port in outputs))
+                self.assertTrue(all(port["id"] >= 2 for port in outputs))
 
     def test_receiver_uses_stable_identity_and_host_binding(self):
         declaration = json.loads((ROOT / "assets/tools/builtin/流程控制/跨流程接收.json").read_text(encoding="utf-8"))
         self.assertEqual(declaration["implementation"]["kind"], "host")
         self.assertEqual(declaration["implementation"]["binding"], "visionrt.receiver")
-        parameters = {item["name_en"]: item for item in declaration["ports"]["init"]}
-        self.assertEqual(list(parameters), ["source_flow_id", "source_node_seq", "source_port_id", "timeout_ms"])
-        for identifier in ("source_flow_id", "source_node_seq", "source_port_id"):
-            self.assertEqual(parameters[identifier]["type"], "string")
+        # Port ids are the identity: the receiver binds the source flow, node and port by number, so
+        # the three parameters must be the first three init ports and types must match the envelope.
+        parameters = declaration["ports"]["init"]
+        self.assertEqual([item["id"] for item in parameters], [0, 1, 2, 3])
+        self.assertEqual([item["type"] for item in parameters], ["string", "string", "int", "int"])
         self.assertEqual(declaration["ports"]["outputs"][0]["type_from"],
-                         {"flow": "init.source_flow_id", "node": "init.source_node_seq",
-                          "port": "init.source_port_id"})
+                         {"flow": {"stage": "init", "id": 0},
+                          "node": {"stage": "init", "id": 1},
+                          "port": {"stage": "init", "id": 2}})
 
     def _python_fixture(self, project: Path) -> Path:
         """Builds the minimal one-tool Python package the rest of this file distributes."""
@@ -64,24 +68,26 @@ class DistributionContract(unittest.TestCase):
         definition = project / "assets/tools/custom/math/arithmetic/add.json"
         definition.parent.mkdir(parents=True)
         document = {
-            "schema_version": 5, "name_en": "test.add", "name_zh": "Add", "version": "1.0.0",
+            "schema_version": 6, "name_en": "test.add", "name_zh": "Add", "version": "1.0.0",
             "implementation": {"kind": "python_function",
                                "package": "math/arithmetic",
                                "file": "add.py",
                                "symbol": "run",
                                "resources": ["bias.dat"]},
-            "ports": {"outputs": [{"name_en": "value", "name_zh": "Value", "type": "int"}]},
+            # Output ids start at 2: the first two output ports belong to the host status envelope.
+            "next_port_id": {"init": 0, "inputs": 0, "outputs": 3},
+            "ports": {"outputs": [{"id": 2, "name_zh": "Value", "type": "int"}]},
         }
         definition.write_text(json.dumps(document), encoding="utf-8")
         code = project / "python/custom/math/arithmetic"
         code.mkdir(parents=True)
-        # The example returns the current tool envelope: outputs (including the status ports) plus
-        # detail. The previous fixture returned a separate status object, which no host accepts.
+        # The example returns the current tool envelope: outputs keyed by port number plus detail.
+        # Status is host-owned, so an author never writes it; the previous fixture returned a
+        # separate status object, which no host accepts.
         (code / "add.py").write_text(
             'from .helper import value\nfrom pathlib import Path\n'
             'def run(inputs):\n'
-            '    return {"outputs": {"value": value + int(Path(__file__).with_name("bias.dat").read_text()),\n'
-            '                        "__status_code": 0, "__status_message": "运行成功"},\n'
+            '    return {"outputs": {2: value + int(Path(__file__).with_name("bias.dat").read_text())},\n'
             '            "detail": ""}\n',
             encoding="utf-8")
         (code / "helper.py").write_text("value = 37\n", encoding="utf-8")
@@ -137,8 +143,8 @@ class DistributionContract(unittest.TestCase):
                     "module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\n"
                     "result = module.run({})\n"
                     "assert 'status' not in result, 'the fixture still uses the removed status envelope'\n"
-                    "assert result['outputs']['__status_code'] == 0 and result['detail'] == ''\n"
-                    "print(result['outputs']['value'])\n",
+                    "assert result['outputs'][2] == 42 and result['detail'] == ''\n"
+                    "print(result['outputs'][2])\n",
                     str(package_root),
                 ], capture_output=True, text=True, encoding="utf-8", errors="replace")
                 self.assertEqual(probe.returncode, 0, probe.stderr)
