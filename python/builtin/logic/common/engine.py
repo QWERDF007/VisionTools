@@ -12,10 +12,9 @@ import ast
 import math
 from dataclasses import dataclass
 
-try:  # The host runtime ships NumPy with the interpreter; the engine stays importable without it.
-    import numpy as np
-except ImportError:  # pragma: no cover - exercising this branch needs a NumPy-free interpreter
-    np = None
+# The host refuses an interpreter without NumPy, so the engine imports it unconditionally instead
+# of degrading to a list-only mode nobody's environment can actually be in.
+import numpy as np
 
 from .vendor import simpleeval
 
@@ -166,7 +165,7 @@ def check_value(value, spec: TypeSpec, location: str, budget: Budget | None = No
             raise EngineError(f"{location} 字符串超出长度上限")
         return value
     if spec.name == "Array":
-        if np is not None and isinstance(value, np.ndarray):
+        if isinstance(value, np.ndarray):
             return _check_numpy(value, spec, location, budget)
         if not isinstance(value, list):
             raise EngineError(f"{location} 需要数组，实际为 {type(value).__name__}")

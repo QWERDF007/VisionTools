@@ -17,10 +17,7 @@ from logic.branch.tool import BranchTool  # noqa: E402
 from logic.common.engine import EngineError, Program  # noqa: E402
 from logic.expression.tool import ExpressionTool  # noqa: E402
 
-try:  # The host interpreter ships NumPy; the engine itself stays importable without it.
-    import numpy as np
-except ImportError:  # pragma: no cover - only a NumPy-free interpreter takes this branch
-    np = None
+import numpy as np
 
 
 def _port(port_id):
@@ -159,7 +156,6 @@ class EngineSemantics(unittest.TestCase):
         self.assertEqual(accepted.evaluate({})[1], [1e30, -2.5])
 
 
-@unittest.skipIf(np is None, "需要 NumPy")
 class NumpyInputs(unittest.TestCase):
     """A numeric host Array crosses into Python as an ndarray, so inputs must reach expressions as lists."""
 

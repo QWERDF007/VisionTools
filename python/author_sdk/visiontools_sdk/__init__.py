@@ -28,16 +28,15 @@ protocol: a functional tool returns them directly, and a class tool uses
 
 from abc import ABC, abstractmethod
 
-try:  # NumPy carries rectangular numeric arrays; the host always embeds it with the interpreter.
-    import numpy as _numpy
-except ImportError:  # A tool that never reads a numeric array does not need it.
-    _numpy = None
+# NumPy carries rectangular numeric arrays. The host refuses an interpreter without it, so a
+# missing import here is a broken environment, not a capability a tool may silently lose.
+import numpy as _numpy
 
 
 def _is_array(value):
     """A declared array arrives as a NumPy ndarray when it is rectangular and numeric, and as a
     nested list when it is ragged, holds strings, or was built from the readable nested form."""
-    return isinstance(value, list) or (_numpy is not None and isinstance(value, _numpy.ndarray))
+    return isinstance(value, list) or isinstance(value, _numpy.ndarray)
 
 
 # Ports are integers: input 0 is the upstream status, outputs 0 and 1 are the status code and

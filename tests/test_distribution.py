@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -59,6 +60,26 @@ class DistributionContract(unittest.TestCase):
                           "node": {"stage": "init", "id": 1},
                           "port": {"stage": "init", "id": 2}})
 
+    def test_author_code_never_locates_an_interpreter(self):
+        """The host owns the environment; author code that searches for one would run a runtime the
+        user never selected. Business NumPy use and data validation stay legal — only interpreter
+        discovery, dependency installation and Python subprocesses are refused."""
+        discovery = {
+            "sys.executable": re.compile(r"\bsys\s*\.\s*executable\b"),
+            "shutil.which": re.compile(r"\bshutil\s*\.\s*which\s*\("),
+            "pip install": re.compile(r"\bpip\s+install\b", re.IGNORECASE),
+        }
+        offenders = []
+        for path in sorted((ROOT / "python").rglob("*.py")):
+            relative = path.relative_to(ROOT).as_posix()
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+                for label, pattern in discovery.items():
+                    if pattern.search(line):
+                        offenders.append(f"{relative}:{number}: {label}")
+                if "subprocess" in line and re.search(r"python|pip", line, re.IGNORECASE):
+                    offenders.append(f"{relative}:{number}: subprocess interpreter")
+        self.assertEqual(offenders, [], "author code locates its own interpreter: " + "; ".join(offenders))
+
     def _python_fixture(self, project: Path) -> Path:
         """Builds the minimal one-tool Python package the rest of this file distributes."""
         # A project that ships Python tools carries the one author SDK the packager injects.
@@ -81,13 +102,13 @@ class DistributionContract(unittest.TestCase):
         definition.write_text(json.dumps(document), encoding="utf-8")
         code = project / "python/custom/math/arithmetic"
         code.mkdir(parents=True)
-        # The example returns the current tool envelope: outputs keyed by port number plus detail.
-        # Status is host-owned, so an author never writes it; the previous fixture returned a
-        # separate status object, which no host accepts.
+        # The author's output dictionary is keyed by port number and carries the two status ports
+        # the host reserves; the host materialises declared defaults but never invents a status.
         (code / "add.py").write_text(
             'from .helper import value\nfrom pathlib import Path\n'
             'def run(inputs):\n'
-            '    return {"outputs": {2: value + int(Path(__file__).with_name("bias.dat").read_text())},\n'
+            '    return {"outputs": {0: 0, 1: "运行成功",\n'
+            '                       2: value + int(Path(__file__).with_name("bias.dat").read_text())},\n'
             '            "detail": ""}\n',
             encoding="utf-8")
         (code / "helper.py").write_text("value = 37\n", encoding="utf-8")
