@@ -14,7 +14,7 @@
   },
   "next_port_id": {
     "init": 0,
-    "inputs": 8,
+    "inputs": 7,
     "outputs": 4
   },
   "ports": {
@@ -82,14 +82,6 @@
         "type": "vec_vec_vec_float",
         "ui": {
           "editor": "array"
-        }
-      },
-      {
-        "id": 7,
-        "name_zh": "输出应用区域",
-        "type": "bool",
-        "ui": {
-          "editor": "bool"
         }
       }
     ],

@@ -30,6 +30,23 @@
 - ...
 -->
 
+### 2026-11-14 — 调整亮度始终发布已声明的应用区域
+
+**目标**
+- 修掉「输出应用区域=false 时工具只发布端口 2」与声明冲突：宿主按声明校验端口 3，默认参数下必然报「工具未发布输出端口：端口 3」。
+
+**当前状态**
+- 已完成：`调整亮度.json` 移除输入端口 7「输出应用区域」，`next_port_id.inputs` 收敛到 7；`BrightnessTool`/`BrightnessParameters` 删除该开关，成功执行时始终发布端口 3 的应用区域；`test_geometry_contract` 的“未请求时保持缺失”断言改为“声明即输出”，另两处测试去掉该输入。
+- 未完成：按需输出若仍要保留，需要在 Contracts 声明里引入可选出端口（宿主校验按声明要求成功即全发布，当前无此概念）；本轮不引入该机制。
+
+**验证证据**
+- `ctest -R "test_module_contract|test_geometry_contract|test_upstream_status_contract|test_output_ownership_contract"` → 4/4 Passed。
+- `python tools/package_tools.py --profile rtx40-build --install-dir dist/visiontools-deploy --allow-dirty` → 22 个工具打包完成，部署目录与 ZIP 内 `调整亮度.json` 已无端口 7。
+- VisionRT `installed_pipeline_contract` 与 `example_pipelines_contract` 在更新后的部署包上通过，确认函数注册路径执行正常。
+
+**下一步**
+- 无。
+
 ### 2026-11-04 — R45：工具声明与实现迁移到数字 PortId 与 schema 6
 
 **目标**

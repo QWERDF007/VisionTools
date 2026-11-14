@@ -16,9 +16,8 @@ struct BrightnessInputs final : visionrt::InputParametersBase
     // tool - not the parser - decides whether that is a failure. An optional DataRef is exactly
     // that distinction; an empty batch would hide it.
     std::optional<visionrt::DataRef<visionrt::Image>> images;
-    double                                          gain    = 1.0;
-    double                                          offset  = 0.0;
-    bool                                            emitMask = false;
+    double                                          gain   = 1.0;
+    double                                          offset = 0.0;
     std::optional<visionrt::DataRef<visionrt::Image>> mask;
     visionrt::PortValue                              rois;
     visionrt::PortValue                              alignment;

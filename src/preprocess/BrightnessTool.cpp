@@ -62,7 +62,6 @@ visionrt::ToolStatus BrightnessInputs::readFields(visionrt::InputReader &reader)
     images   = readings.nullableImage(p::in::IMAGES);
     gain     = readings.real(p::in::GAIN);
     offset   = readings.real(p::in::OFFSET);
-    emitMask = readings.boolean(p::in::EMIT_MASK);
     mask     = readings.nullableImage(p::in::MASK);
     if (readings.failed())
         return readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch);
@@ -172,8 +171,7 @@ visionrt::ToolResult brightnessTool(const visionrt::Values &values, const vision
         // clone() allocates every output plane, so the result owns its pixels and must not pin the
         // reader's decoded cache through the input owner.
         outputs.images = visionrt::DataRef<visionrt::Image>(std::move(output));
-        if (inputs.emitMask)
-            outputs.appliedMask = visionrt::DataRef<visionrt::Image>(std::move(appliedMasks));
+        outputs.appliedMask = visionrt::DataRef<visionrt::Image>(std::move(appliedMasks));
     }
     catch (const visionrt::ContractError &)
     {

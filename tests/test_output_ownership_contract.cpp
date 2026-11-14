@@ -118,7 +118,6 @@ int main()
                 values.emplace(bright_ports::in::ROIS, DataRef<ROI>(ROI{}));
                 values.emplace(bright_ports::in::ALIGNMENT,
                                Array::fromNested(NestedVector<double, 3>{}));
-                values.emplace(bright_ports::in::EMIT_MASK, false);
                 return brightnessTool(values, ToolServices{});
             };
             requireSelfContained("brightness must return pixels it owns", run, image);

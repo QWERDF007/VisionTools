@@ -123,7 +123,6 @@ void brightnessTool()
     inputs.emplace(bright::in::OFFSET, 10.0);
     inputs.emplace(bright::in::ROIS, DataRef<ROI>(ROI{{{2, 10, 10, 20, 10, 0}}}));
     inputs.emplace(bright::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
-    inputs.emplace(bright::in::EMIT_MASK, true);
     const auto result = preprocess::brightnessTool(inputs, ToolServices{});
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     const auto &output = std::get<DataRef<Image>>(result.outputs.at(bright::out::IMAGES)).get().front();
@@ -132,7 +131,7 @@ void brightnessTool()
     REQUIRE(inside[0] == 30 && inside[1] == 50 && inside[2] == 70, "gain and offset must apply inside the ROI");
     REQUIRE(outside[0] == 10 && outside[1] == 20 && outside[2] == 30, "pixels outside the ROI must stay unchanged");
     const auto mask = std::get<DataRef<Image>>(result.outputs.at(bright::out::APPLIED_MASK)).get().front();
-    REQUIRE(cv::countNonZero(mask) > 0 && mask.type() == CV_8UC1, "emit_mask must return the applied region");
+    REQUIRE(cv::countNonZero(mask) > 0 && mask.type() == CV_8UC1, "the applied region is a declared output");
 
     // Floating point images keep values above 255 instead of saturating.
     cv::Mat floatImage(8, 8, CV_32FC1, cv::Scalar(200.0F));
@@ -141,12 +140,12 @@ void brightnessTool()
     floatInputs.emplace(bright::in::OFFSET, 0.0);
     floatInputs.emplace(bright::in::ROIS, DataRef<ROI>(ROI{}));
     floatInputs.emplace(bright::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
-    floatInputs.emplace(bright::in::EMIT_MASK, false);
     const auto floatResult = preprocess::brightnessTool(floatInputs, ToolServices{});
     REQUIRE(testview::status(floatResult).code == 0, testview::status(floatResult).message);
     const auto &floats = std::get<DataRef<Image>>(floatResult.outputs.at(bright::out::IMAGES)).get().front();
     REQUIRE(std::abs(floats.at<float>(0, 0) - 400.0F) < 1e-3, "float images must not be clipped to 255");
-    REQUIRE(isMissing(floatResult.outputs.at(bright::out::APPLIED_MASK)), "mask must stay missing unless requested");
+    const auto &floatMask = std::get<DataRef<Image>>(floatResult.outputs.at(bright::out::APPLIED_MASK)).get().front();
+    REQUIRE(cv::countNonZero(floatMask) == floatMask.total(), "an empty ROI list covers the whole image");
 }
 
 void circleMeasurement()

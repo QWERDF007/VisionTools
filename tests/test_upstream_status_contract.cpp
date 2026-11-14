@@ -75,7 +75,6 @@ void unselectedBranchDoesNothing()
          {bright::in::OFFSET, 0.0},
          {bright::in::ROIS, DataRef<ROI>(ROI{})},
          {bright::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{})},
-         {bright::in::EMIT_MASK, false},
          {kUpstreamStatusPort, std::int64_t{-3}}};
     const auto brightness = runBrightness(brightnessInputs, {bright::out::IMAGES, bright::out::APPLIED_MASK});
     assert(testview::status(brightness).code == -3);
@@ -107,8 +106,7 @@ void unselectedBranchStillValidatesItsContract()
                   {bright::in::OFFSET, 0.0},
                   {bright::in::ROIS, DataRef<ROI>(ROI{})},
                   {bright::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{})},
-                  {bright::in::EMIT_MASK, false},
-                  {kUpstreamStatusPort, std::int64_t{0}}};
+                           {kUpstreamStatusPort, std::int64_t{0}}};
     const auto result = runBrightness(inputs, {bright::out::IMAGES, bright::out::APPLIED_MASK});
     assert(testview::status(result).code != 0);
     assert(testview::status(result).message.find(portLabel(bright::in::IMAGES)) != std::string::npos);

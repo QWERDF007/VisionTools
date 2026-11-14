@@ -14,7 +14,6 @@ inline constexpr visionrt::PortId OFFSET = 3;
 inline constexpr visionrt::PortId ROIS = 4;
 inline constexpr visionrt::PortId MASK = 5;
 inline constexpr visionrt::PortId ALIGNMENT = 6;
-inline constexpr visionrt::PortId EMIT_MASK = 7;
 }
 
 namespace out {
