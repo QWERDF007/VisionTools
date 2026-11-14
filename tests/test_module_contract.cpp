@@ -53,7 +53,7 @@ inline std::size_t getProcessRSS()
 namespace {
 struct ThrowingClassTool final : public visionrt::IToolInstance
 {
-    explicit ThrowingClassTool(const visionrt::ToolServices &)
+    ThrowingClassTool()
     {
         throw std::runtime_error("故意构造抛错");
     }
@@ -75,9 +75,9 @@ int main()
     TestRegistry registry;
     REQUIRE(api->register_tools(registry).code == 0, "Registration must succeed");
     const std::set<std::string> expected{
-        "visionrt.image.read", "visionrt.roi.projection", "visionrt.image.crop",
-        "visionrt.image.preprocess", "visionrt.detection.filter", "visiontools.preprocess.adaptive_binary",
-        "visiontools.image.rotate", "visiontools.image.brightness"};
+        "ReadImage", "ProjectRoi", "CropImage",
+        "PreprocessImage", "FilterDetections", "AdaptiveThreshold",
+        "RotateImage", "AdjustBrightness"};
     REQUIRE(registry.factories.size() == expected.size(), "Every declared CPU factory must be registered");
     for (const auto &id : expected)
         REQUIRE(registry.factories.contains(id), "Every stable ID must be registered");
@@ -93,13 +93,9 @@ int main()
     } rejected;
     REQUIRE(api->register_tools(rejected).code == 17 && rejected.calls == 1,
             "Registration must stop and preserve the first rejected add");
-    const auto &factory = registry.factories.at("visiontools.preprocess.adaptive_binary");
-    visionrt::ToolServices services;
+    const auto &factory = registry.factories.at("AdaptiveThreshold");
     visionrt::ToolStatus status;
-    REQUIRE(factory.create(nullptr, &status) == nullptr && status.code == visionrt::kContractViolationStatus,
-            "Missing services must be rejected without creating an instance");
-    factory.destroy(nullptr);
-    auto *uninitialized = factory.create(&services, nullptr);
+    auto *uninitialized = factory.create(nullptr);
     REQUIRE(uninitialized != nullptr, "A null status sink must be supported");
     REQUIRE(uninitialized->release().code == 0, "An uninitialized instance must release safely");
     REQUIRE(uninitialized->release().code == 0, "Release must be idempotent");
@@ -111,14 +107,14 @@ int main()
         REQUIRE(visionrt::registerClass<ThrowingClassTool>(throwRegistry, "test.throwing").code == 0, "Registration must succeed");
         const auto &throwFactory = throwRegistry.factories.at("test.throwing");
         visionrt::ToolStatus throwStatus;
-        REQUIRE(throwFactory.create(&services, &throwStatus) == nullptr, "Throwing constructor must return nullptr");
+        REQUIRE(throwFactory.create(&throwStatus) == nullptr, "Throwing constructor must return nullptr");
         REQUIRE(throwStatus.code == visionrt::kContractViolationStatus, "Constructor failure must yield kContractViolationStatus");
         throwFactory.destroy(nullptr);
     }
     // 5. Lifecycle and Snapshot persistence across execute/release/destroy (VS-05 / NS-05)
     cv::Mat snapshotImage;
     {
-        visionrt::IToolInstance *inst = factory.create(&services, &status);
+        visionrt::IToolInstance *inst = factory.create(&status);
         REQUIRE(inst != nullptr, "Known registry must return instance");
 
         cv::Mat          gray(60, 60, CV_8UC1, cv::Scalar(150));
@@ -183,7 +179,7 @@ int main()
         auto runWorker = [&](int factor, int size) -> std::vector<cv::Mat>
         {
             visionrt::ToolStatus     s;
-            visionrt::IToolInstance *inst = factory.create(&services, &s);
+            visionrt::IToolInstance *inst = factory.create(&s);
             REQUIRE(inst != nullptr, "Create must succeed");
 
             cv::Mat img(size, size, CV_8UC1);
@@ -245,7 +241,7 @@ int main()
     {
         std::size_t              rssBaseline = getProcessRSS();
         visionrt::ToolStatus     s;
-        visionrt::IToolInstance *inst = factory.create(&services, &s);
+        visionrt::IToolInstance *inst = factory.create(&s);
         REQUIRE(inst != nullptr, "Create for 100 consecutive runs must succeed");
 
         cv::Mat nonUniform(64, 64, CV_8UC1);
@@ -346,7 +342,7 @@ int main()
         for (int cycle = 0; cycle < 20; ++cycle)
         {
             visionrt::ToolStatus     s;
-            visionrt::IToolInstance *inst = factory.create(&services, &s);
+            visionrt::IToolInstance *inst = factory.create(&s);
             REQUIRE(inst != nullptr, "Cycle create must succeed");
             inst->release();
             factory.destroy(inst);

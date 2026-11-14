@@ -131,7 +131,7 @@ private:
 const ToolFactoryDescriptor &getFactory(const std::filesystem::path &path = {})
 {
     static const ProbeModule module(path);
-    return module.factories.at("visionrt.dl.yolo");
+    return module.factories.at("DetectObjectsYolo");
 }
 
 struct DetectionParameters
@@ -256,7 +256,7 @@ struct ProbeEnvironment
     std::uint32_t sdkAbiMajor      = MODULE_ABI_MAJOR;
     std::string cudaRuntimeVersion = "unavailable";
     std::string cudaDriverVersion  = "unavailable";
-    std::string registeredModels   = "visionrt.dl.yolo";
+    std::string registeredModels   = "DetectObjectsYolo";
 
     ProbeEnvironment()
     {
@@ -316,10 +316,9 @@ using Tool = std::unique_ptr<IToolInstance, void (*)(IToolInstance *)>;
 
 Tool create(const std::filesystem::path &modulePath = "")
 {
-    const ToolServices services{PathResolver(std::filesystem::current_path())};
-    ToolStatus         status;
-    const auto        &factory = getFactory(modulePath);
-    auto              *raw = factory.create(&services, &status);
+    ToolStatus  status;
+    const auto &factory = getFactory(modulePath);
+    auto       *raw = factory.create(&status);
     Tool instance(raw,
                 [](IToolInstance *p)
                 {
@@ -330,7 +329,7 @@ Tool create(const std::filesystem::path &modulePath = "")
                     }
                 });
     success(status);
-    require(raw != nullptr, "Module factory returned null for visionrt.dl.yolo");
+    require(raw != nullptr, "Module factory returned null for DetectObjectsYolo");
     return instance;
 }
 
@@ -527,7 +526,7 @@ void writeJsonReport(const std::filesystem::path &reportPath, const std::string 
         << "devices" << "[";
     for (const auto &device : devices.devices)
         out << "{" << "index" << device.index << "name" << device.name << "}";
-    out << "]" << "}" << "target_tool_id" << "visionrt.dl.yolo";
+    out << "]" << "}" << "target_tool_id" << "DetectObjectsYolo";
     if (args)
         out << "parameters" << "{" << "width" << args->width << "height" << args->height
             << "classes" << args->classes << "precision" << args->precision
@@ -566,7 +565,7 @@ void testSyntheticRoundtrip(const std::filesystem::path &tempReportPath)
     require(static_cast<std::string>(document["scope"]) == "gpu_release", "Invalid scope");
     require(static_cast<std::string>(document["overall_status"]) == "not_run", "Invalid overall_status");
     require(static_cast<int>(document["environment"]["sdk_abi_major"]) == static_cast<int>(MODULE_ABI_MAJOR), "Invalid environment");
-    require(static_cast<std::string>(document["target_tool_id"]) == "visionrt.dl.yolo", "Invalid target_tool_id");
+    require(static_cast<std::string>(document["target_tool_id"]) == "DetectObjectsYolo", "Invalid target_tool_id");
     require(!document["checks"]["model_build_and_reload"].empty(), "Missing checks");
 
     // Synthetic comparison test

@@ -34,11 +34,6 @@ cv::Mat toGray(const cv::Mat &image, std::size_t index)
 
 } // namespace
 
-RoiProjectionTool::RoiProjectionTool(const visionrt::ToolServices &services)
-    : services_(services)
-{
-}
-
 visionrt::ToolStatus RoiProjectionTool::initialize(const visionrt::Values &parameters)
 {
     if (!parameters.empty())

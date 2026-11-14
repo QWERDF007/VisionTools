@@ -89,7 +89,7 @@ int main()
                 image.at<std::uint8_t>(y, x) = static_cast<std::uint8_t>((x * 7 + y * 3) % 251);
 
         {
-            RotateImageTool tool(ToolServices{});
+            RotateImageTool tool;
             const auto      run = [&tool](const Values &inputs)
             {
                 Values values = inputs;
@@ -118,7 +118,7 @@ int main()
                 values.emplace(bright_ports::in::ROIS, DataRef<ROI>(ROI{}));
                 values.emplace(bright_ports::in::ALIGNMENT,
                                Array::fromNested(NestedVector<double, 3>{}));
-                return brightnessTool(values, ToolServices{});
+                return brightnessTool(values);
             };
             requireSelfContained("brightness must return pixels it owns", run, image);
         }

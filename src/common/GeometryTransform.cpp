@@ -11,10 +11,6 @@ namespace visiontools::geometry {
 namespace {
 constexpr double kPi = 3.14159265358979323846;
 
-double element(const visionrt::PortValue &value, std::size_t index)
-{
-    return std::get<visionrt::Array>(value).elements<double>()[index];
-}
 } // namespace
 
 Alignment Alignment::identity() noexcept
@@ -35,21 +31,6 @@ bool Alignment::isAffine(double tolerance) const noexcept
 {
     const auto finite = std::all_of(m.begin(), m.end(), [](double value) { return std::isfinite(value); });
     return finite && std::abs(m[6]) <= tolerance && std::abs(m[7]) <= tolerance && std::abs(m[8] - 1.0) <= tolerance;
-}
-
-bool Alignment::isIdentity(double tolerance) const noexcept
-{
-    static constexpr std::array<double, 9> identityValues{1, 0, 0, 0, 1, 0, 0, 0, 1};
-    for (std::size_t i = 0; i < m.size(); ++i)
-        if (std::abs(m[i] - identityValues[i]) > tolerance)
-            return false;
-    return true;
-}
-
-double Alignment::determinant() const noexcept
-{
-    return m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6])
-         + m[2] * (m[3] * m[7] - m[4] * m[6]);
 }
 
 bool Alignment::invertible() const noexcept

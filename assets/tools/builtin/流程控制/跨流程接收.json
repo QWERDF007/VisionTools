@@ -1,78 +1,64 @@
 {
-  "schema_version": 6,
-  "name_en": "visionrt.flow.receive",
+  "name_en": "ReceiveFlowResult",
   "name_zh": "跨流程接收",
   "version": "1.0.0",
   "implementation": {
     "kind": "host",
     "binding": "visionrt.receiver"
   },
-  "ui": {
-    "category": [
-      "流程控制",
-      "跨流程"
-    ]
-  },
-  "next_port_id": {
-    "init": 4,
-    "inputs": 1,
-    "outputs": 5
-  },
-  "ports": {
-    "init": [
-      {
-        "id": 0,
-        "name_zh": "源流程ID",
-        "type": "string"
-      },
-      {
-        "id": 1,
-        "name_zh": "源节点序号",
-        "type": "string"
-      },
-      {
-        "id": 2,
-        "name_zh": "源端口ID",
-        "type": "int"
-      },
-      {
-        "id": 3,
-        "name_zh": "超时时间(ms)",
-        "type": "int",
-        "constraints": {
-          "min": 0
+  "init_params": [
+    {
+      "id": 0,
+      "name_zh": "源流程ID",
+      "type": "string"
+    },
+    {
+      "id": 1,
+      "name_zh": "源节点序号",
+      "type": "string"
+    },
+    {
+      "id": 2,
+      "name_zh": "源端口ID",
+      "type": "int"
+    },
+    {
+      "id": 3,
+      "name_zh": "超时时间(ms)",
+      "type": "int",
+      "constraints": {
+        "min": 0
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "接收数据",
+      "type_from": {
+        "flow": {
+          "stage": "init",
+          "id": 0
+        },
+        "node": {
+          "stage": "init",
+          "id": 1
+        },
+        "port": {
+          "stage": "init",
+          "id": 2
         }
       }
-    ],
-    "outputs": [
-      {
-        "id": 2,
-        "name_zh": "接收数据",
-        "type_from": {
-          "flow": {
-            "stage": "init",
-            "id": 0
-          },
-          "node": {
-            "stage": "init",
-            "id": 1
-          },
-          "port": {
-            "stage": "init",
-            "id": 2
-          }
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "源状态码",
-        "type": "int"
-      },
-      {
-        "id": 4,
-        "name_zh": "源状态消息",
-        "type": "string"
-      }
-    ]
-  }
+    },
+    {
+      "id": 3,
+      "name_zh": "源状态码",
+      "type": "int"
+    },
+    {
+      "id": 4,
+      "name_zh": "源状态消息",
+      "type": "string"
+    }
+  ]
 }

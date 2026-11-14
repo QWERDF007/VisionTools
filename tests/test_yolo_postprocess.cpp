@@ -60,7 +60,7 @@ struct HeadBuffer
 // 32x32 network, 16 pixel tall source occupying y=[8,24].
 LetterboxGeometry wideGeometry()
 {
-    return LetterboxGeometry{32, 16, 32, 32, 32, 16, 0, 8, 1.0F};
+    return LetterboxGeometry{32, 16, 32, 32, 32, 16, 0, 8};
 }
 
 void testIntersectionOverUnion()
@@ -75,7 +75,7 @@ void testIntersectionOverUnion()
 
 void testGeometryMapping()
 {
-    const LetterboxGeometry geometry{1920, 1080, 640, 640, 640, 360, 0, 140, 1.0F / 3.0F};
+    const LetterboxGeometry geometry{1920, 1080, 640, 640, 640, 360, 0, 140};
     const Box               source = toSource(Box{0, 140, 640, 500}, geometry);
     REQUIRE(std::abs(source.x1) < 1e-3 && std::abs(source.y1) < 1e-3, "source origin must map to zero");
     REQUIRE(std::abs(source.x2 - 1920) < 1e-3 && std::abs(source.y2 - 1080) < 1e-3,
@@ -84,7 +84,7 @@ void testGeometryMapping()
     bool rejected = false;
     try
     {
-        toSource(Box{0, 0, 1, 1}, LetterboxGeometry{0, 16, 32, 32, 32, 16, 0, 8, 1.0F});
+        toSource(Box{0, 0, 1, 1}, LetterboxGeometry{0, 16, 32, 32, 32, 16, 0, 8});
     }
     catch (const std::invalid_argument &)
     {

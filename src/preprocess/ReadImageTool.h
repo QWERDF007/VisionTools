@@ -15,7 +15,7 @@
 namespace visiontools::preprocess {
 
 namespace ports::image_read {
-inline constexpr char TOOL_ID[] = "visionrt.image.read";
+inline constexpr char TOOL_ID[] = "ReadImage";
 
 namespace in {
 inline constexpr visionrt::PortId PATH = 1;
@@ -42,7 +42,7 @@ public:
     // being returned and anything a downstream owner still references live outside it.
     static constexpr std::size_t kCacheBudgetBytes = std::size_t{512} * 1024 * 1024;
 
-    explicit ReadImageTool(const visionrt::ToolServices &services);
+    ReadImageTool()  = default;
     ~ReadImageTool() override = default;
 
     visionrt::ToolStatus initialize(const visionrt::Values &parameters) override;
@@ -66,14 +66,12 @@ private:
     struct DecodedBatch
     {
         visionrt::Image          images;
-        std::vector<std::string> keys;
         std::vector<std::string> paths;
         PendingInserts           pending;
-        std::size_t              decoded = 0;
     };
 
     // Reads and decodes the plan. Throws without touching any committed state.
-    DecodedBatch decode(const Catalog &catalog, const SequencePlan &plan, bool reload, PendingInserts &pending);
+    DecodedBatch decode(const SequencePlan &plan, bool reload);
     // Swaps a fully successful batch into the tool. Nothing here can fail, which is what makes a
     // failed read leave the previous catalog, cursor and last batch untouched.
     visionrt::ToolResult commit(DecodedBatch batch, const SequencePlan &plan, SequenceCursor cursor,
@@ -81,7 +79,6 @@ private:
                                 std::size_t totalFiles);
     void                 resetSequence();
 
-    visionrt::ToolServices services_;
     std::optional<Catalog>  catalog_;
     SequenceCursor          cursor_;
     bool                    reverse_ = false;

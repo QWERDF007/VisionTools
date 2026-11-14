@@ -11,8 +11,7 @@ namespace preprocess_ports = visiontools::preprocess::ports::image_preprocess;
 void testImagePreprocessTool()
 {
     std::cout << "[TEST] Running testImagePreprocessTool..." << std::endl;
-    ToolServices        services;
-    ImagePreprocessTool tool(services);
+    ImagePreprocessTool tool;
 
     static_assert(preprocess_ports::in::OPERATION == 2);
     static_assert(preprocess_ports::in::KERNEL == 3);

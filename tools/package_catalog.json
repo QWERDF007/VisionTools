@@ -74,16 +74,16 @@
       "module": "visiontools_preprocess"
     },
     {
-      "definition": "assets/tools/custom/Python/示例/ROI几何/ROI几何.json"
+      "definition": "assets/tools/custom/Python/示例/ROI几何.json"
     },
     {
-      "definition": "assets/tools/custom/Python/示例/图像加一/图像加一.json"
+      "definition": "assets/tools/custom/Python/示例/图像加一.json"
     },
     {
-      "definition": "assets/tools/custom/Python/示例/计算图像均值/计算图像均值.json"
+      "definition": "assets/tools/custom/Python/示例/计算图像均值.json"
     },
     {
-      "definition": "assets/tools/custom/Python/示例/调用计数器/调用计数器.json"
+      "definition": "assets/tools/custom/Python/示例/调用计数器.json"
     }
   ]
 }

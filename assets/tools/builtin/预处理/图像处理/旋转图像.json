@@ -1,114 +1,100 @@
 {
-  "schema_version": 6,
-  "name_en": "visiontools.image.rotate",
+  "name_en": "RotateImage",
   "name_zh": "旋转图像",
   "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
-  "ui": {
-    "category": [
-      "预处理",
-      "图像处理"
-    ]
-  },
-  "next_port_id": {
-    "init": 0,
-    "inputs": 8,
-    "outputs": 4
-  },
-  "ports": {
-    "inputs": [
-      {
-        "id": 1,
-        "name_zh": "输入图像",
-        "type": "image",
-        "display": {
-          "visible": true
-        }
-      },
-      {
-        "id": 2,
-        "name_zh": "顺时针角度",
-        "type": "float",
-        "ui": {
-          "editor": "number",
-          "decimals": 3
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "旋转中心",
-        "type": "vec_float",
-        "ui": {
-          "editor": "array"
-        }
-      },
-      {
-        "id": 4,
-        "name_zh": "画布模式",
-        "type": "string",
-        "default": "keep",
-        "constraints": {
-          "options": [
-            "keep",
-            "expand"
-          ]
-        },
-        "ui": {
-          "editor": "text"
-        }
-      },
-      {
-        "id": 5,
-        "name_zh": "插值方式",
-        "type": "string",
-        "default": "linear",
-        "constraints": {
-          "options": [
-            "nearest",
-            "linear",
-            "cubic"
-          ]
-        },
-        "ui": {
-          "editor": "text"
-        }
-      },
-      {
-        "id": 6,
-        "name_zh": "边界填充值",
-        "type": "vec_float",
-        "default": [
-          0.0
-        ],
-        "ui": {
-          "editor": "array"
-        }
-      },
-      {
-        "id": 7,
-        "name_zh": "参考到当前变换",
-        "type": "vec_vec_vec_float",
-        "ui": {
-          "editor": "array"
-        }
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "输入图像",
+      "type": "image",
+      "display": {
+        "visible": true
       }
-    ],
-    "outputs": [
-      {
-        "id": 2,
-        "name_zh": "旋转图像",
-        "type": "image",
-        "display": {
-          "visible": true
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "参考到输出变换",
-        "type": "vec_vec_vec_float"
+    },
+    {
+      "id": 2,
+      "name_zh": "顺时针角度",
+      "type": "float",
+      "ui": {
+        "editor": "number",
+        "decimals": 3
       }
-    ]
-  }
+    },
+    {
+      "id": 3,
+      "name_zh": "旋转中心",
+      "type": "vec_float",
+      "ui": {
+        "editor": "array"
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "画布模式",
+      "type": "string",
+      "default": "keep",
+      "constraints": {
+        "options": [
+          "keep",
+          "expand"
+        ]
+      },
+      "ui": {
+        "editor": "text"
+      }
+    },
+    {
+      "id": 5,
+      "name_zh": "插值方式",
+      "type": "string",
+      "default": "linear",
+      "constraints": {
+        "options": [
+          "nearest",
+          "linear",
+          "cubic"
+        ]
+      },
+      "ui": {
+        "editor": "text"
+      }
+    },
+    {
+      "id": 6,
+      "name_zh": "边界填充值",
+      "type": "vec_float",
+      "default": [
+        0.0
+      ],
+      "ui": {
+        "editor": "array"
+      }
+    },
+    {
+      "id": 7,
+      "name_zh": "参考到当前变换",
+      "type": "vec_vec_vec_float",
+      "ui": {
+        "editor": "array"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "旋转图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "参考到输出变换",
+      "type": "vec_vec_vec_float"
+    }
+  ]
 }

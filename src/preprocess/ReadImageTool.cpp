@@ -2,6 +2,7 @@
 
 #include "ReadImageParameters.h"
 #include "common/InputValues.h"
+#include "common/ProductPaths.h"
 #include "common/UpstreamStatus.h"
 #include "errors/ReadImageErrors.h"
 #include "common/errors/ToolError.h"
@@ -103,9 +104,9 @@ visionrt::ToolStatus ReadImageInputs::readFields(visionrt::InputReader &reader)
     count     = readings.integer(p::in::COUNT);
     reload    = readings.boolean(p::in::RELOAD);
     if (readings.failed())
-        return readings.status(ReadImageError::PathNotFound, CommonToolError::InputTypeMismatch);
+        return readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch);
     if (path.empty())
-        return status(ReadImageError::PathNotFound, visionrt::portLabel(p::in::PATH) + " 不能为空");
+        return status(CommonToolError::InputMissing, p::in::PATH, "读图路径不能为空");
     return {};
 }
 
@@ -141,11 +142,6 @@ std::atomic<std::size_t>                           decodeCount{0};
 } // namespace testing
 #endif
 
-ReadImageTool::ReadImageTool(const visionrt::ToolServices &services)
-    : services_(services)
-{
-}
-
 visionrt::ToolStatus ReadImageTool::initialize(const visionrt::Values &parameters)
 {
     if (!parameters.empty())
@@ -162,11 +158,9 @@ void ReadImageTool::resetSequence()
     lastBatchRef_.reset();
 }
 
-ReadImageTool::DecodedBatch ReadImageTool::decode(const Catalog &catalog, const SequencePlan &plan, bool reload,
-                                                  PendingInserts &pending)
+ReadImageTool::DecodedBatch ReadImageTool::decode(const SequencePlan &plan, bool reload)
 {
     DecodedBatch batch;
-    batch.keys = plan.keys;
     batch.paths.reserve(plan.files.size());
     batch.images.reserve(plan.files.size());
 
@@ -235,8 +229,7 @@ ReadImageTool::DecodedBatch ReadImageTool::decode(const Catalog &catalog, const 
 
         // A cache write is a discardable side effect of a successful batch: nothing is retained
         // until the whole batch decoded, so a failed attempt cannot mix its pixels into history.
-        pending.emplace_back(pathStr, decoded);
-        ++batch.decoded;
+        batch.pending.emplace_back(pathStr, decoded);
         batch.images.push_back(std::move(decoded));
     }
     return batch;
@@ -312,11 +305,16 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
     try
     {
         ReadImageInputs args;
-        args.parse(inputs);
+        // A failed read leaves placeholder values behind, so the failure is returned before any
+        // algorithm runs: a valid image plus a mistyped RELOAD must not be read as a reload request.
+        if (const auto parsed = args.parse(inputs); !parsed)
+        {
+            auto outputs = ReadImageOutputs::missing();
+            outputs.markFailed(parsed.code, parsed.message, parsed.detail);
+            return outputs.pack();
+        }
         const auto &rawPath = args.path;
         visionrt::validateUtf8(rawPath);
-        if (rawPath.empty())
-            fail(ReadImageError::PathNotFound, visionrt::portLabel(p::in::PATH) + " 不能为空");
         const bool recursive = args.recursive;
         const bool reload    = args.reload;
 
@@ -344,10 +342,15 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
             fail(CommonToolError::InputOutOfRange,
                  visionrt::portLabel(p::in::COUNT) + " 必须在 1–" + std::to_string(kMaxCount) + " 之间，实际值：" + std::to_string(count));
 
-        const auto resolution = services_.paths.tryResolve(rawPath);
-        if (!resolution)
-            fail(ReadImageError::PathNotFound, resolution.issue().field, resolution.issue().text);
-        const auto &resolved = resolution.value();
+        std::filesystem::path resolved;
+        try
+        {
+            resolved = common::resolveResourcePath(rawPath);
+        }
+        catch (const common::ProductDirectoryError &error)
+        {
+            fail(ReadImageError::ProductDirectoryUnavailable, {}, error.what());
+        }
         if (!std::filesystem::exists(resolved))
             fail(ReadImageError::PathNotFound, utf8Path(resolved));
         const bool isDir  = std::filesystem::is_directory(resolved);
@@ -400,12 +403,13 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
                 refreshed.isDirectory = true;
                 refreshed.recursive   = recursive;
                 refreshed.files       = scanDirectory(resolved, recursive);
-                if (!refreshed.files.empty())
-                {
-                    scanned = std::move(refreshed);
-                    catalog = &*scanned;
-                    plan    = planSequence(catalog->files, nextCursor, request);
-                }
+                // The folder is the source of truth: a folder that lost its last image has no plan,
+                // so the stale one must not keep pointing at files that are gone.
+                if (refreshed.files.empty())
+                    fail(ReadImageError::NoImagesFound, utf8Path(resolved));
+                scanned = std::move(refreshed);
+                catalog = &*scanned;
+                plan    = planSequence(catalog->files, nextCursor, request);
             }
         }
 
@@ -448,11 +452,8 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
             }
         }
 
-        PendingInserts pending;
-        auto           batch = decode(*catalog, plan, reload, pending);
-        batch.pending        = std::move(pending);
-        return commit(std::move(batch), plan, std::move(nextCursor), scanned ? &*scanned : nullptr, sourceChanged,
-                      isReverse, catalog ? catalog->files.size() : 0);
+        return commit(decode(plan, reload), plan, std::move(nextCursor), scanned ? &*scanned : nullptr,
+                      sourceChanged, isReverse, catalog ? catalog->files.size() : 0);
     }
     catch (const visionrt::ContractError &)
     {

@@ -43,7 +43,7 @@ class DistributionContract(unittest.TestCase):
                 self.assertNotIn("registry_name", document.get("implementation", {}))
                 # Status ports are host-owned and occupy the first two output ids; an author
                 # declaration must never claim one of them.
-                outputs = document.get("ports", {}).get("outputs", [])
+                outputs = document.get("outputs", [])
                 self.assertTrue(all(port["id"] >= 2 for port in outputs))
 
     def test_receiver_uses_stable_identity_and_host_binding(self):
@@ -52,10 +52,10 @@ class DistributionContract(unittest.TestCase):
         self.assertEqual(declaration["implementation"]["binding"], "visionrt.receiver")
         # Port ids are the identity: the receiver binds the source flow, node and port by number, so
         # the three parameters must be the first three init ports and types must match the envelope.
-        parameters = declaration["ports"]["init"]
+        parameters = declaration["init_params"]
         self.assertEqual([item["id"] for item in parameters], [0, 1, 2, 3])
         self.assertEqual([item["type"] for item in parameters], ["string", "string", "int", "int"])
-        self.assertEqual(declaration["ports"]["outputs"][0]["type_from"],
+        self.assertEqual(declaration["outputs"][0]["type_from"],
                          {"flow": {"stage": "init", "id": 0},
                           "node": {"stage": "init", "id": 1},
                           "port": {"stage": "init", "id": 2}})
@@ -89,15 +89,14 @@ class DistributionContract(unittest.TestCase):
         definition = project / "assets/tools/custom/math/arithmetic/add.json"
         definition.parent.mkdir(parents=True)
         document = {
-            "schema_version": 6, "name_en": "test.add", "name_zh": "Add", "version": "1.0.0",
+            "name_en": "test.add", "name_zh": "Add", "version": "1.0.0",
             "implementation": {"kind": "python_function",
                                "package": "math/arithmetic",
                                "file": "add.py",
                                "symbol": "run",
                                "resources": ["bias.dat"]},
             # Output ids start at 2: the first two output ports belong to the host status envelope.
-            "next_port_id": {"init": 0, "inputs": 0, "outputs": 3},
-            "ports": {"outputs": [{"id": 2, "name_zh": "Value", "type": "int"}]},
+            "outputs": [{"id": 2, "name_zh": "Value", "type": "int"}],
         }
         definition.write_text(json.dumps(document), encoding="utf-8")
         code = project / "python/custom/math/arithmetic"

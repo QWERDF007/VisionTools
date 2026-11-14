@@ -1,61 +1,47 @@
 {
-  "schema_version": 6,
-  "name_en": "visionrt.image.crop",
+  "name_en": "CropImage",
   "name_zh": "图像裁剪",
   "version": "2.0.0",
   "implementation": {
     "kind": "cpp"
   },
-  "ui": {
-    "category": [
-      "预处理",
-      "图像处理"
-    ]
-  },
-  "next_port_id": {
-    "init": 0,
-    "inputs": 3,
-    "outputs": 4
-  },
-  "ports": {
-    "inputs": [
-      {
-        "id": 1,
-        "name_zh": "图像",
-        "type": "image",
-        "display": {
-          "visible": true
-        }
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "矩形区域",
+      "type": "roi",
+      "ui": {
+        "editor": "rect"
       },
-      {
-        "id": 2,
-        "name_zh": "矩形区域",
-        "type": "roi",
-        "ui": {
-          "editor": "rect"
-        },
-        "relations": {
-          "image": {
-            "stage": "inputs",
-            "id": 1
-          }
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
         }
       }
-    ],
-    "outputs": [
-      {
-        "id": 2,
-        "name_zh": "裁剪图像",
-        "type": "image",
-        "display": {
-          "visible": true
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "原点坐标",
-        "type": "vec_vec_float"
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "裁剪图像",
+      "type": "image",
+      "display": {
+        "visible": true
       }
-    ]
-  }
+    },
+    {
+      "id": 3,
+      "name_zh": "原点坐标",
+      "type": "vec_vec_float"
+    }
+  ]
 }

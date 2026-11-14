@@ -5,7 +5,7 @@
 namespace visiontools::metrology {
 
 namespace ports::measure_row_spacing {
-inline constexpr char TOOL_ID[] = "visiontools.measure.row_spacing";
+inline constexpr char TOOL_ID[] = "MeasureRowSpacing";
 
 namespace in {
 inline constexpr visionrt::PortId IMAGES = 1;
@@ -43,7 +43,6 @@ inline constexpr visionrt::PortId UNIT  = 17;
 class RowSpacingTool final : public visionrt::IToolInstance
 {
 public:
-    explicit RowSpacingTool(const visionrt::ToolServices &) {}
     ~RowSpacingTool() override = default;
 
     visionrt::ToolStatus initialize(const visionrt::Values &parameters) override;

@@ -101,44 +101,14 @@ public:
         return take(reader_.roi(id));
     }
 
-    std::optional<std::int64_t> optionalInteger(visionrt::PortId id)
-    {
-        return take(reader_.optionalInteger(id));
-    }
-
-    std::optional<double> optionalReal(visionrt::PortId id)
-    {
-        return take(reader_.optionalReal(id));
-    }
-
-    std::optional<bool> optionalBoolean(visionrt::PortId id)
-    {
-        return take(reader_.optionalBoolean(id));
-    }
-
-    std::optional<std::string> optionalText(visionrt::PortId id)
-    {
-        return take(reader_.optionalText(id));
-    }
-
     std::optional<visionrt::DataRef<visionrt::Image>> nullableImage(visionrt::PortId id)
     {
         return take(reader_.nullableImage(id));
     }
 
-    std::optional<visionrt::DataRef<visionrt::ROI>> nullableRoi(visionrt::PortId id)
-    {
-        return take(reader_.nullableRoi(id));
-    }
-
     visionrt::Array array(visionrt::PortId id)
     {
         return take(reader_.array(id));
-    }
-
-    std::optional<visionrt::Array> nullableArray(visionrt::PortId id)
-    {
-        return take(reader_.nullableArray(id));
     }
 
     // The first failed read, or nothing when every read succeeded.

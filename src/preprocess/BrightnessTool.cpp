@@ -87,7 +87,7 @@ void BrightnessOutputs::writeFields(visionrt::OutputWriter &writer)
     writer.optionalImage(p::out::APPLIED_MASK, appliedMask);
 }
 
-visionrt::ToolResult brightnessTool(const visionrt::Values &values, const visionrt::ToolServices &)
+visionrt::ToolResult brightnessTool(const visionrt::Values &values)
 {
     BrightnessInputs  inputs;
     BrightnessOutputs outputs;

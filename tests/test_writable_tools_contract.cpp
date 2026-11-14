@@ -12,15 +12,14 @@ int main()
 try
 {
     using namespace visionrt;
-    static_assert(MODULE_ABI_MAJOR == 9);
+    static_assert(MODULE_ABI_MAJOR == 10);
     const auto *api = visiontoolsModuleApi();
     assert(api && api->abi_major == MODULE_ABI_MAJOR);
     TestRegistry registry;
     assert(api->register_tools(registry).code == 0);
-    const auto  &factory = registry.factories.at("visionrt.image.crop");
-    ToolServices services;
+    const auto  &factory = registry.factories.at("CropImage");
     ToolStatus   status;
-    auto        *instance = factory.create(&services, &status);
+    auto        *instance = factory.create(&status);
     assert(instance && status.code == 0);
     assert(instance->initialize({}).code == 0);
 

@@ -1,246 +1,232 @@
 {
-  "schema_version": 6,
-  "name_en": "visiontools.measure.row_spacing",
+  "name_en": "MeasureRowSpacing",
   "name_zh": "测量行间距",
   "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
-  "ui": {
-    "category": [
-      "测量",
-      "尺寸测量"
-    ]
-  },
-  "next_port_id": {
-    "init": 0,
-    "inputs": 11,
-    "outputs": 18
-  },
-  "ports": {
-    "inputs": [
-      {
-        "id": 1,
-        "name_zh": "图像",
-        "type": "image",
-        "display": {
-          "visible": true
-        }
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "测量区域",
+      "type": "roi",
+      "default": [],
+      "ui": {
+        "editor": "array"
       },
-      {
-        "id": 2,
-        "name_zh": "测量区域",
-        "type": "roi",
-        "default": [],
-        "ui": {
-          "editor": "array"
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
         },
-        "relations": {
-          "image": {
-            "stage": "inputs",
-            "id": 1
-          },
-          "alignment": {
-            "stage": "inputs",
-            "id": 3
-          }
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "参考到当前变换",
-        "type": "vec_vec_vec_float",
-        "ui": {
-          "editor": "array"
-        }
-      },
-      {
-        "id": 4,
-        "name_zh": "平滑标准差",
-        "type": "float",
-        "default": 1.0,
-        "constraints": {
-          "min": 0.1,
-          "max": 20.0
-        },
-        "ui": {
-          "editor": "number",
-          "decimals": 2
-        }
-      },
-      {
-        "id": 5,
-        "name_zh": "最小梯度",
-        "type": "float",
-        "default": 8.0,
-        "constraints": {
-          "min": 0.0,
-          "max": 255.0
-        },
-        "ui": {
-          "editor": "number",
-          "decimals": 2
-        }
-      },
-      {
-        "id": 6,
-        "name_zh": "物体极性",
-        "type": "string",
-        "default": "bright",
-        "constraints": {
-          "options": [
-            "bright",
-            "dark"
-          ]
-        },
-        "ui": {
-          "editor": "text"
-        }
-      },
-      {
-        "id": 7,
-        "name_zh": "合格宽度下限",
-        "type": "float",
-        "default": 1.0,
-        "constraints": {
-          "min": 0.0
-        },
-        "ui": {
-          "editor": "number",
-          "decimals": 3
-        }
-      },
-      {
-        "id": 8,
-        "name_zh": "合格宽度上限",
-        "type": "float",
-        "default": 1000000.0,
-        "constraints": {
-          "min": 0.0
-        },
-        "ui": {
-          "editor": "number",
-          "decimals": 3
-        }
-      },
-      {
-        "id": 9,
-        "name_zh": "每像素物理长度",
-        "type": "float",
-        "default": 1.0,
-        "constraints": {
-          "min": 1e-09
-        },
-        "ui": {
-          "editor": "number",
-          "decimals": 6
-        }
-      },
-      {
-        "id": 10,
-        "name_zh": "单位",
-        "type": "string",
-        "default": "px",
-        "ui": {
-          "editor": "text"
+        "alignment": {
+          "stage": "inputs",
+          "id": 3
         }
       }
-    ],
-    "outputs": [
-      {
-        "id": 2,
-        "name_zh": "显示图像",
-        "type": "image",
-        "display": {
-          "color_order": "BGR",
-          "visible": true
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "逐ROI有效性",
-        "type": "vec_vec_bool"
-      },
-      {
-        "id": 4,
-        "name_zh": "逐ROI说明",
-        "type": "vec_vec_string"
-      },
-      {
-        "id": 5,
-        "name_zh": "完整物体数量",
-        "type": "vec_vec_int"
-      },
-      {
-        "id": 6,
-        "name_zh": "宽度合格数量",
-        "type": "vec_vec_int"
-      },
-      {
-        "id": 7,
-        "name_zh": "未配对边缘数量",
-        "type": "vec_vec_int"
-      },
-      {
-        "id": 8,
-        "name_zh": "逐物体宽度合格",
-        "type": "vec_vec_vec_bool"
-      },
-      {
-        "id": 9,
-        "name_zh": "宽度像素值",
-        "type": "vec_vec_vec_float"
-      },
-      {
-        "id": 10,
-        "name_zh": "间隙像素值",
-        "type": "vec_vec_vec_float"
-      },
-      {
-        "id": 11,
-        "name_zh": "节距像素值",
-        "type": "vec_vec_vec_float"
-      },
-      {
-        "id": 12,
-        "name_zh": "宽度物理值",
-        "type": "vec_vec_vec_float"
-      },
-      {
-        "id": 13,
-        "name_zh": "间隙物理值",
-        "type": "vec_vec_vec_float"
-      },
-      {
-        "id": 14,
-        "name_zh": "节距物理值",
-        "type": "vec_vec_vec_float"
-      },
-      {
-        "id": 15,
-        "name_zh": "物体边缘中点",
-        "type": "vec_vec_vec_vec_float"
-      },
-      {
-        "id": 16,
-        "name_zh": "边缘显示线段",
-        "type": "roi",
-        "relations": {
-          "image": {
-            "stage": "outputs",
-            "id": 2
-          }
-        }
-      },
-      {
-        "id": 17,
-        "name_zh": "单位",
-        "type": "string"
+    },
+    {
+      "id": 3,
+      "name_zh": "参考到当前变换",
+      "type": "vec_vec_vec_float",
+      "ui": {
+        "editor": "array"
       }
-    ]
-  },
+    },
+    {
+      "id": 4,
+      "name_zh": "平滑标准差",
+      "type": "float",
+      "default": 1.0,
+      "constraints": {
+        "min": 0.1,
+        "max": 20.0
+      },
+      "ui": {
+        "editor": "number",
+        "decimals": 2
+      }
+    },
+    {
+      "id": 5,
+      "name_zh": "最小梯度",
+      "type": "float",
+      "default": 8.0,
+      "constraints": {
+        "min": 0.0,
+        "max": 255.0
+      },
+      "ui": {
+        "editor": "number",
+        "decimals": 2
+      }
+    },
+    {
+      "id": 6,
+      "name_zh": "物体极性",
+      "type": "string",
+      "default": "bright",
+      "constraints": {
+        "options": [
+          "bright",
+          "dark"
+        ]
+      },
+      "ui": {
+        "editor": "text"
+      }
+    },
+    {
+      "id": 7,
+      "name_zh": "合格宽度下限",
+      "type": "float",
+      "default": 1.0,
+      "constraints": {
+        "min": 0.0
+      },
+      "ui": {
+        "editor": "number",
+        "decimals": 3
+      }
+    },
+    {
+      "id": 8,
+      "name_zh": "合格宽度上限",
+      "type": "float",
+      "default": 1000000.0,
+      "constraints": {
+        "min": 0.0
+      },
+      "ui": {
+        "editor": "number",
+        "decimals": 3
+      }
+    },
+    {
+      "id": 9,
+      "name_zh": "每像素物理长度",
+      "type": "float",
+      "default": 1.0,
+      "constraints": {
+        "min": 1e-09
+      },
+      "ui": {
+        "editor": "number",
+        "decimals": 6
+      }
+    },
+    {
+      "id": 10,
+      "name_zh": "单位",
+      "type": "string",
+      "default": "px",
+      "ui": {
+        "editor": "text"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "显示图像",
+      "type": "image",
+      "display": {
+        "color_order": "BGR",
+        "visible": true
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "逐ROI有效性",
+      "type": "vec_vec_bool"
+    },
+    {
+      "id": 4,
+      "name_zh": "逐ROI说明",
+      "type": "vec_vec_string"
+    },
+    {
+      "id": 5,
+      "name_zh": "完整物体数量",
+      "type": "vec_vec_int"
+    },
+    {
+      "id": 6,
+      "name_zh": "宽度合格数量",
+      "type": "vec_vec_int"
+    },
+    {
+      "id": 7,
+      "name_zh": "未配对边缘数量",
+      "type": "vec_vec_int"
+    },
+    {
+      "id": 8,
+      "name_zh": "逐物体宽度合格",
+      "type": "vec_vec_vec_bool"
+    },
+    {
+      "id": 9,
+      "name_zh": "宽度像素值",
+      "type": "vec_vec_vec_float"
+    },
+    {
+      "id": 10,
+      "name_zh": "间隙像素值",
+      "type": "vec_vec_vec_float"
+    },
+    {
+      "id": 11,
+      "name_zh": "节距像素值",
+      "type": "vec_vec_vec_float"
+    },
+    {
+      "id": 12,
+      "name_zh": "宽度物理值",
+      "type": "vec_vec_vec_float"
+    },
+    {
+      "id": 13,
+      "name_zh": "间隙物理值",
+      "type": "vec_vec_vec_float"
+    },
+    {
+      "id": 14,
+      "name_zh": "节距物理值",
+      "type": "vec_vec_vec_float"
+    },
+    {
+      "id": 15,
+      "name_zh": "物体边缘中点",
+      "type": "vec_vec_vec_vec_float"
+    },
+    {
+      "id": 16,
+      "name_zh": "边缘显示线段",
+      "type": "roi",
+      "relations": {
+        "image": {
+          "stage": "outputs",
+          "id": 2
+        }
+      }
+    },
+    {
+      "id": 17,
+      "name_zh": "单位",
+      "type": "string"
+    }
+  ],
   "interaction": {
-    "helper": "visiontools.assist.row_spacing",
+    "helper": "PickRowSpacing",
     "inputs": [
       {
         "helper_port_id": 1,

@@ -20,9 +20,7 @@ public:
     static std::optional<Alignment>  fromRows(std::span<const double> rows) noexcept;
 
     bool   isAffine(double tolerance = 1e-9) const noexcept;
-    bool   isIdentity(double tolerance = 1e-12) const noexcept;
     bool   invertible() const noexcept;
-    double determinant() const noexcept;
     // Similarity requires L^T L = s^2 I with det(L) > 0 and s > 0.
     bool   isSimilarity(double relativeTolerance = 1e-6) const noexcept;
     double scale() const noexcept;

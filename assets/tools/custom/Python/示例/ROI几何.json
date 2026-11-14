@@ -1,0 +1,28 @@
+{
+  "name_en": "RoiGeometry",
+  "name_zh": "ROI几何",
+  "version": "1.0.0",
+  "implementation": {
+    "kind": "python_function",
+    "package": "examples/roi_geometry",
+    "file": "tool.py",
+    "symbol": "execute"
+  },
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "输入图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "逐图ROI",
+      "type": "roi"
+    }
+  ]
+}

@@ -25,8 +25,7 @@ using namespace visionrt::infer;
 void testYoloMissingInitParameters()
 {
     std::cout << "[TEST] Running testYoloMissingInitParameters..." << std::endl;
-    visionrt::ToolServices services;
-    YoloTool               tool(services);
+    YoloTool tool;
 
     auto empty = tool.initialize({});
     REQUIRE(empty.code == 1001, "Missing init parameters must fail before any GPU work");
@@ -62,12 +61,11 @@ int main()
                 "Inference registration callback must be complete");
         TestRegistry registry;
         REQUIRE(api->register_tools(registry).code == 0, "Inference registration must succeed");
-        REQUIRE(registry.factories.size() == 1 && registry.factories.contains("visionrt.dl.yolo"),
+        REQUIRE(registry.factories.size() == 1 && registry.factories.contains("DetectObjectsYolo"),
                 "Inference module must register the stable YOLO ID only");
-        const auto &factory = registry.factories.at("visionrt.dl.yolo");
-        visionrt::ToolServices services;
+        const auto &factory = registry.factories.at("DetectObjectsYolo");
         visionrt::ToolStatus status;
-        auto *instance = factory.create(&services, &status);
+        auto *instance = factory.create(&status);
         REQUIRE(instance && status.code == 0, "Construction must not load a model");
         REQUIRE(instance->release().code == 0 && instance->release().code == 0,
                 "Uninitialized inference instance must release idempotently");

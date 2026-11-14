@@ -196,7 +196,7 @@ void readerCacheContract()
     constexpr int      kFrames = 3;
     writeFrames(frames, kFrames, 96, 64);
 
-    ReadImageTool tool(ToolServices{PathResolver(std::filesystem::current_path())});
+    ReadImageTool tool;
     const auto    start = testing::decodeCount.load();
 
     runPass(tool, frames, kFrames);
@@ -221,7 +221,7 @@ void readerCacheContract()
     REQUIRE(testing::decodeCount.load() == beforeRetry, "a failed read must not drop the resident frames");
 
     const auto   decodesBeforeSecond = testing::decodeCount.load();
-    ReadImageTool second(ToolServices{PathResolver(std::filesystem::current_path())});
+    ReadImageTool second;
     runPass(second, frames, kFrames);
     const auto secondCold = testing::decodeCount.load() - decodesBeforeSecond;
     runPass(second, frames, kFrames);
@@ -243,7 +243,7 @@ void readerResidencyBenchmark(int imageCount, int width, int height, int rounds,
     std::filesystem::create_directories(evidenceDir);
     writeFrames(frames, imageCount, width, height);
 
-    ReadImageTool tool(ToolServices{PathResolver(std::filesystem::current_path())});
+    ReadImageTool tool;
     const double  baselineMiB    = workingSetMiB();
     const auto    decodesAtStart = testing::decodeCount.load();
 
@@ -280,7 +280,7 @@ void readerResidencyBenchmark(int imageCount, int width, int height, int rounds,
     }
 
     const auto decodesBeforeSecond = testing::decodeCount.load();
-    ReadImageTool second(ToolServices{PathResolver(std::filesystem::current_path())});
+    ReadImageTool second;
     runPass(second, frames, imageCount);
     const auto secondCold = testing::decodeCount.load() - decodesBeforeSecond;
     runPass(second, frames, imageCount);

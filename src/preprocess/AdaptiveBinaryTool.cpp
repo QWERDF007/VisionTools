@@ -18,11 +18,6 @@ namespace p = ports::adaptive_binary;
 
 } // namespace
 
-AdaptiveBinaryTool::AdaptiveBinaryTool(const visionrt::ToolServices &services)
-    : services_(services)
-{
-}
-
 visionrt::ToolStatus AdaptiveBinaryTool::initialize(const visionrt::Values &parameters)
 {
     if (!parameters.empty())

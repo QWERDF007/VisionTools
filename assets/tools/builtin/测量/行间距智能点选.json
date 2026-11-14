@@ -1,139 +1,127 @@
 {
-  "schema_version": 6,
-  "name_en": "visiontools.assist.row_spacing",
+  "name_en": "PickRowSpacing",
   "name_zh": "行间距智能点选",
   "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
   "ui": {
-    "category": [
-      "测量",
-      "辅助"
-    ],
     "visibility": "assist"
   },
-  "next_port_id": {
-    "init": 0,
-    "inputs": 7,
-    "outputs": 9
-  },
-  "ports": {
-    "inputs": [
-      {
-        "id": 1,
-        "name_zh": "当前图像",
-        "type": "image",
-        "display": {
-          "visible": true
-        }
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "当前图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "光标像素坐标",
+      "type": "vec_float",
+      "ui": {
+        "editor": "array"
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "辅助阶段",
+      "type": "string",
+      "default": "hover",
+      "constraints": {
+        "options": [
+          "hover",
+          "learn"
+        ]
       },
-      {
-        "id": 2,
-        "name_zh": "光标像素坐标",
-        "type": "vec_float",
-        "ui": {
-          "editor": "array"
-        }
+      "ui": {
+        "editor": "text"
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "候选种子",
+      "type": "roi",
+      "default": [],
+      "ui": {
+        "editor": "array"
       },
-      {
-        "id": 3,
-        "name_zh": "辅助阶段",
-        "type": "string",
-        "default": "hover",
-        "constraints": {
-          "options": [
-            "hover",
-            "learn"
-          ]
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
         },
-        "ui": {
-          "editor": "text"
-        }
-      },
-      {
-        "id": 4,
-        "name_zh": "候选种子",
-        "type": "roi",
-        "default": [],
-        "ui": {
-          "editor": "array"
-        },
-        "relations": {
-          "image": {
-            "stage": "inputs",
-            "id": 1
-          },
-          "alignment": {
-            "stage": "inputs",
-            "id": 5
-          }
-        }
-      },
-      {
-        "id": 5,
-        "name_zh": "参考到当前变换",
-        "type": "vec_vec_vec_float",
-        "ui": {
-          "editor": "array"
-        }
-      },
-      {
-        "id": 6,
-        "name_zh": "最大搜索半径",
-        "type": "int",
-        "default": 256,
-        "constraints": {
-          "min": 16,
-          "max": 2048
-        },
-        "ui": {
-          "editor": "number"
+        "alignment": {
+          "stage": "inputs",
+          "id": 5
         }
       }
-    ],
-    "outputs": [
-      {
-        "id": 2,
-        "name_zh": "候选轮廓",
-        "type": "roi",
-        "relations": {
-          "image": {
-            "stage": "inputs",
-            "id": 1
-          }
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "拟提交ROI",
-        "type": "roi"
-      },
-      {
-        "id": 4,
-        "name_zh": "候选有效",
-        "type": "bool"
-      },
-      {
-        "id": 5,
-        "name_zh": "候选质量说明",
-        "type": "string"
-      },
-      {
-        "id": 6,
-        "name_zh": "建议极性",
-        "type": "string"
-      },
-      {
-        "id": 7,
-        "name_zh": "建议宽度下限",
-        "type": "float"
-      },
-      {
-        "id": 8,
-        "name_zh": "建议宽度上限",
-        "type": "float"
+    },
+    {
+      "id": 5,
+      "name_zh": "参考到当前变换",
+      "type": "vec_vec_vec_float",
+      "ui": {
+        "editor": "array"
       }
-    ]
-  }
+    },
+    {
+      "id": 6,
+      "name_zh": "最大搜索半径",
+      "type": "int",
+      "default": 256,
+      "constraints": {
+        "min": 16,
+        "max": 2048
+      },
+      "ui": {
+        "editor": "number"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "候选轮廓",
+      "type": "roi",
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        }
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "拟提交ROI",
+      "type": "roi"
+    },
+    {
+      "id": 4,
+      "name_zh": "候选有效",
+      "type": "bool"
+    },
+    {
+      "id": 5,
+      "name_zh": "候选质量说明",
+      "type": "string"
+    },
+    {
+      "id": 6,
+      "name_zh": "建议极性",
+      "type": "string"
+    },
+    {
+      "id": 7,
+      "name_zh": "建议宽度下限",
+      "type": "float"
+    },
+    {
+      "id": 8,
+      "name_zh": "建议宽度上限",
+      "type": "float"
+    }
+  ]
 }

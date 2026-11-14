@@ -1,6 +1,5 @@
 {
-  "schema_version": 6,
-  "name_en": "visiontools.python.image_sizes",
+  "name_en": "ImageSizes",
   "name_zh": "图像尺寸",
   "version": "1.0.0",
   "implementation": {
@@ -9,34 +8,21 @@
     "file": "tool.py",
     "symbol": "execute"
   },
-  "ui": {
-    "category": [
-      "Python",
-      "示例"
-    ]
-  },
-  "next_port_id": {
-    "init": 0,
-    "inputs": 2,
-    "outputs": 3
-  },
-  "ports": {
-    "inputs": [
-      {
-        "id": 1,
-        "name_zh": "输入图像",
-        "type": "image",
-        "display": {
-          "visible": true
-        }
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "输入图像",
+      "type": "image",
+      "display": {
+        "visible": true
       }
-    ],
-    "outputs": [
-      {
-        "id": 2,
-        "name_zh": "图像尺寸",
-        "type": "vec_vec_int"
-      }
-    ]
-  }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "图像尺寸",
+      "type": "vec_vec_int"
+    }
+  ]
 }

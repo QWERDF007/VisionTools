@@ -42,6 +42,13 @@ Values defaultInputs(const std::filesystem::path &path)
     return inputs;
 }
 
+std::string readOne(ReadImageTool &tool, const Values &inputs)
+{
+    auto res = tool.execute(inputs);
+    requireSuccess(res, "single-step read must succeed");
+    return nestedOf<std::vector<std::string>>(std::get<Array>(res.outputs.at(read_ports::out::PATHS)))[0];
+}
+
 void writePng(const std::filesystem::path &path, const cv::Mat &image)
 {
     std::vector<unsigned char> encoded;
@@ -56,8 +63,7 @@ void writePng(const std::filesystem::path &path, const cv::Mat &image)
 void testReadImageTool()
 {
     std::cout << "[TEST] Running testReadImageTool (S-READ-01 ~ S-READ-05)..." << std::endl;
-    ToolServices services{PathResolver(std::filesystem::current_path())};
-    ReadImageTool tool(services);
+    ReadImageTool tool;
 
     const auto directory = std::filesystem::current_path() / "test_read_image_suite";
     const auto filesDir  = directory / "files";
@@ -75,7 +81,9 @@ void testReadImageTool()
         // 1.1 空路径必须失败
         Values inputs = defaultInputs("");
         auto   res    = tool.execute(inputs);
-        requireFailure(res, "不能为空", "Empty path must fail");
+        requireFailure(res, read_ports::in::PATH, "Empty path must fail");
+        REQUIRE(testview::status(res).message.find("输入缺失") != std::string::npos,
+                "Empty path must be reported as a missing input");
 
         // 1.2 不存在的路径必须报错
         inputs = defaultInputs(filesDir / "nonexistent.png");
@@ -110,7 +118,7 @@ void testReadImageTool()
         testing::fileReadCount = 0;
         testing::decodeCount   = 0;
 
-        ReadImageTool probeTool(services);
+        ReadImageTool probeTool;
         Values inputs = defaultInputs(singleImg);
 
         // 第一次读取: reload=false -> read=1, decode=1
@@ -161,7 +169,7 @@ void testReadImageTool()
         writePng(dirA / "img_3.png", cv::Mat(8, 8, CV_8UC3, cv::Scalar(3, 3, 3)));
 
         // 3.1 顺序遍历 + 循环 + count=2
-        ReadImageTool dirTool(services);
+        ReadImageTool dirTool;
         Values inputs = defaultInputs(dirA);
         inputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(2));
         inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("循环"));
@@ -200,7 +208,7 @@ void testReadImageTool()
         REQUIRE(paths[0].ends_with("img_3.png") && paths[1].ends_with("img_2.png"), "Reverse starts from end: img_3, img_2");
 
         // 3.4 不循环模式: 序列末尾与结束报错
-        ReadImageTool onceTool(services);
+        ReadImageTool onceTool;
         Values onceInputs = defaultInputs(dirA);
         onceInputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
         onceInputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(2));
@@ -223,7 +231,7 @@ void testReadImageTool()
 requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must fail");
 
         // 3.5 损坏文件失败原子性: 中途坏图游标不推进，修复后从原位成功
-        ReadImageTool atomicTool(services);
+        ReadImageTool atomicTool;
         const auto corruptFile = dirA / "img_corrupt.png";
         std::ofstream(corruptFile, std::ios::binary).write("corrupted_data", 14);
 
@@ -271,7 +279,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         const auto writeImg = directory / "writable.png";
         writePng(writeImg, cv::Mat(4, 4, CV_8UC3, cv::Scalar(10, 20, 30)));
 
-        ReadImageTool writeTool(services);
+        ReadImageTool writeTool;
         Values inputs = defaultInputs(writeImg);
 
         auto res1 = writeTool.execute(inputs);
@@ -317,7 +325,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         writePng(cnDir / L"根图.png", cv::Mat(4, 4, CV_8UC3, cv::Scalar(1, 1, 1)));
         writePng(subCn / L"深层图.png", cv::Mat(4, 4, CV_8UC3, cv::Scalar(2, 2, 2)));
 
-        ReadImageTool cnTool(services);
+        ReadImageTool cnTool;
 
         // 不递归: 只有 1 张 (根图.png)
         Values inputsNoRec = defaultInputs(cnDir);
@@ -393,7 +401,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         writePng(atomicDir / "b.png", cv::Mat(8, 8, CV_8UC3, cv::Scalar(22, 22, 22)));
         writePng(atomicDir / "c.png", cv::Mat(8, 8, CV_8UC3, cv::Scalar(33, 33, 33)));
 
-        ReadImageTool atomicTool(services);
+        ReadImageTool atomicTool;
         Values inputs = defaultInputs(atomicDir);
         inputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(2));
         inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
@@ -452,7 +460,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         // 8.1 forward, non-looping: the next file is deleted and the last delivered file is the tail.
         {
             rebuildTail();
-            ReadImageTool tool(services);
+            ReadImageTool tool;
             Values inputs = defaultInputs(tailDir);
             inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
             REQUIRE(readOne(tool, inputs).ends_with("a.png"), "step 1 must deliver a.png");
@@ -465,7 +473,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         // 8.2 forward, non-looping: both the next and the last delivered file disappear.
         {
             rebuildTail();
-            ReadImageTool tool(services);
+            ReadImageTool tool;
             Values inputs = defaultInputs(tailDir);
             inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
             REQUIRE(readOne(tool, inputs).ends_with("a.png"), "step 1 must deliver a.png");
@@ -480,7 +488,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         {
             rebuildTail();
             writePng(tailDir / "d.png", cv::Mat(4, 4, CV_8UC3, cv::Scalar(4, 4, 4)));
-            ReadImageTool tool(services);
+            ReadImageTool tool;
             Values inputs = defaultInputs(tailDir);
             inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
             REQUIRE(readOne(tool, inputs).ends_with("a.png"), "step 1 must deliver a.png");
@@ -494,7 +502,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         // 8.4 reverse, non-looping: deleting the previous file at the head ends the sequence.
         {
             rebuildTail();
-            ReadImageTool tool(services);
+            ReadImageTool tool;
             Values inputs = defaultInputs(tailDir);
             inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
             inputs.insert_or_assign(read_ports::in::ORDER, std::string("逆序（上一张）"));
@@ -508,7 +516,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         // 8.5 looping mode still wraps, but by an explicit request rather than by falling back.
         {
             rebuildTail();
-            ReadImageTool tool(services);
+            ReadImageTool tool;
             Values inputs = defaultInputs(tailDir);
             inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("循环"));
             REQUIRE(readOne(tool, inputs).ends_with("a.png"), "loop step 1 must deliver a.png");
@@ -536,7 +544,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
             return nestedOf<std::vector<std::string>>(std::get<Array>(res.outputs.at(read_ports::out::PATHS)))[0];
         };
 
-        ReadImageTool tool(services);
+        ReadImageTool tool;
         Values        inputs = defaultInputs(atomicDir);
         inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("不循环"));
         REQUIRE(nextPath(tool, inputs).ends_with("a.png"), "atomic step 1 must deliver a.png");
@@ -566,6 +574,48 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         REQUIRE(nextPath(tool, inputs).ends_with("c.png"),
                 "a cache insert failure must not fail an already valid batch");
         testing::beforeCacheInsert = {};
+    }
+
+    // ==========================================
+    // 6. S13: a mistyped input is reported before the batch runs, and the cursor stays where it was
+    // ==========================================
+    {
+        const auto sequenceDir = directory / "typed_sequence";
+        std::filesystem::create_directories(sequenceDir);
+        writePng(sequenceDir / "a.png", cv::Mat(4, 4, CV_8UC1, cv::Scalar(1)));
+        writePng(sequenceDir / "b.png", cv::Mat(4, 4, CV_8UC1, cv::Scalar(2)));
+
+        ReadImageTool tool;
+        Values        inputs = defaultInputs(sequenceDir);
+        REQUIRE(readOne(tool, inputs).ends_with("a.png"), "typed input: step 1 must deliver a.png");
+
+        Values mistyped = inputs;
+        mistyped.insert_or_assign(read_ports::in::RELOAD, std::string("true"));
+        const auto rejected = tool.execute(mistyped);
+        requireFailure(rejected, read_ports::in::RELOAD, "a string RELOAD must be a type error");
+        for (const auto port : {read_ports::out::IMAGES, read_ports::out::PATHS, read_ports::out::CURRENT_INDEX,
+                                read_ports::out::TOTAL_COUNT, read_ports::out::END_REACHED})
+            REQUIRE(isMissing(rejected.outputs.at(port)), "a rejected input must publish Missing business ports");
+
+        REQUIRE(readOne(tool, inputs).ends_with("b.png"), "the cursor must still deliver b.png after a rejection");
+    }
+
+    // ==========================================
+    // 7. S14: a folder that lost its last image reports no images instead of replaying the old plan
+    // ==========================================
+    {
+        const auto shrinkDir = directory / "shrinking";
+        std::filesystem::create_directories(shrinkDir);
+        writePng(shrinkDir / "only.png", cv::Mat(4, 4, CV_8UC1, cv::Scalar(7)));
+
+        ReadImageTool tool;
+        Values        inputs = defaultInputs(shrinkDir);
+        REQUIRE(readOne(tool, inputs).ends_with("only.png"), "shrinking: the single image must be read");
+        std::filesystem::remove(shrinkDir / "only.png");
+
+        const auto res = tool.execute(inputs);
+        requireFailure(res, "没有可用图像", "an emptied folder must report no images");
+        REQUIRE(isMissing(res.outputs.at(read_ports::out::IMAGES)), "an emptied folder must publish Missing images");
     }
 
     std::filesystem::remove_all(directory);

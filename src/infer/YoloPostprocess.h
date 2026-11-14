@@ -19,7 +19,6 @@ struct LetterboxGeometry
     int   inputWidth, inputHeight;
     int   resizedWidth, resizedHeight;
     int   padLeft, padTop;
-    float sdkScale;
 };
 
 struct HeadView

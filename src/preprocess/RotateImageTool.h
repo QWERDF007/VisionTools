@@ -5,7 +5,7 @@
 namespace visiontools::preprocess {
 
 namespace ports::image_rotate {
-inline constexpr char TOOL_ID[] = "visiontools.image.rotate";
+inline constexpr char TOOL_ID[] = "RotateImage";
 
 namespace in {
 inline constexpr visionrt::PortId IMAGES = 1;
@@ -26,7 +26,6 @@ inline constexpr visionrt::PortId ALIGNMENT = 3;
 class RotateImageTool final : public visionrt::IToolInstance
 {
 public:
-    explicit RotateImageTool(const visionrt::ToolServices &) {}
     ~RotateImageTool() override = default;
 
     visionrt::ToolStatus initialize(const visionrt::Values &parameters) override;

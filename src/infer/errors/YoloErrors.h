@@ -20,7 +20,10 @@ enum class YoloError : std::int64_t
     SessionFailed     = visiontools::errorCode(visiontools::domain::kInfer, 7),
     PreprocessFailed  = visiontools::errorCode(visiontools::domain::kInfer, 8),
     ReleaseFailed     = visiontools::errorCode(visiontools::domain::kInfer, 9),
-    LabelFileInvalid  = visiontools::errorCode(visiontools::domain::kInfer, 10)
+    LabelFileInvalid  = visiontools::errorCode(visiontools::domain::kInfer, 10),
+    // Writing the built engine failed. Naming the engine output keeps the operator from going back
+    // to the input model, which is intact.
+    EngineOutputFailed = visiontools::errorCode(visiontools::domain::kInfer, 11)
 };
 
 inline std::string_view message(YoloError code) noexcept
@@ -47,6 +50,8 @@ inline std::string_view message(YoloError code) noexcept
         return "推理资源释放失败";
     case YoloError::LabelFileInvalid:
         return "类别名称文件不合法";
+    case YoloError::EngineOutputFailed:
+        return "引擎输出写入失败";
     }
     return "推理失败";
 }

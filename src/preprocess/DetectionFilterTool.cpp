@@ -18,11 +18,6 @@ namespace p = ports::detection_filter;
 
 } // namespace
 
-DetectionFilterTool::DetectionFilterTool(const visionrt::ToolServices &services)
-    : services_(services)
-{
-}
-
 visionrt::ToolStatus DetectionFilterTool::initialize(const visionrt::Values &parameters)
 {
     if (!parameters.empty())

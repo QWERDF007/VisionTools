@@ -1,23 +1,10 @@
 {
-  "schema_version": 6,
-  "name_en": "visionrt.control.select",
+  "name_en": "SelectBranch",
   "name_zh": "分支合流",
   "version": "1.0.0",
   "implementation": {
     "kind": "host",
     "binding": "visionrt.select"
   },
-  "ui": {
-    "category": [
-      "流程控制",
-      "分支"
-    ]
-  },
-  "next_port_id": {
-    "init": 0,
-    "inputs": 1,
-    "outputs": 2
-  },
-  "ports": {},
   "node_model": "select"
 }

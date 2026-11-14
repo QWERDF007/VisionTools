@@ -7,7 +7,7 @@
 namespace visiontools::preprocess {
 
 namespace ports::image_crop {
-inline constexpr char TOOL_ID[] = "visionrt.image.crop";
+inline constexpr char TOOL_ID[] = "CropImage";
 
 namespace in {
 inline constexpr visionrt::PortId IMAGES = 1;
@@ -23,7 +23,6 @@ inline constexpr visionrt::PortId ORIGINS = 3;
 class ImageCropTool final : public visionrt::IToolInstance
 {
 public:
-    explicit ImageCropTool(const visionrt::ToolServices &services);
     ~ImageCropTool() override = default;
 
     visionrt::ToolStatus initialize(const visionrt::Values &parameters) override;
@@ -31,7 +30,6 @@ public:
     visionrt::ToolStatus release() override;
 
 private:
-    visionrt::ToolServices services_;
 };
 
 #ifdef VISIONTOOLS_TESTING

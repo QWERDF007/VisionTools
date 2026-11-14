@@ -152,20 +152,19 @@ int main(int argc, char **argv)
     TestRegistry registry;
     REQUIRE_ABI(api->register_tools(registry).code == 0, "Module registration must succeed");
     const std::set<std::string> expectedTools{
-        "visiontools.preprocess.adaptive_binary", "visionrt.image.crop", "visionrt.detection.filter",
-        "visionrt.roi.projection", "visionrt.image.preprocess", "visionrt.image.read",
-        "visiontools.image.rotate", "visiontools.image.brightness"};
+        "AdaptiveThreshold", "CropImage", "FilterDetections",
+        "ProjectRoi", "PreprocessImage", "ReadImage",
+        "RotateImage", "AdjustBrightness"};
     REQUIRE_ABI(registry.factories.size() == expectedTools.size(), "All CPU factories must be present");
     for (const auto &id : expectedTools)
         REQUIRE_ABI(registry.factories.contains(id), "CPU factory must use its stable ID");
-    visionrt::ToolServices services{visionrt::PathResolver(std::filesystem::current_path())};
     visionrt::ToolStatus status;
     std::set<std::string> actualExecutedTools;
     // 4. Test tool: adaptive_binary
     cv::Mat                snapshotImage;
     {
-        const char *reg = "visiontools.preprocess.adaptive_binary";
-        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&services, &status);
+        const char *reg = "AdaptiveThreshold";
+        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE(inst != nullptr, "Create adaptive_binary must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize adaptive_binary must succeed");
 
@@ -209,8 +208,8 @@ int main(int argc, char **argv)
 
     // 5. Test tool: crop
     {
-        const char *reg = "visionrt.image.crop";
-        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&services, &status);
+        const char *reg = "CropImage";
+        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE(inst != nullptr, "Create crop must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize crop must succeed");
 
@@ -241,8 +240,8 @@ int main(int argc, char **argv)
 
     // 6. Test tool: detection_filter
     {
-        const char *reg = "visionrt.detection.filter";
-        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&services, &status);
+        const char *reg = "FilterDetections";
+        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE(inst != nullptr, "Create detection.filter must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize detection.filter must succeed");
 
@@ -287,8 +286,8 @@ int main(int argc, char **argv)
 
     // 7. Test tool: roi_projection
     {
-        const char *reg = "visionrt.roi.projection";
-        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&services, &status);
+        const char *reg = "ProjectRoi";
+        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE(inst != nullptr, "Create roi.projection must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize roi.projection must succeed");
 
@@ -319,8 +318,8 @@ int main(int argc, char **argv)
 
     // 8. Test tool: image.preprocess
     {
-        const char *reg = "visionrt.image.preprocess";
-        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&services, &status);
+        const char *reg = "PreprocessImage";
+        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE(inst != nullptr, "Create image.preprocess must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize image.preprocess must succeed");
 
@@ -345,8 +344,8 @@ int main(int argc, char **argv)
 
     // 9. Test tool: image.read
     {
-        const char *reg = "visionrt.image.read";
-        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&services, &status);
+        const char *reg = "ReadImage";
+        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE(inst != nullptr, "Create image.read must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize image.read must succeed");
 
@@ -392,8 +391,8 @@ int main(int argc, char **argv)
     std::cout << "  DLL path: " << std::filesystem::absolute(dllPath).string() << std::endl;
     // 9. Test tool: rotate
     {
-        const char *reg = "visiontools.image.rotate";
-        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&services, &status);
+        const char *reg = "RotateImage";
+        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE_ABI(inst != nullptr, "Create rotate must return valid instance");
         REQUIRE_ABI(inst->initialize({}).code == 0, "Initialize rotate must succeed");
         visionrt::Values inputs;
@@ -414,8 +413,8 @@ int main(int argc, char **argv)
     }
     // 10. Test tool: brightness
     {
-        const char *reg = "visiontools.image.brightness";
-        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&services, &status);
+        const char *reg = "AdjustBrightness";
+        visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE_ABI(inst != nullptr, "Create brightness must return valid instance");
         REQUIRE_ABI(inst->initialize({}).code == 0, "Initialize brightness must succeed");
         visionrt::Values inputs;

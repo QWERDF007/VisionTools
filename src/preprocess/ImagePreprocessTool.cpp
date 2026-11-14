@@ -36,11 +36,6 @@ cv::Mat toGray(const cv::Mat &image, std::size_t index)
 
 } // namespace
 
-ImagePreprocessTool::ImagePreprocessTool(const visionrt::ToolServices &services)
-    : services_(services)
-{
-}
-
 visionrt::ToolStatus ImagePreprocessTool::initialize(const visionrt::Values &parameters)
 {
     if (!parameters.empty())

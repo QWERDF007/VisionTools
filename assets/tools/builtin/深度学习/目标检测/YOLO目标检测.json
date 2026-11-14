@@ -1,205 +1,191 @@
 {
-  "schema_version": 6,
-  "name_en": "visionrt.dl.yolo",
+  "name_en": "DetectObjectsYolo",
   "name_zh": "YOLO目标检测",
   "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
-  "ui": {
-    "category": [
-      "深度学习",
-      "目标检测"
-    ]
-  },
-  "next_port_id": {
-    "init": 10,
-    "inputs": 5,
-    "outputs": 7
-  },
-  "ports": {
-    "init": [
-      {
-        "id": 0,
-        "name_zh": "模型名称",
-        "type": "string",
-        "default": "yolov8n",
-        "constraints": {
-          "options": [
-            "yolov8n"
-          ]
+  "init_params": [
+    {
+      "id": 0,
+      "name_zh": "模型名称",
+      "type": "string",
+      "default": "yolov8n",
+      "constraints": {
+        "options": [
+          "yolov8n"
+        ]
+      }
+    },
+    {
+      "id": 1,
+      "name_zh": "加载模式",
+      "type": "string",
+      "default": "engine",
+      "constraints": {
+        "options": [
+          "engine",
+          "build_wts"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "模型路径",
+      "type": "string",
+      "ui": {
+        "editor": "path"
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "引擎输出路径",
+      "type": "string",
+      "ui": {
+        "editor": "path"
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "标签路径",
+      "type": "string",
+      "ui": {
+        "editor": "path"
+      }
+    },
+    {
+      "id": 5,
+      "name_zh": "推理精度",
+      "type": "string",
+      "default": "fp16"
+    },
+    {
+      "id": 6,
+      "name_zh": "GPU编号",
+      "type": "int",
+      "constraints": {
+        "min": 0
+      }
+    },
+    {
+      "id": 7,
+      "name_zh": "输入宽度",
+      "type": "int",
+      "default": 640,
+      "constraints": {
+        "min": 32
+      }
+    },
+    {
+      "id": 8,
+      "name_zh": "输入高度",
+      "type": "int",
+      "default": 640,
+      "constraints": {
+        "min": 32
+      }
+    },
+    {
+      "id": 9,
+      "name_zh": "类别数量",
+      "type": "int",
+      "default": 80,
+      "constraints": {
+        "min": 1
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "置信度阈值",
+      "type": "float",
+      "default": 0.25,
+      "constraints": {
+        "min": 0,
+        "max": 1
+      },
+      "ui": {
+        "tab": "检测",
+        "step": 0.05
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "NMS阈值",
+      "type": "float",
+      "default": 0.45,
+      "constraints": {
+        "min": 0,
+        "max": 1
+      },
+      "ui": {
+        "tab": "检测",
+        "step": 0.05
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "最大检测数",
+      "type": "int",
+      "default": 300,
+      "constraints": {
+        "min": 1
+      },
+      "ui": {
+        "tab": "检测"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "输出图像",
+      "type": "image",
+      "relations": {
+        "same_geometry_as": {
+          "stage": "inputs",
+          "id": 1
         }
       },
-      {
-        "id": 1,
-        "name_zh": "加载模式",
-        "type": "string",
-        "default": "engine",
-        "constraints": {
-          "options": [
-            "engine",
-            "build_wts"
-          ]
-        }
-      },
-      {
-        "id": 2,
-        "name_zh": "模型路径",
-        "type": "string",
-        "ui": {
-          "editor": "path"
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "引擎输出路径",
-        "type": "string",
-        "ui": {
-          "editor": "path"
-        }
-      },
-      {
-        "id": 4,
-        "name_zh": "标签路径",
-        "type": "string",
-        "ui": {
-          "editor": "path"
-        }
-      },
-      {
-        "id": 5,
-        "name_zh": "推理精度",
-        "type": "string",
-        "default": "fp16"
-      },
-      {
-        "id": 6,
-        "name_zh": "GPU编号",
-        "type": "int",
-        "constraints": {
-          "min": 0
-        }
-      },
-      {
-        "id": 7,
-        "name_zh": "输入宽度",
-        "type": "int",
-        "default": 640,
-        "constraints": {
-          "min": 32
-        }
-      },
-      {
-        "id": 8,
-        "name_zh": "输入高度",
-        "type": "int",
-        "default": 640,
-        "constraints": {
-          "min": 32
-        }
-      },
-      {
-        "id": 9,
-        "name_zh": "类别数量",
-        "type": "int",
-        "default": 80,
-        "constraints": {
-          "min": 1
+      "display": {
+        "color_order": "BGR",
+        "visible": true
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "目标ROI",
+      "type": "roi",
+      "relations": {
+        "image": {
+          "stage": "outputs",
+          "id": 2
         }
       }
-    ],
-    "inputs": [
-      {
-        "id": 1,
-        "name_zh": "图像",
-        "type": "image",
-        "display": {
-          "visible": true
-        }
-      },
-      {
-        "id": 2,
-        "name_zh": "置信度阈值",
-        "type": "float",
-        "default": 0.25,
-        "constraints": {
-          "min": 0,
-          "max": 1
-        },
-        "ui": {
-          "tab": "检测",
-          "step": 0.05
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "NMS阈值",
-        "type": "float",
-        "default": 0.45,
-        "constraints": {
-          "min": 0,
-          "max": 1
-        },
-        "ui": {
-          "tab": "检测",
-          "step": 0.05
-        }
-      },
-      {
-        "id": 4,
-        "name_zh": "最大检测数",
-        "type": "int",
-        "default": 300,
-        "constraints": {
-          "min": 1
-        },
-        "ui": {
-          "tab": "检测"
-        }
-      }
-    ],
-    "outputs": [
-      {
-        "id": 2,
-        "name_zh": "输出图像",
-        "type": "image",
-        "relations": {
-          "same_geometry_as": {
-            "stage": "inputs",
-            "id": 1
-          }
-        },
-        "display": {
-          "color_order": "BGR",
-          "visible": true
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "目标ROI",
-        "type": "roi",
-        "relations": {
-          "image": {
-            "stage": "outputs",
-            "id": 2
-          }
-        }
-      },
-      {
-        "id": 4,
-        "name_zh": "目标得分",
-        "type": "vec_vec_float32"
-      },
-      {
-        "id": 5,
-        "name_zh": "目标类别",
-        "type": "vec_vec_int"
-      },
-      {
-        "id": 6,
-        "name_zh": "目标类别名",
-        "type": "vec_vec_string"
-      }
-    ]
-  }
+    },
+    {
+      "id": 4,
+      "name_zh": "目标得分",
+      "type": "vec_vec_float32"
+    },
+    {
+      "id": 5,
+      "name_zh": "目标类别",
+      "type": "vec_vec_int"
+    },
+    {
+      "id": 6,
+      "name_zh": "目标类别名",
+      "type": "vec_vec_string"
+    }
+  ]
 }

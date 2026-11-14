@@ -10,7 +10,9 @@ enum class ReadImageError : std::int64_t
     NoImagesFound = errorCode(domain::kReadImage, 2),
     FileReadFailed = errorCode(domain::kReadImage, 3),
     DecodeFailed   = errorCode(domain::kReadImage, 4),
-    FileTooLarge   = errorCode(domain::kReadImage, 5)
+    FileTooLarge   = errorCode(domain::kReadImage, 5),
+    // The product directory itself could not be determined, so no relative path can be resolved.
+    ProductDirectoryUnavailable = errorCode(domain::kReadImage, 6)
 };
 
 inline std::string_view message(ReadImageError code) noexcept
@@ -27,6 +29,8 @@ inline std::string_view message(ReadImageError code) noexcept
         return "图像解码失败";
     case ReadImageError::FileTooLarge:
         return "图像文件超出大小限制";
+    case ReadImageError::ProductDirectoryUnavailable:
+        return "无法确定程序所在目录";
     }
     return "图像读取失败";
 }

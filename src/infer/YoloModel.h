@@ -36,7 +36,7 @@ GeometryProbe probePreprocessing();
 // One model/session/stream and reusable staging buffers per node. Not reentrant;
 // the runtime serializes calls on each node, not across different nodes.
 namespace ports::yolo {
-inline constexpr char TOOL_ID[] = "visionrt.dl.yolo";
+inline constexpr char TOOL_ID[] = "DetectObjectsYolo";
 
 namespace init {
 inline constexpr visionrt::PortId ENGINE_OUTPUT_PATH = 3;
@@ -70,7 +70,7 @@ inline constexpr visionrt::PortId SCORES = 4;
 class YoloTool final : public IToolInstance
 {
 public:
-    explicit YoloTool(const ToolServices &services);
+    YoloTool();
     ~YoloTool() override;
     ToolStatus                     initialize(const Values &parameters) override;
     ToolResult                     execute(const Values &inputs) override;
@@ -83,7 +83,6 @@ public:
 private:
     struct State;
     ToolResult             run(const Values &inputs, std::vector<ImageTrace> *traces);
-    PathResolver           paths_;
     std::unique_ptr<State> state_;
 };
 

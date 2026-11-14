@@ -35,8 +35,7 @@ Values detectionInputs()
 void testDetectionFilterTool()
 {
     std::cout << "[TEST] Running testDetectionFilterTool..." << std::endl;
-    ToolServices        services;
-    DetectionFilterTool tool(services);
+    DetectionFilterTool tool;
 
     static_assert(filter_ports::in::MIN_SCORE == 6);
     static_assert(filter_ports::in::ALLOWED_CLASSES == 8);

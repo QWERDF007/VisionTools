@@ -5,7 +5,7 @@
 namespace visiontools::preprocess {
 
 namespace ports::roi_projection {
-inline constexpr char TOOL_ID[] = "visionrt.roi.projection";
+inline constexpr char TOOL_ID[] = "ProjectRoi";
 
 namespace in {
 inline constexpr visionrt::PortId AXIS = 2;
@@ -27,7 +27,6 @@ inline constexpr visionrt::PortId ROIS = 3;
 class RoiProjectionTool final : public visionrt::IToolInstance
 {
 public:
-    explicit RoiProjectionTool(const visionrt::ToolServices &services);
     ~RoiProjectionTool() override = default;
 
     visionrt::ToolStatus initialize(const visionrt::Values &parameters) override;
@@ -35,7 +34,6 @@ public:
     visionrt::ToolStatus release() override;
 
 private:
-    visionrt::ToolServices services_;
 };
 
 } // namespace visiontools::preprocess

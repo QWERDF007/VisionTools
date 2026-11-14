@@ -1,95 +1,81 @@
 {
-  "schema_version": 6,
-  "name_en": "visionrt.image.preprocess",
+  "name_en": "PreprocessImage",
   "name_zh": "图像预处理",
   "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
-  "ui": {
-    "category": [
-      "预处理",
-      "图像处理"
-    ]
-  },
-  "next_port_id": {
-    "init": 0,
-    "inputs": 5,
-    "outputs": 3
-  },
-  "ports": {
-    "inputs": [
-      {
-        "id": 1,
-        "name_zh": "图像",
-        "type": "image",
-        "display": {
-          "visible": true
-        }
-      },
-      {
-        "id": 2,
-        "name_zh": "操作类型",
-        "type": "string",
-        "default": "identity",
-        "constraints": {
-          "options": [
-            "identity",
-            "gray",
-            "gaussian",
-            "threshold"
-          ]
-        },
-        "ui": {
-          "tab": "预处理"
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "高斯核大小",
-        "type": "int",
-        "default": 3,
-        "constraints": {
-          "min": 1
-        },
-        "ui": {
-          "editor": "number",
-          "tab": "预处理",
-          "step": 2
-        }
-      },
-      {
-        "id": 4,
-        "name_zh": "二值化阈值",
-        "type": "int",
-        "default": 128,
-        "constraints": {
-          "min": 0,
-          "max": 255
-        },
-        "ui": {
-          "editor": "number",
-          "tab": "预处理",
-          "step": 1
-        }
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "图像",
+      "type": "image",
+      "display": {
+        "visible": true
       }
-    ],
-    "outputs": [
-      {
-        "id": 2,
-        "name_zh": "处理后图像",
-        "type": "image",
-        "relations": {
-          "same_geometry_as": {
-            "stage": "inputs",
-            "id": 1
-          }
-        },
-        "display": {
-          "color_order": "BGR",
-          "visible": true
-        }
+    },
+    {
+      "id": 2,
+      "name_zh": "操作类型",
+      "type": "string",
+      "default": "identity",
+      "constraints": {
+        "options": [
+          "identity",
+          "gray",
+          "gaussian",
+          "threshold"
+        ]
+      },
+      "ui": {
+        "tab": "预处理"
       }
-    ]
-  }
+    },
+    {
+      "id": 3,
+      "name_zh": "高斯核大小",
+      "type": "int",
+      "default": 3,
+      "constraints": {
+        "min": 1
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "预处理",
+        "step": 2
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "二值化阈值",
+      "type": "int",
+      "default": 128,
+      "constraints": {
+        "min": 0,
+        "max": 255
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "预处理",
+        "step": 1
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "处理后图像",
+      "type": "image",
+      "relations": {
+        "same_geometry_as": {
+          "stage": "inputs",
+          "id": 1
+        }
+      },
+      "display": {
+        "color_order": "BGR",
+        "visible": true
+      }
+    }
+  ]
 }

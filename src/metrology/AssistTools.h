@@ -5,8 +5,8 @@
 namespace visiontools::metrology {
 
 namespace ports::assist {
-inline constexpr char CIRCLE_ID[] = "visiontools.assist.circle";
-inline constexpr char ROW_ID[]    = "visiontools.assist.row_spacing";
+inline constexpr char CIRCLE_ID[] = "PickCircle";
+inline constexpr char ROW_ID[]    = "PickRowSpacing";
 
 // Both assistants publish the same probe inputs, so they share one numbered input set.
 namespace in {
@@ -40,7 +40,6 @@ inline constexpr visionrt::PortId SUGGESTED_WIDTH_MAX = 8;
 class AssistCircleTool final : public visionrt::IToolInstance
 {
 public:
-    explicit AssistCircleTool(const visionrt::ToolServices &) {}
     ~AssistCircleTool() override = default;
 
     visionrt::ToolStatus initialize(const visionrt::Values &parameters) override;
@@ -51,7 +50,6 @@ public:
 class AssistRowSpacingTool final : public visionrt::IToolInstance
 {
 public:
-    explicit AssistRowSpacingTool(const visionrt::ToolServices &) {}
     ~AssistRowSpacingTool() override = default;
 
     visionrt::ToolStatus initialize(const visionrt::Values &parameters) override;

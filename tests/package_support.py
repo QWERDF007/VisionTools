@@ -33,7 +33,7 @@ class PackageFixture(unittest.TestCase):
         self.declaration = self.project / "assets/tools/custom/Math/Arithmetic/tool.json"
         self.declaration.parent.mkdir(parents=True)
         self.document = {
-            "schema_version": 6, "name_en": "custom.math", "name_zh": "Math",
+            "name_en": "custom.math", "name_zh": "Math",
             "version": "1.0.0",
             "implementation": {
                 "kind": "python_function",
@@ -42,10 +42,8 @@ class PackageFixture(unittest.TestCase):
                 "symbol": "run",
                 "resources": ["bias.dat"],
             },
-            "ui": {"category": ["Mathematics", "Arithmetic"]},
             # Output ids start at 2: the first two output ports belong to the host status envelope.
-            "next_port_id": {"init": 0, "inputs": 0, "outputs": 3},
-            "ports": {"outputs": [{"id": 2, "name_zh": "Value", "type": "int"}]},
+            "outputs": [{"id": 2, "name_zh": "Value", "type": "int"}],
         }
         # Every project that ships Python tools carries the one author SDK the packager injects.
         sdk = self.project / "python/author_sdk/visiontools_sdk"

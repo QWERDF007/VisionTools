@@ -5,7 +5,7 @@
 namespace visiontools::preprocess {
 
 namespace ports::image_brightness {
-inline constexpr char TOOL_ID[] = "visiontools.image.brightness";
+inline constexpr char TOOL_ID[] = "AdjustBrightness";
 
 namespace in {
 inline constexpr visionrt::PortId IMAGES = 1;
@@ -25,6 +25,6 @@ inline constexpr visionrt::PortId APPLIED_MASK = 3;
 // A stateless tool: gain, offset, ROI list, mask and alignment all arrive with this call, so there
 // is no instance state to reset between nodes. registerFunction adapts it to IToolInstance, which
 // keeps scheduling, cancellation, readback and teardown on the existing path.
-visionrt::ToolResult brightnessTool(const visionrt::Values &inputs, const visionrt::ToolServices &services);
+visionrt::ToolResult brightnessTool(const visionrt::Values &inputs);
 
 } // namespace visiontools::preprocess

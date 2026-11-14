@@ -13,7 +13,7 @@
 
 ## 新增工具
 
-以 [AdaptiveBinaryTool](../src/preprocess/AdaptiveBinaryTool.h)、[实现](../src/preprocess/AdaptiveBinaryTool.cpp) 为最小原生示例；接入位置分别为 [模块注册](../src/preprocess/PreprocessModule.cpp)、[CMake 目标](../src/preprocess/CMakeLists.txt)、[JSON 声明](../assets/tools/builtin/预处理/图像处理/自适应二值化.json) 与 [发行目录表](../tools/package_catalog.json)。工具只消费公共 Values，不解析作者声明。
+以 [AdaptiveBinaryTool](../src/preprocess/AdaptiveBinaryTool.h)、[实现](../src/preprocess/AdaptiveBinaryTool.cpp) 为最小原生示例；接入位置分别为 [模块注册](../src/preprocess/PreprocessModule.cpp)、[CMake 目标](../src/preprocess/CMakeLists.txt)、[JSON 声明](../assets/tools/builtin/预处理/图像处理/自适应二值化.json) 与 [发行目录表](../tools/package_catalog.json)。工具只消费公共 Values，不解析作者声明。路径参数由工具自己解释：绝对路径与 UNC 原样使用，其余非空相对值以主程序所在目录为基准（[实现](../src/common/ProductPaths.h)）；宿主既不改写字符串，也不向工具传目录。
 
 Python 来源、入口及资源规则见 [资源收集器](../tools/package_payload.py) 与 [测试](../tests/test_package.py)。
 

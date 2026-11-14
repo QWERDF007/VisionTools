@@ -5,7 +5,7 @@
 namespace visiontools::preprocess {
 
 namespace ports::image_preprocess {
-inline constexpr char TOOL_ID[] = "visionrt.image.preprocess";
+inline constexpr char TOOL_ID[] = "PreprocessImage";
 
 namespace in {
 inline constexpr visionrt::PortId IMAGES = 1;
@@ -22,7 +22,6 @@ inline constexpr visionrt::PortId IMAGES = 2;
 class ImagePreprocessTool final : public visionrt::IToolInstance
 {
 public:
-    explicit ImagePreprocessTool(const visionrt::ToolServices &services);
     ~ImagePreprocessTool() override = default;
 
     visionrt::ToolStatus initialize(const visionrt::Values &parameters) override;
@@ -30,7 +29,6 @@ public:
     visionrt::ToolStatus release() override;
 
 private:
-    visionrt::ToolServices services_;
 };
 
 } // namespace visiontools::preprocess

@@ -24,8 +24,7 @@ static Values projectionInputs()
 void testRoiProjectionTool()
 {
     std::cout << "[TEST] Running testRoiProjectionTool..." << std::endl;
-    ToolServices      services;
-    RoiProjectionTool tool(services);
+    RoiProjectionTool tool;
 
     static_assert(projection_ports::in::AXIS == 2);
     static_assert(projection_ports::in::MIN_PIXELS == 5);

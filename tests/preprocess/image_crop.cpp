@@ -35,8 +35,7 @@ cv::Mat pixelCenterGold(const cv::Mat &image, cv::Point origin, std::initializer
 void testImageCropTool()
 {
     std::cout << "[TEST] Running testImageCropTool..." << std::endl;
-    ToolServices  services;
-    ImageCropTool tool(services);
+    ImageCropTool tool;
 
     static_assert(crop_ports::in::IMAGES == 1);
     static_assert(crop_ports::in::RECT == 2);

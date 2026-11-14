@@ -27,7 +27,7 @@ namespace bright     = visiontools::preprocess::ports::image_brightness;
 
 ToolResult runBrightness(const Values &inputs, const std::vector<PortId> &businessOutputs)
 {
-    auto result = preprocess::brightnessTool(inputs, ToolServices{});
+    auto result = preprocess::brightnessTool(inputs);
     assert(testview::businessCount(result) == businessOutputs.size());
     for (const auto id : businessOutputs)
         assert(result.outputs.contains(id));
@@ -37,7 +37,7 @@ ToolResult runBrightness(const Values &inputs, const std::vector<PortId> &busine
 template<class Tool>
 ToolResult run(const Values &inputs, const std::vector<PortId> &businessOutputs)
 {
-    Tool                    tool{ToolServices{}};
+    Tool                    tool;
     const ToolStatus        initialized = tool.initialize({});
     assert(initialized.code == 0);
     auto result = tool.execute(inputs);

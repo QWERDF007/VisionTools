@@ -53,11 +53,6 @@ std::size_t maskBuildCount = 0;
 } // namespace testing
 #endif
 
-ImageCropTool::ImageCropTool(const visionrt::ToolServices &services)
-    : services_(services)
-{
-}
-
 visionrt::ToolStatus ImageCropTool::initialize(const visionrt::Values &parameters)
 {
     if (!parameters.empty())

@@ -11,8 +11,7 @@ namespace ab = visiontools::preprocess::ports::adaptive_binary;
 void testAdaptiveBinaryTool()
 {
     std::cout << "[TEST] Running testAdaptiveBinaryTool..." << std::endl;
-    ToolServices       services;
-    AdaptiveBinaryTool tool(services);
+    AdaptiveBinaryTool tool;
 
     static_assert(ab::in::IMAGES == 1);
     static_assert(ab::in::BLOCK_SIZE == 2);

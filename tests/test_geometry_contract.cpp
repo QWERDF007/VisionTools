@@ -93,7 +93,7 @@ void geometryAndRoi()
 
 void rotateTool()
 {
-    preprocess::RotateImageTool tool(ToolServices{});
+    preprocess::RotateImageTool tool;
     Values                    inputs = withImages(rotateReference());
     inputs.emplace(rot::in::ANGLE_DEG, 90.0);
     inputs.emplace(rot::in::CENTER, Array::fromNested(NestedVector<double, 1>{}));
@@ -123,7 +123,7 @@ void brightnessTool()
     inputs.emplace(bright::in::OFFSET, 10.0);
     inputs.emplace(bright::in::ROIS, DataRef<ROI>(ROI{{{2, 10, 10, 20, 10, 0}}}));
     inputs.emplace(bright::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
-    const auto result = preprocess::brightnessTool(inputs, ToolServices{});
+    const auto result = preprocess::brightnessTool(inputs);
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     const auto &output = std::get<DataRef<Image>>(result.outputs.at(bright::out::IMAGES)).get().front();
     const auto  inside = output.at<cv::Vec3b>(15, 15);
@@ -140,7 +140,7 @@ void brightnessTool()
     floatInputs.emplace(bright::in::OFFSET, 0.0);
     floatInputs.emplace(bright::in::ROIS, DataRef<ROI>(ROI{}));
     floatInputs.emplace(bright::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
-    const auto floatResult = preprocess::brightnessTool(floatInputs, ToolServices{});
+    const auto floatResult = preprocess::brightnessTool(floatInputs);
     REQUIRE(testview::status(floatResult).code == 0, testview::status(floatResult).message);
     const auto &floats = std::get<DataRef<Image>>(floatResult.outputs.at(bright::out::IMAGES)).get().front();
     REQUIRE(std::abs(floats.at<float>(0, 0) - 400.0F) < 1e-3, "float images must not be clipped to 255");
@@ -160,7 +160,7 @@ void circleMeasurement()
             const double coverage = std::clamp(0.5 + (40.0 - distance), 0.0, 1.0);
             gray.at<std::uint8_t>(y, x) = static_cast<std::uint8_t>(std::lround(20.0 + 200.0 * coverage));
         }
-    metrology::CircleTool tool(ToolServices{});
+    metrology::CircleTool tool;
     Values                inputs = withImages(gray);
     inputs.emplace(circle::in::ROIS, DataRef<ROI>(ROI{{{3, 130.0, 120.0, 40.0}}}));
     inputs.emplace(circle::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
@@ -203,7 +203,7 @@ void rowSpacingMeasurement()
     cv::Mat gray(80, 220, CV_8UC1, cv::Scalar(20));
     for (int index = 0; index < 5; ++index)
         cv::rectangle(gray, cv::Rect(20 + index * 30, 10, 8, 60), cv::Scalar(230), cv::FILLED);
-    metrology::RowSpacingTool tool(ToolServices{});
+    metrology::RowSpacingTool tool;
     Values                    inputs = withImages(gray);
     inputs.emplace(rows::in::ROIS, DataRef<ROI>(ROI{{{2, 10, 20, 170, 40, 0}}}));
     inputs.emplace(rows::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
@@ -243,7 +243,7 @@ void assistCandidate()
 {
     cv::Mat gray(200, 200, CV_8UC1, cv::Scalar(15));
     cv::circle(gray, cv::Point(100, 100), 30, cv::Scalar(220), cv::FILLED, cv::LINE_AA);
-    metrology::AssistCircleTool tool(ToolServices{});
+    metrology::AssistCircleTool tool;
     Values inputs;
     inputs.emplace(assist::in::IMAGES, DataRef<Image>(Image{gray}));
     inputs.emplace(assist::in::CURSOR, Array::fromNested(NestedVector<double, 1>{130.0, 100.0}));
@@ -331,7 +331,7 @@ void circleQualityGate()
         if (x >= 1 && y >= 1 && x + 1 < arc.cols && y + 1 < arc.rows)
             arc.at<std::uint8_t>(y, x) = 200;
     }
-    metrology::CircleTool tool(ToolServices{});
+    metrology::CircleTool tool;
     const auto            shortArc = tool.execute(circleInputs(arc, 130.0, 120.0, 40.0));
     REQUIRE(testview::status(shortArc).code == 0, testview::status(shortArc).message);
     const auto arcValid = nestedOf<NestedVector<bool, 2>>(std::get<Array>(shortArc.outputs.at(circle::out::VALID)));
@@ -377,7 +377,7 @@ void assistLocalWindow()
 {
     cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(15));
     cv::circle(gray, cv::Point(320, 320), 30, cv::Scalar(220), cv::FILLED, cv::LINE_AA);
-    metrology::AssistCircleTool tool(ToolServices{});
+    metrology::AssistCircleTool tool;
     Values                      inputs;
     inputs.emplace(assist::in::IMAGES, DataRef<Image>(Image{gray}));
     inputs.emplace(assist::in::CURSOR, Array::fromNested(NestedVector<double, 1>{60.0, 60.0}));

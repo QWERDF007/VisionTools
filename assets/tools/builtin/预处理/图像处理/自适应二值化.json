@@ -1,73 +1,59 @@
 {
-  "schema_version": 6,
-  "name_en": "visiontools.preprocess.adaptive_binary",
+  "name_en": "AdaptiveThreshold",
   "name_zh": "自适应二值化",
   "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
-  "ui": {
-    "category": [
-      "预处理",
-      "图像处理"
-    ]
-  },
-  "next_port_id": {
-    "init": 0,
-    "inputs": 4,
-    "outputs": 3
-  },
-  "ports": {
-    "inputs": [
-      {
-        "id": 1,
-        "name_zh": "输入图像",
-        "type": "image",
-        "display": {
-          "visible": true
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "输入图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "邻域大小",
+      "type": "int",
+      "default": 3,
+      "constraints": {
+        "min": 3,
+        "max": 999
+      },
+      "ui": {
+        "editor": "number",
+        "step": 2
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "偏移常量",
+      "type": "float",
+      "default": 5,
+      "ui": {
+        "editor": "number",
+        "decimals": 3
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "二值图像",
+      "type": "image",
+      "relations": {
+        "same_geometry_as": {
+          "stage": "inputs",
+          "id": 1
         }
       },
-      {
-        "id": 2,
-        "name_zh": "邻域大小",
-        "type": "int",
-        "default": 3,
-        "constraints": {
-          "min": 3,
-          "max": 999
-        },
-        "ui": {
-          "editor": "number",
-          "step": 2
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "偏移常量",
-        "type": "float",
-        "default": 5,
-        "ui": {
-          "editor": "number",
-          "decimals": 3
-        }
+      "display": {
+        "color_order": "Gray",
+        "visible": true
       }
-    ],
-    "outputs": [
-      {
-        "id": 2,
-        "name_zh": "二值图像",
-        "type": "image",
-        "relations": {
-          "same_geometry_as": {
-            "stage": "inputs",
-            "id": 1
-          }
-        },
-        "display": {
-          "color_order": "Gray",
-          "visible": true
-        }
-      }
-    ]
-  }
+    }
+  ]
 }

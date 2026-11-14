@@ -5,7 +5,7 @@
 namespace visiontools::preprocess {
 
 namespace ports::detection_filter {
-inline constexpr char TOOL_ID[] = "visionrt.detection.filter";
+inline constexpr char TOOL_ID[] = "FilterDetections";
 
 namespace in {
 inline constexpr visionrt::PortId ALLOWED_CLASSES = 8;
@@ -31,7 +31,6 @@ inline constexpr visionrt::PortId SCORES = 4;
 class DetectionFilterTool final : public visionrt::IToolInstance
 {
 public:
-    explicit DetectionFilterTool(const visionrt::ToolServices &services);
     ~DetectionFilterTool() override = default;
 
     visionrt::ToolStatus initialize(const visionrt::Values &parameters) override;
@@ -39,7 +38,6 @@ public:
     visionrt::ToolStatus release() override;
 
 private:
-    visionrt::ToolServices services_;
 };
 
 } // namespace visiontools::preprocess

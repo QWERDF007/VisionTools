@@ -1,5 +1,6 @@
 add_library(visiontools_common STATIC
     GeometryTransform.cpp
+    ProductPaths.cpp
     RoiSupport.cpp
     errors/ToolError.cpp
 )

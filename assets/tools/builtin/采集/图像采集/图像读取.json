@@ -1,121 +1,107 @@
 {
-  "schema_version": 6,
-  "name_en": "visionrt.image.read",
+  "name_en": "ReadImage",
   "name_zh": "图像读取",
   "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
-  "ui": {
-    "category": [
-      "采集",
-      "图像采集"
-    ]
-  },
-  "next_port_id": {
-    "init": 0,
-    "inputs": 7,
-    "outputs": 7
-  },
-  "ports": {
-    "inputs": [
-      {
-        "id": 1,
-        "name_zh": "图像路径",
-        "type": "string",
-        "ui": {
-          "editor": "path"
-        }
-      },
-      {
-        "id": 2,
-        "name_zh": "递归选项",
-        "type": "bool",
-        "ui": {
-          "editor": "recursive"
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "遍历选项",
-        "type": "string",
-        "default": "循环",
-        "constraints": {
-          "options": [
-            "循环",
-            "不循环"
-          ]
-        },
-        "ui": {
-          "editor": "text"
-        }
-      },
-      {
-        "id": 4,
-        "name_zh": "遍历顺序",
-        "type": "string",
-        "default": "顺序（下一张）",
-        "constraints": {
-          "options": [
-            "顺序（下一张）",
-            "逆序（上一张）"
-          ]
-        },
-        "ui": {
-          "editor": "text"
-        }
-      },
-      {
-        "id": 5,
-        "name_zh": "图像数量",
-        "type": "int",
-        "default": 1,
-        "constraints": {
-          "min": 1,
-          "max": 64
-        },
-        "ui": {
-          "editor": "number"
-        }
-      },
-      {
-        "id": 6,
-        "name_zh": "重新读图",
-        "type": "bool",
-        "ui": {
-          "editor": "switch"
-        }
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "图像路径",
+      "type": "string",
+      "ui": {
+        "editor": "path"
       }
-    ],
-    "outputs": [
-      {
-        "id": 2,
-        "name_zh": "图像",
-        "type": "image",
-        "display": {
-          "visible": true
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "文件路径",
-        "type": "vec_string"
-      },
-      {
-        "id": 4,
-        "name_zh": "当前索引",
-        "type": "int"
-      },
-      {
-        "id": 5,
-        "name_zh": "目录总数量",
-        "type": "int"
-      },
-      {
-        "id": 6,
-        "name_zh": "已到末项",
-        "type": "bool"
+    },
+    {
+      "id": 2,
+      "name_zh": "递归选项",
+      "type": "bool",
+      "ui": {
+        "editor": "recursive"
       }
-    ]
-  }
+    },
+    {
+      "id": 3,
+      "name_zh": "遍历选项",
+      "type": "string",
+      "default": "循环",
+      "constraints": {
+        "options": [
+          "循环",
+          "不循环"
+        ]
+      },
+      "ui": {
+        "editor": "text"
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "遍历顺序",
+      "type": "string",
+      "default": "顺序（下一张）",
+      "constraints": {
+        "options": [
+          "顺序（下一张）",
+          "逆序（上一张）"
+        ]
+      },
+      "ui": {
+        "editor": "text"
+      }
+    },
+    {
+      "id": 5,
+      "name_zh": "图像数量",
+      "type": "int",
+      "default": 1,
+      "constraints": {
+        "min": 1,
+        "max": 64
+      },
+      "ui": {
+        "editor": "number"
+      }
+    },
+    {
+      "id": 6,
+      "name_zh": "重新读图",
+      "type": "bool",
+      "ui": {
+        "editor": "switch"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "文件路径",
+      "type": "vec_string"
+    },
+    {
+      "id": 4,
+      "name_zh": "当前索引",
+      "type": "int"
+    },
+    {
+      "id": 5,
+      "name_zh": "目录总数量",
+      "type": "int"
+    },
+    {
+      "id": 6,
+      "name_zh": "已到末项",
+      "type": "bool"
+    }
+  ]
 }

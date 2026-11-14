@@ -38,7 +38,7 @@ void testWhiteboxGeometryProbe()
 void testWhiteboxLetterboxRoundtrip()
 {
     std::cout << "[TEST] Running testWhiteboxLetterboxRoundtrip..." << std::endl;
-    LetterboxGeometry g{1920, 1080, 640, 640, 640, 360, 0, 140, 1.0f / 3.0f};
+    LetterboxGeometry g{1920, 1080, 640, 640, 640, 360, 0, 140};
     Box               netBox{0, 140, 640, 500};
     Box               src = toSource(netBox, g);
     REQUIRE(std::abs(src.x1 - 0.0) < 1e-3, "src x1 match");
@@ -51,8 +51,7 @@ void testWhiteboxLetterboxRoundtrip()
 void testWhiteboxYoloUninitializedErrorPath()
 {
     std::cout << "[TEST] Running testWhiteboxYoloUninitializedErrorPath..." << std::endl;
-    const visionrt::ToolServices services{visionrt::PathResolver(std::filesystem::current_path())};
-    YoloTool                     tool(services);
+    YoloTool                     tool;
 
     // 1. Verify tensorDescriptions interface on uninitialized tool
     auto desc = tool.tensorDescriptions();
@@ -85,8 +84,7 @@ void testWhiteboxYoloInitializedTrace()
         std::exit(77);
     }
 
-    const visionrt::ToolServices services{visionrt::PathResolver(std::filesystem::current_path())};
-    YoloTool                     tool(services);
+    YoloTool                     tool;
 
     visionrt::Values initParams;
     initParams.emplace(0, std::string("yolov8n"));

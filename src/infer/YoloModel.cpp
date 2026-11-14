@@ -3,6 +3,7 @@
 #include "InferProtocol.h"
 
 #include "common/InputValues.h"
+#include "common/ProductPaths.h"
 #include "common/UpstreamStatus.h"
 #include "common/errors/ToolError.h"
 
@@ -26,6 +27,8 @@ namespace visionrt::infer {
 // lives in visiontools, so the names it uses are bound once instead of at every call site.
 using visiontools::CommonToolError;
 using visiontools::ToolFailure;
+using visiontools::common::ProductDirectoryError;
+using visiontools::common::resolveResourcePath;
 using visiontools::fail;
 using visiontools::status;
 
@@ -97,16 +100,27 @@ void verifyTensor(const irt::TensorInfo &tensor, const char *name, const irt::Sh
                  + irt::model::dimsToString(tensor.desc.shape));
 }
 
-std::vector<std::string> labels(const Values &values, const PathResolver &paths, int count)
+// The declaration states an absolute path or one relative to the product's executable. Only a
+// failure to locate the executable itself reaches this error, and it names the resource and cause.
+std::filesystem::path resolvedPath(std::string_view path, YoloError code)
+{
+    try
+    {
+        return resolveResourcePath(path);
+    }
+    catch (const ProductDirectoryError &error)
+    {
+        fail(code, path, error.what());
+    }
+}
+
+std::vector<std::string> labels(const Values &values, int count)
 {
     std::vector<std::string> result;
     const auto               path = text(values, yolo_ports::init::LABELS_PATH);
     if (!path.empty())
     {
-        const auto resolution = paths.tryResolve(path);
-        if (!resolution)
-            fail(YoloError::LabelFileInvalid, path, resolution.issue().text);
-        std::ifstream file(resolution.value(), std::ios::binary);
+        std::ifstream file(resolvedPath(path, YoloError::LabelFileInvalid), std::ios::binary);
         if (!file)
             fail(YoloError::LabelFileInvalid, path, "无法打开文件");
         std::string line;
@@ -193,10 +207,7 @@ struct YoloTool::State
     }
 };
 
-YoloTool::YoloTool(const ToolServices &services)
-    : paths_(services.paths)
-{
-}
+YoloTool::YoloTool() = default;
 
 YoloTool::~YoloTool() = default;
 
@@ -227,7 +238,7 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         state->classes = integer(parameters, yolo_ports::init::NUM_CLASSES, 1);
         if (state->width % 32 || state->height % 32 || state->classes > std::numeric_limits<int>::max() - 4)
             fail(CommonToolError::InputOutOfRange, "原生 yolov8n 输入尺寸必须为 32 的倍数；num_classes 必须满足 4+C 的整数范围");
-        state->names      = labels(parameters, paths_, state->classes);
+        state->names      = labels(parameters, state->classes);
         int  deviceCount  = 0;
         auto deviceStatus = cudaGetDeviceCount(&deviceCount);
         if (deviceStatus != cudaSuccess)
@@ -251,22 +262,14 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         state->model = irt::model::CreateModel(modelName, std::move(config));
         if (!state->model)
             return status(YoloError::ModelLoadFailed, "InferRT CreateModel(yolov8n) 返回空");
-        const auto modelResolution = paths_.tryResolve(modelPath);
-        if (!modelResolution)
-            fail(YoloError::ModelLoadFailed, modelPath, modelResolution.issue().text);
-        const auto resolved = utf8Path(modelResolution.value());
+        const auto resolved = resolvedPath(modelPath, YoloError::ModelLoadFailed);
         if (mode == "engine")
-            state->model->load(resolved);
+            state->model->load(utf8Path(resolved));
         else
         {
-            state->model->build(resolved);
+            state->model->build(utf8Path(resolved));
             if (!outputPath.empty())
-            {
-                const auto outputResolution = paths_.tryResolve(outputPath);
-                if (!outputResolution)
-                    fail(YoloError::ModelLoadFailed, outputPath, outputResolution.issue().text);
-                state->model->save(utf8Path(outputResolution.value()));
-            }
+                state->model->save(utf8Path(resolvedPath(outputPath, YoloError::EngineOutputFailed)));
         }
         auto inputs  = state->model->inputs();
         auto outputs = state->model->outputs();
@@ -404,7 +407,7 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             const auto             &actual = preprocessed.geometry;
             const LetterboxGeometry geometry{actual.original_width, actual.original_height, state.width,
                                              state.height,          actual.resized_width,   actual.resized_height,
-                                             actual.pad_left,       actual.pad_top,         actual.scale};
+                                             actual.pad_left,       actual.pad_top};
             std::array<HeadView, 3> heads;
             for (std::size_t branch = 0; branch < strides.size(); ++branch)
                 heads[branch] = {
@@ -512,7 +515,7 @@ GeometryProbe probePreprocessing()
     const auto    transformed = irt::model::ImageNetUtil::preprocessWithGeometry(ramp, preprocessingSpec(640, 640));
     const auto   &actual      = transformed.geometry;
     GeometryProbe result{
-        {13, 7, 640, 640, actual.resized_width, actual.resized_height, actual.pad_left, actual.pad_top, actual.scale}
+        {13, 7, 640, 640, actual.resized_width, actual.resized_height, actual.pad_left, actual.pad_top}
     };
     for (int y = 0; y < actual.resized_height; ++y)
     {

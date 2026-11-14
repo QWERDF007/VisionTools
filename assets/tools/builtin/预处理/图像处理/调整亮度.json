@@ -1,114 +1,100 @@
 {
-  "schema_version": 6,
-  "name_en": "visiontools.image.brightness",
+  "name_en": "AdjustBrightness",
   "name_zh": "调整亮度",
   "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
-  "ui": {
-    "category": [
-      "预处理",
-      "图像处理"
-    ]
-  },
-  "next_port_id": {
-    "init": 0,
-    "inputs": 7,
-    "outputs": 4
-  },
-  "ports": {
-    "inputs": [
-      {
-        "id": 1,
-        "name_zh": "输入图像",
-        "type": "image",
-        "display": {
-          "visible": true
-        }
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "输入图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "增益",
+      "type": "float",
+      "default": 1.0,
+      "constraints": {
+        "min": 0.0
       },
-      {
-        "id": 2,
-        "name_zh": "增益",
-        "type": "float",
-        "default": 1.0,
-        "constraints": {
-          "min": 0.0
+      "ui": {
+        "editor": "number",
+        "decimals": 3
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "偏移",
+      "type": "float",
+      "ui": {
+        "editor": "number",
+        "decimals": 3
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "测量区域",
+      "type": "roi",
+      "default": [],
+      "ui": {
+        "editor": "array"
+      },
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
         },
-        "ui": {
-          "editor": "number",
-          "decimals": 3
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "偏移",
-        "type": "float",
-        "ui": {
-          "editor": "number",
-          "decimals": 3
-        }
-      },
-      {
-        "id": 4,
-        "name_zh": "测量区域",
-        "type": "roi",
-        "default": [],
-        "ui": {
-          "editor": "array"
-        },
-        "relations": {
-          "image": {
-            "stage": "inputs",
-            "id": 1
-          },
-          "alignment": {
-            "stage": "inputs",
-            "id": 6
-          }
-        }
-      },
-      {
-        "id": 5,
-        "name_zh": "输入掩码",
-        "type": "image",
-        "display": {
-          "visible": true
-        }
-      },
-      {
-        "id": 6,
-        "name_zh": "参考到当前变换",
-        "type": "vec_vec_vec_float",
-        "ui": {
-          "editor": "array"
+        "alignment": {
+          "stage": "inputs",
+          "id": 6
         }
       }
-    ],
-    "outputs": [
-      {
-        "id": 2,
-        "name_zh": "输出图像",
-        "type": "image",
-        "relations": {
-          "same_geometry_as": {
-            "stage": "inputs",
-            "id": 1
-          }
-        },
-        "display": {
-          "visible": true
+    },
+    {
+      "id": 5,
+      "name_zh": "输入掩码",
+      "type": "image",
+      "display": {
+        "visible": true
+      }
+    },
+    {
+      "id": 6,
+      "name_zh": "参考到当前变换",
+      "type": "vec_vec_vec_float",
+      "ui": {
+        "editor": "array"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "输出图像",
+      "type": "image",
+      "relations": {
+        "same_geometry_as": {
+          "stage": "inputs",
+          "id": 1
         }
       },
-      {
-        "id": 3,
-        "name_zh": "应用区域",
-        "type": "image",
-        "display": {
-          "color_order": "Gray",
-          "visible": true
-        }
+      "display": {
+        "visible": true
       }
-    ]
-  }
+    },
+    {
+      "id": 3,
+      "name_zh": "应用区域",
+      "type": "image",
+      "display": {
+        "color_order": "Gray",
+        "visible": true
+      }
+    }
+  ]
 }
