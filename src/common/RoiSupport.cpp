@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 
 namespace visiontools::roi {
@@ -72,39 +73,6 @@ bool anyRecord(const std::vector<std::vector<Record>> &records) noexcept
                        [](const auto &image) { return !image.empty(); });
 }
 
-bool contains(const Record &record, double currentX, double currentY, const geometry::Alignment &toReference)
-{
-    const auto view = visionrt::RegionView(record);
-    double     x = 0, y = 0;
-    toReference.apply(currentX, currentY, x, y);
-    switch (view.kind())
-    {
-    case visionrt::RoiKind::Rectangle:
-    {
-        const auto   rectangle = view.rectangle();
-        const double angle     = rectangle.angle() * 3.14159265358979323846 / 180.0;
-        const double cos       = std::cos(angle), sin = std::sin(angle);
-        const auto   center    = rectangle.center();
-        const double dx = x - center.x, dy = y - center.y;
-        const double localX = dx * cos + dy * sin;
-        const double localY = -dx * sin + dy * cos;
-        return std::abs(localX) <= rectangle.width() / 2.0 + kBoundaryTolerance
-            && std::abs(localY) <= rectangle.height() / 2.0 + kBoundaryTolerance;
-    }
-    case visionrt::RoiKind::Circle:
-    {
-        const auto   circle = view.circle();
-        const auto   center = circle.center();
-        const double dx = x - center.x, dy = y - center.y;
-        return std::sqrt(dx * dx + dy * dy) <= circle.radius() + kBoundaryTolerance;
-    }
-    case visionrt::RoiKind::Polygon:
-        return pointInPolygon(view.polygon(), x, y);
-    default:
-        fail(CommonToolError::InputTypeMismatch, "面积选择只接受旋转矩形、圆和多边形 ROI");
-    }
-}
-
 cv::Mat regionMask(const std::vector<Record> &records, cv::Size size, const geometry::Alignment &toReference)
 {
     cv::Mat mask = cv::Mat::zeros(size, CV_8UC1);
@@ -129,11 +97,26 @@ cv::Mat regionMask(const std::vector<Record> &records, cv::Size size, const geom
             maxY = std::max(maxY, y);
         };
         const auto view = visionrt::RegionView(record);
+        std::function<bool(double, double)> contains;
         switch (view.kind())
         {
         case visionrt::RoiKind::Rectangle:
+        {
             for (const auto &corner : view.rectangle().corners()) extend(corner.x, corner.y);
+            const auto rectangle = view.rectangle();
+            const auto center = rectangle.center();
+            const double angle = rectangle.angle() * 3.14159265358979323846 / 180.0;
+            const double cosine = std::cos(angle), sine = std::sin(angle);
+            const double halfWidth = rectangle.width() / 2.0 + kBoundaryTolerance;
+            const double halfHeight = rectangle.height() / 2.0 + kBoundaryTolerance;
+            contains = [=](double x, double y)
+            {
+                const double dx = x - center.x, dy = y - center.y;
+                return std::abs(dx * cosine + dy * sine) <= halfWidth
+                    && std::abs(-dx * sine + dy * cosine) <= halfHeight;
+            };
             break;
+        }
         case visionrt::RoiKind::Circle:
         {
             const auto   circle = view.circle();
@@ -143,11 +126,17 @@ cv::Mat regionMask(const std::vector<Record> &records, cv::Size size, const geom
             extend(center.x + radius, center.y - radius);
             extend(center.x + radius, center.y + radius);
             extend(center.x - radius, center.y + radius);
+            contains = [=](double x, double y)
+            {
+                const double dx = x - center.x, dy = y - center.y;
+                return std::sqrt(dx * dx + dy * dy) <= radius + kBoundaryTolerance;
+            };
             break;
         }
         case visionrt::RoiKind::Polygon:
         {
             const auto polygon = view.polygon();
+            contains = [polygon](double x, double y) { return pointInPolygon(polygon, x, y); };
             for (std::size_t index = 0; index < polygon.size(); ++index)
             {
                 const auto point = polygon.point(index);
@@ -164,8 +153,12 @@ cv::Mat regionMask(const std::vector<Record> &records, cv::Size size, const geom
         const int y1 = std::clamp(static_cast<int>(std::ceil(maxY + 1.0)), 0, size.height);
         for (int y = y0; y < y1; ++y)
             for (int x = x0; x < x1; ++x)
-                if (contains(record, x, y, toReference))
+            {
+                double referenceX, referenceY;
+                toReference.apply(x, y, referenceX, referenceY);
+                if (contains(referenceX, referenceY))
                     mask.at<std::uint8_t>(y, x) = 255;
+            }
     }
     return mask;
 }

@@ -78,7 +78,7 @@ class TestPackagePayload(PackageFixture):
     def test_directory_link_cycle_is_rejected(self):
         self.link_directory(self.code, self.code / "cycle")
         with self.assertRaisesRegex(package.PackagingError, "循环"):
-            self.publish()
+            self.publish(allow_dirty=True)
 
     def test_native_python_helpers_are_collected_without_import(self):
         (self.code / "native.cp312-win_amd64.pyd").write_bytes(b"test-pyd")

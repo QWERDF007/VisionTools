@@ -127,7 +127,7 @@ class DistributionContract(unittest.TestCase):
         }
         (build / "build_info.json").write_text(json.dumps(build_info), encoding="utf-8")
         output = project / "dist/tools"
-        return package_tools.package_tools(build, output, project_root=project, validator=require_validator())
+        return package_tools.package_tools(build, output, project_root=project, validator=require_validator(), allow_dirty=True)
 
     def test_python_package_uses_actual_manifest_without_backend_requirements(self):
         validator = require_validator()
@@ -186,7 +186,7 @@ class DistributionContract(unittest.TestCase):
             deployed = subprocess.run([
                 sys.executable, "-B", "-c",
                 "import runpy,sys; from pathlib import Path; api=runpy.run_path(sys.argv[1]); "
-                "api['deploy_tools_package'](Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]))",
+                "api['deploy_tools_package'](Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), allow_dirty=True)",
                 str(deploy_script), str(installation), str(archive), str(require_validator()),
             ], capture_output=True, text=True, encoding="utf-8", errors="replace")
             self.assertEqual(deployed.returncode, 0, deployed.stderr)

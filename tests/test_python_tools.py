@@ -48,10 +48,10 @@ def outputs(result):
 
 class TestPythonToolContracts(unittest.TestCase):
     def setUp(self):
-        mean = json.loads((ROOT / "assets/tools/custom/Python/示例/计算图像均值/计算图像均值.json").read_text(encoding="utf-8"))["implementation"]
-        counter = json.loads((ROOT / "assets/tools/custom/Python/示例/调用计数器/调用计数器.json").read_text(encoding="utf-8"))["implementation"]
-        roi = json.loads((ROOT / "assets/tools/custom/Python/示例/ROI几何/ROI几何.json").read_text(encoding="utf-8"))["implementation"]
-        add = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一/图像加一.json").read_text(encoding="utf-8"))["implementation"]
+        mean = json.loads((ROOT / "assets/tools/custom/Python/示例/计算图像均值.json").read_text(encoding="utf-8"))["implementation"]
+        counter = json.loads((ROOT / "assets/tools/custom/Python/示例/调用计数器.json").read_text(encoding="utf-8"))["implementation"]
+        roi = json.loads((ROOT / "assets/tools/custom/Python/示例/ROI几何.json").read_text(encoding="utf-8"))["implementation"]
+        add = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一.json").read_text(encoding="utf-8"))["implementation"]
         self.mean_py = ROOT / "python/custom" / mean["package"] / mean["file"]
         self.counter_py = ROOT / "python/custom" / counter["package"] / counter["file"]
         self.roi_py = ROOT / "python/custom" / roi["package"] / roi["file"]
@@ -212,7 +212,7 @@ class TestPythonToolContracts(unittest.TestCase):
         self.assertEqual(rel["code"], 0)
 
     def test_roi_geometry_returns_three_layer_native_lists(self):
-        declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/ROI几何/ROI几何.json").read_text(encoding="utf-8"))
+        declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/ROI几何.json").read_text(encoding="utf-8"))
         execute = getattr(load_module_from_file(self.roi_py), declaration["implementation"]["symbol"])
         images = [np.zeros((4, 5), dtype=np.uint8), np.zeros((3, 7, 3), dtype=np.uint8)]
         result = execute({1: images})
@@ -232,7 +232,7 @@ class TestPythonToolContracts(unittest.TestCase):
         self.assertNotIn(2, outputs(rejected))
 
     def test_image_add_distinguishes_copy_and_inplace(self):
-        declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一/图像加一.json").read_text(encoding="utf-8"))
+        declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一.json").read_text(encoding="utf-8"))
         execute = getattr(load_module_from_file(self.image_add_py), declaration["implementation"]["symbol"])
         source = np.full((2, 3), 10, dtype=np.uint8)
         copied = execute({1: [source], 2: "copy"})
@@ -253,7 +253,7 @@ class TestPythonToolContracts(unittest.TestCase):
         self.assertNotIn(2, outputs(invalid))
 
     def test_image_add_honours_upstream_status(self):
-        declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一/图像加一.json").read_text(encoding="utf-8"))
+        declaration = json.loads((ROOT / "assets/tools/custom/Python/示例/图像加一.json").read_text(encoding="utf-8"))
         execute = getattr(load_module_from_file(self.image_add_py), declaration["implementation"]["symbol"])
         source = np.full((2, 3), 10, dtype=np.uint8)
         skipped = execute({1: [source], 2: "inplace", 0: 7})

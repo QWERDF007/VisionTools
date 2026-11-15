@@ -11,6 +11,7 @@
 
 #include "common/GeometryTransform.h"
 #include "common/RoiSupport.h"
+#include "common/errors/ToolError.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -66,6 +67,19 @@ cv::Mat rotateReference()
 
 void geometryAndRoi()
 {
+    const std::vector<double> identity{1, 0, 0, 0, 1, 0, 0, 0, 1};
+    const std::vector<Array> malformed{
+        Array::dense(DType::Float64, {1, 1, 9}, identity),
+        Array::fromNested(NestedVector<double, 3>{{{1}, {0, 0}, {0, 1, 0, 0, 0, 1}}}),
+        Array::dense(DType::Float64, {1, 0, 0})};
+    for (const auto &value : malformed)
+    {
+        bool rejected = false;
+        try { (void)geometry::alignmentsFromValue(value, 1); }
+        catch (const ToolFailure &error)
+        { rejected = error.code == static_cast<std::int64_t>(CommonToolError::InputOutOfRange); }
+        REQUIRE(rejected, "alignment accepted a matrix without exactly three rows and columns");
+    }
     const auto rotation = geometry::rotationAround(10.0, 20.0, 90.0);
     double     x = 0, y = 0;
     rotation.apply(10.0, 20.0, x, y);

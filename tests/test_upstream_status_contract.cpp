@@ -84,7 +84,9 @@ void unselectedBranchDoesNothing()
     // instead of failing on the missing input before the tool's own policy runs.
     auto skipped               = brightnessInputs;
     skipped[kUpstreamStatusPort] = std::int64_t{9};
-    skipped[bright::in::IMAGES]  = Missing{};
+    for (auto &[id, value] : skipped)
+        if (id != kUpstreamStatusPort)
+            value = Missing{};
     const auto branch = runBrightness(skipped, {bright::out::IMAGES, bright::out::APPLIED_MASK});
     assert(testview::status(branch).code == 9);
     assert(testview::status(branch).message.find("未选中") != std::string::npos);

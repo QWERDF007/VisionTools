@@ -63,6 +63,22 @@ class PackageFixture(unittest.TestCase):
             "tools": [{"definition": self.declaration.relative_to(self.project).as_posix()}],
         }
         self.manifest = {"variant": "portable-release", "config": "Release", "modules": {}, "runtime_files": []}
+        package.save_json(self.document, self.declaration)
+        package.save_json(self.index, self.project / "tools/package_catalog.json")
+        (self.project / ".gitignore").write_text("/build/\n/dist/\n", encoding="utf-8")
+        subprocess.run(["git", "init", "-qb", "dev"], cwd=self.project, check=True, capture_output=True)
+        self.source_commit = self.commit_sources()
+        self.generated_build_metadata = False
+
+    def commit_sources(self):
+        sources = [path.name for path in self.project.iterdir()
+                   if path.name not in {"build", "dist", ".git"}]
+        subprocess.run(["git", "add", "--", *sources],
+                       cwd=self.project, check=True, capture_output=True)
+        if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=self.project).returncode:
+            subprocess.run(["git", "-c", "user.name=Contract", "-c", "user.email=contract@example.invalid",
+                            "commit", "-qm", "fixture"], cwd=self.project, check=True, capture_output=True)
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.project, text=True).strip()
 
     @property
     def targets(self):
@@ -72,16 +88,19 @@ class PackageFixture(unittest.TestCase):
         package.save_json(self.document, self.declaration)
         package.save_json(self.index, self.project / "tools/package_catalog.json")
         package.save_json(self.manifest, self.build / "Release/resolved_dependencies.json")
-        if not (self.build / "build_info.json").is_file():
+        if not allow_dirty:
+            self.source_commit = self.commit_sources()
+        if self.generated_build_metadata or not (self.build / "build_info.json").is_file():
             package.save_json({
                 "schema_version": 1,
                 "component": "VisionTools",
                 "version": "0.1.0",
-                "commit": "testcommit0123456789abcdef0123456789abcdef",
+                "commit": self.source_commit,
                 "branch": "dev",
                 "dirty": False,
                 "built_at_epoch": 1793148779,
             }, self.build / "build_info.json")
+            self.generated_build_metadata = True
         return package.package_tools(self.build, install_dir or self.output, project_root=self.project,
                                      validator=self.validator, zip_output=zip_output, profile=profile,
                                      allow_dirty=allow_dirty)

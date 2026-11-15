@@ -43,7 +43,7 @@ def check_git_workspace(
     # 1. Query commit
     try:
         res_commit = subprocess.run(
-            [git_cmd, "rev-parse", "HEAD"],
+            [git_cmd, "rev-parse", "--show-prefix", "HEAD"],
             cwd=repo_path,
             capture_output=True,
             text=True,
@@ -51,9 +51,10 @@ def check_git_workspace(
     except (OSError, subprocess.SubprocessError):
         return "unknown", "unknown", "unknown"
 
-    if res_commit.returncode != 0 or not res_commit.stdout.strip():
+    lines = res_commit.stdout.splitlines()
+    if res_commit.returncode != 0 or len(lines) != 2 or lines[0]:
         return "unknown", "unknown", "unknown"
-    commit = res_commit.stdout.strip()
+    commit = lines[1].strip()
 
     # 2. Query branch
     try:

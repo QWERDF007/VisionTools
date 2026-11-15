@@ -356,7 +356,7 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         const bool isDir  = std::filesystem::is_directory(resolved);
         const bool isFile = std::filesystem::is_regular_file(resolved);
         if (!isDir && !isFile)
-            fail(ReadImageError::PathNotFound, utf8Path(resolved), "路径既非文件也非目录");
+            fail(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::PATH) + " 只支持文件或目录：" + utf8Path(resolved));
 
         const bool sourceChanged = !catalog_ || catalog_->rawPath != rawPath || catalog_->recursive != recursive
                                 || catalog_->isDirectory != isDir;

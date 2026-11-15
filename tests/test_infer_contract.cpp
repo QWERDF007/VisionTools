@@ -1,6 +1,8 @@
 #include "src/infer/YoloModel.h"
 #include "src/infer/YoloPostprocess.h"
 #include "TestRegistry.h"
+#include "infer/errors/YoloErrors.h"
+#include <filesystem>
 
 #include <visionrt/contracts/Module.h>
 #include <visionrt/contracts/Tool.h>
@@ -22,7 +24,7 @@
 
 using namespace visionrt::infer;
 
-void testYoloMissingInitParameters()
+void testYoloMissingInitParameters(const std::filesystem::path &executable)
 {
     std::cout << "[TEST] Running testYoloMissingInitParameters..." << std::endl;
     YoloTool tool;
@@ -47,10 +49,18 @@ void testYoloMissingInitParameters()
     REQUIRE(missingLabels.code == 1001, "Missing labels_path must fail before GPU work");
     REQUIRE(missingLabels.message.find(visionrt::portLabel(4)) != std::string::npos,
             "Missing labels_path must be named");
+    partial.emplace(4, std::string("contract-missing-labels.txt"));
+    const auto labels = tool.initialize(partial);
+    const auto target = (executable.parent_path() / "contract-missing-labels.txt").generic_u8string();
+    auto message = labels.message;
+    std::replace(message.begin(), message.end(), '\\', '/');
+    REQUIRE(labels.code == static_cast<std::int64_t>(YoloError::LabelFileInvalid)
+                && message.find(std::string(target.begin(), target.end())) != std::string::npos,
+            "Label target mismatch: " + labels.message + "; expected " + std::string(target.begin(), target.end()));
     std::cout << "[PASS] testYoloMissingInitParameters passed." << std::endl;
 }
 
-int main()
+int main(int, char **argv)
 {
     std::cout << "[TEST] Running test_infer_contract..." << std::endl;
     try
@@ -70,7 +80,7 @@ int main()
         REQUIRE(instance->release().code == 0 && instance->release().code == 0,
                 "Uninitialized inference instance must release idempotently");
         factory.destroy(instance);
-        testYoloMissingInitParameters();
+        testYoloMissingInitParameters(std::filesystem::absolute(argv[0]));
         std::cout << "\n[ALL TESTS PASSED] All infer contract tests passed successfully.\n" << std::endl;
         return 0;
     }

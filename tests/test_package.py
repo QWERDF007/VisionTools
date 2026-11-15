@@ -13,6 +13,21 @@ from package_support import PackageFixture, ROOT, package, package_profile
 
 
 class TestPackageTransaction(PackageFixture):
+    def test_changed_author_source_rejected_in_release(self):
+        self.publish()
+        (self.code / "tool.py").write_text("def run(inputs): return {}\n", encoding="utf-8")
+        with self.assertRaisesRegex(package.PackagingError, "工作区"):
+            package.package_tools(self.build, self.output, project_root=self.project,
+                                  validator=self.validator)
+        package.package_tools(self.build, self.output, project_root=self.project,
+                              validator=self.validator, allow_dirty=True)
+        development = json.loads((self.output / "build_info.json").read_text(encoding="utf-8"))
+        self.assertTrue(development["dirty"])
+        self.commit_sources()
+        with self.assertRaisesRegex(package.PackagingError, "提交.*不一致"):
+            package.package_tools(self.build, self.output, project_root=self.project,
+                                  validator=self.validator)
+
     def test_author_json_lint_preserves_the_previous_package(self):
         self.publish()
         previous = self.state()
@@ -76,7 +91,7 @@ class TestPackageTransaction(PackageFixture):
             "schema_version": 1,
             "component": "VisionTools",
             "version": "0.1.0",
-            "commit": "testcommit0123456789abcdef0123456789abcdef",
+            "commit": self.source_commit,
             "branch": "dev",
             "dirty": False,
             "built_at_epoch": 1793148779,
@@ -226,7 +241,8 @@ class TestPackageTransaction(PackageFixture):
         )
         self.manifest["runtime_files"] = [{"source": str(runtime), "destination": f"bin/{runtime.name}"}]
         system_root = Path(os.environ["SystemRoot"])
-        with patch.dict(os.environ, {"PATH": os.pathsep.join(map(str, [system_root / "System32", system_root]))}):
+        git_directory = Path(shutil.which("git")).parent
+        with patch.dict(os.environ, {"PATH": os.pathsep.join(map(str, [git_directory, system_root / "System32", system_root]))}):
             archive = self.publish()
         self.assertTrue(archive.is_file())
 

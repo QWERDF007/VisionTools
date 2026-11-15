@@ -27,11 +27,7 @@ from package_payload import CopyPlan, PackagingError, ToolPayload, load_json, re
 _cmake_dir = Path(__file__).resolve().parent.parent / "cmake"
 if str(_cmake_dir) not in sys.path:
     sys.path.insert(0, str(_cmake_dir))
-try:
-    from check_git_workspace import check_git_workspace, is_whitelisted
-except ImportError:
-    check_git_workspace = None
-    is_whitelisted = None
+from check_git_workspace import check_git_workspace
 
 
 MARKER_NAME = ".visiontools-package.json"
@@ -514,6 +510,7 @@ def package_tools(
     targets = resolve_targets(install_dir, project_root, zip_output)
     metadata, index, build_validator, payloads = _load_build(build_dir, config, project_root, validator, profile)
     _validate_targets(targets, project_root, build_dir)
+    source_commit, _, source_dirty = check_git_workspace(project_root)
     _precheck_payload(metadata, payloads)
 
     token = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
@@ -552,7 +549,15 @@ def package_tools(
                     raise PackagingError(f"{build_metadata_path} 的 commit 处于未知状态（{commit}），发布模式拒绝该候选")
                 if dirty is not False:
                     raise PackagingError(f"{build_metadata_path} 的 dirty 处于非干净状态（{dirty}），发布模式拒绝脏工作区或未知候选")
-            shutil.copy2(build_metadata_path, staging_dir / "build_info.json")
+                if source_dirty is not False:
+                    raise PackagingError("当前源码工作区不干净或状态未知，发布模式拒绝该候选")
+                if source_commit != commit:
+                    raise PackagingError("当前源码工作区提交与构建元数据不一致，请重新构建")
+            elif source_dirty is not False or source_commit != commit:
+                build_metadata["dirty"] = True
+                if source_commit != commit:
+                    build_metadata["source_commit"] = source_commit
+            save_json(build_metadata, staging_dir / "build_info.json")
 
         _write_marker(staging_dir, targets.group)
         if not verify_package(staging_dir, build_validator):

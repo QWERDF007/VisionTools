@@ -22,10 +22,6 @@ std::vector<std::vector<Record>> groups(const visionrt::PortValue &value, std::s
 // True when at least one image carries at least one record.
 bool anyRecord(const std::vector<std::vector<Record>> &records) noexcept;
 
-// Pixel-center containment in reference coordinates; `toReference` maps current
-// image coordinates back to the reference frame. Area kinds only.
-bool contains(const Record &record, double currentX, double currentY, const geometry::Alignment &toReference);
-
 // CV_8UC1 mask (0 or 255) of the union of all records of one image, evaluated at
 // pixel centers in reference coordinates.
 cv::Mat regionMask(const std::vector<Record> &records, cv::Size size, const geometry::Alignment &toReference);

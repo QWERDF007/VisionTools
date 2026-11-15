@@ -106,15 +106,27 @@ std::vector<Alignment> alignmentsFromValue(const visionrt::PortValue &value, std
     const auto &array = std::get<visionrt::Array>(value);
     if (array.type() != visionrt::TypeSpec{visionrt::Type::Array, visionrt::DType::Float64, 3})
         fail(CommonToolError::InputTypeMismatch, "alignment 必须是 Array(float64, rank=3)");
-    const auto matrices = array.elements<double>();
-    if (matrices.empty())
+    const auto count = array.layout() == visionrt::ArrayLayout::Dense
+        ? static_cast<std::size_t>(array.shape().front()) : array.offsets().front().size() - 1;
+    if (count == 0)
     {
         result.assign(std::max<std::size_t>(1, imageCount), Alignment::identity());
         return result;
     }
-    if (matrices.size() % 9 != 0)
-        fail(CommonToolError::InputOutOfRange, "alignment 的元素数量必须是 9 的整数倍");
-    result.reserve(matrices.size() / 9);
+    if (array.layout() == visionrt::ArrayLayout::Dense)
+    {
+        if (array.shape()[1] != 3 || array.shape()[2] != 3)
+            fail(CommonToolError::InputOutOfRange, "alignment 每个矩阵必须是 3 行 3 列");
+    }
+    else
+    {
+        for (const auto &level : array.offsets())
+            for (std::size_t index = 1; index < level.size(); ++index)
+                if (level[index] - level[index - 1] != 3)
+                    fail(CommonToolError::InputOutOfRange, "alignment 每个矩阵必须是 3 行 3 列");
+    }
+    const auto matrices = array.elements<double>();
+    result.reserve(count);
     for (std::size_t offset = 0; offset < matrices.size(); offset += 9)
     {
         auto alignment = Alignment::fromRows(matrices.subspan(offset, 9));

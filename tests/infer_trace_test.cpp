@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <filesystem>
 #include <string>
 
 #define REQUIRE(cond, msg)                                                                                      \

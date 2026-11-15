@@ -119,6 +119,7 @@ int main(int argc, char **argv)
         return 1;
     }
     std::filesystem::path target(wargv[1]);
+    const auto executable = std::filesystem::absolute(std::filesystem::path(wargv[0]));
     LocalFree(wargv);
 #else
     if (argc < 2)
@@ -128,6 +129,7 @@ int main(int argc, char **argv)
         return 1;
     }
     std::filesystem::path target(argv[1]);
+    const auto executable = std::filesystem::absolute(std::filesystem::path(argv[0]));
 #endif
     if (!std::filesystem::exists(target))
     {
@@ -349,8 +351,8 @@ int main(int argc, char **argv)
         REQUIRE(inst != nullptr, "Create image.read must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize image.read must succeed");
 
-        const auto tempPath = std::filesystem::path(u8"test_consumer_中文.png");
-        const auto encodedPath = tempPath.generic_u8string();
+        const auto tempPath = executable.parent_path() / u8"test_consumer_中文.png";
+        const auto encodedPath = tempPath.filename().generic_u8string();
         const std::string utf8Path(reinterpret_cast<const char *>(encodedPath.data()), encodedPath.size());
         cv::Mat     sample(24, 24, CV_8UC3, cv::Scalar(10, 20, 30));
         std::vector<unsigned char> encoded;

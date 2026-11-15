@@ -6,6 +6,7 @@
 #include "common/ImageSupport.h"
 #include "common/InputValues.h"
 #include "common/RoiSupport.h"
+#include "common/UpstreamStatus.h"
 #include "common/errors/GeometryErrors.h"
 #include "common/errors/ToolError.h"
 
@@ -92,18 +93,13 @@ visionrt::ToolResult brightnessTool(const visionrt::Values &values)
     BrightnessInputs  inputs;
     BrightnessOutputs outputs;
 
+    if (const auto upstream = upstreamStatus(values); upstream != 0)
+        return skippedByUpstream(upstream, outputs.pack().outputs);
+
     const auto parsed = inputs.parse(values);
     if (!parsed)
     {
         outputs.status = parsed;
-        return outputs.pack();
-    }
-    // An unselected upstream branch is not an error: no algorithm runs and nothing is written,
-    // and the missing image is not consulted at all. Declared-optional input first, policy
-    // second - the order the declaration promises.
-    if (inputs.upstreamStatus != 0)
-    {
-        outputs.status = {inputs.upstreamStatus, "上游未选中本分支，工具未执行"};
         return outputs.pack();
     }
     if (!inputs.images)

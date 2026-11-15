@@ -103,7 +103,7 @@ try
         assert(testview::businessCount(withExtra) == 2);
     }
 
-    std::cout << "ABI9 crop views retain external owners and share writable pixels\n";
+    std::cout << "Crop views retain external owners and share writable pixels\n";
     return 0;
 }
 catch (const std::exception &error)

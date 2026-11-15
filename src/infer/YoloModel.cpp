@@ -120,9 +120,10 @@ std::vector<std::string> labels(const Values &values, int count)
     const auto               path = text(values, yolo_ports::init::LABELS_PATH);
     if (!path.empty())
     {
-        std::ifstream file(resolvedPath(path, YoloError::LabelFileInvalid), std::ios::binary);
+        const auto resolved = resolvedPath(path, YoloError::LabelFileInvalid);
+        std::ifstream file(resolved, std::ios::binary);
         if (!file)
-            fail(YoloError::LabelFileInvalid, path, "无法打开文件");
+            fail(YoloError::LabelFileInvalid, utf8Path(resolved), "无法打开文件");
         std::string line;
         while (std::getline(file, line))
         {
@@ -134,7 +135,7 @@ std::vector<std::string> labels(const Values &values, int count)
             result.push_back(std::move(line));
         }
         if (file.bad() || result.size() != static_cast<std::size_t>(count))
-            fail(YoloError::LabelFileInvalid, path, "必须包含 num_classes 行 UTF-8 文本");
+            fail(YoloError::LabelFileInvalid, utf8Path(resolved), "必须包含 num_classes 行 UTF-8 文本");
     }
     else
     {
@@ -263,13 +264,25 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         if (!state->model)
             return status(YoloError::ModelLoadFailed, "InferRT CreateModel(yolov8n) 返回空");
         const auto resolved = resolvedPath(modelPath, YoloError::ModelLoadFailed);
-        if (mode == "engine")
-            state->model->load(utf8Path(resolved));
-        else
+        try
         {
-            state->model->build(utf8Path(resolved));
-            if (!outputPath.empty())
-                state->model->save(utf8Path(resolvedPath(outputPath, YoloError::EngineOutputFailed)));
+            if (mode == "engine")
+                state->model->load(utf8Path(resolved));
+            else
+                state->model->build(utf8Path(resolved));
+        }
+        catch (const std::exception &error)
+        {
+            fail(YoloError::ModelLoadFailed, utf8Path(resolved), error.what());
+        }
+        if (mode == "build_wts" && !outputPath.empty())
+        {
+            const auto output = resolvedPath(outputPath, YoloError::EngineOutputFailed);
+            try { state->model->save(utf8Path(output)); }
+            catch (const std::exception &error)
+            {
+                fail(YoloError::EngineOutputFailed, utf8Path(output), error.what());
+            }
         }
         auto inputs  = state->model->inputs();
         auto outputs = state->model->outputs();
