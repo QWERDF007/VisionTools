@@ -46,7 +46,7 @@ void testDetectionFilterTool()
         inputs.insert_or_assign(filter_ports::in::MIN_SCORE, std::string("not_a_number"));
         auto res = tool.execute(inputs);
         requireFailure(res, "浮点", "String min_score must be rejected");
-        REQUIRE(testview::status(res).message.find(portLabel(filter_ports::in::MIN_SCORE)) != std::string::npos, "Error must mention min_score");
+        REQUIRE(testview::status(res).message.find("最低置信度") != std::string::npos, "Error must mention min_score");
     }
     {
         auto inputs = detectionInputs();
@@ -58,21 +58,21 @@ void testDetectionFilterTool()
         auto inputs = detectionInputs();
         inputs.erase(filter_ports::in::MIN_SCORE);
         auto res = tool.execute(inputs);
-        requireFailure(res, filter_ports::in::MIN_SCORE, "Missing min_score must be rejected");
+        requireFailure(res, "最低置信度", "Missing min_score must be rejected");
         REQUIRE(testview::status(res).message.find("缺失") != std::string::npos, "Missing value must be Chinese");
     }
     {
         auto inputs = detectionInputs();
         inputs.insert_or_assign(filter_ports::in::MIN_SCORE, 1.5);
         auto res = tool.execute(inputs);
-        requireFailure(res, filter_ports::in::MIN_SCORE, "Out-of-range min_score must be rejected");
+        requireFailure(res, "最低置信度", "Out-of-range min_score must be rejected");
         REQUIRE(testview::status(res).message.find("[0") != std::string::npos, "Range must be stated");
     }
     {
         auto inputs = detectionInputs();
         inputs.insert_or_assign(filter_ports::in::MIN_AREA, -1.0);
         auto res = tool.execute(inputs);
-        requireFailure(res, filter_ports::in::MIN_AREA, "Negative min_area must be rejected");
+        requireFailure(res, "最小面积", "Negative min_area must be rejected");
         REQUIRE(testview::status(res).message.find("非负") != std::string::npos, "Error must state non-negative");
     }
     {

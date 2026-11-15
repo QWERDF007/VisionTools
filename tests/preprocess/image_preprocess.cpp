@@ -61,7 +61,7 @@ void testImagePreprocessTool()
         Values inputs;
         inputs.emplace(preprocess_ports::in::IMAGES, DataRef<Image>(Image{owned}));
         auto res = tool.execute(inputs);
-        requireFailure(res, preprocess_ports::in::OPERATION, "Missing operation must fail");
+        requireFailure(res, "操作类型", "Missing operation must fail");
         REQUIRE(testview::status(res).message.find("缺失") != std::string::npos, "Missing value must be Chinese");
     }
     {
@@ -69,7 +69,7 @@ void testImagePreprocessTool()
         inputs.emplace(preprocess_ports::in::IMAGES, DataRef<Image>(Image{owned}));
         inputs.emplace(preprocess_ports::in::OPERATION, std::string("unknown"));
         auto res = tool.execute(inputs);
-        requireFailure(res, preprocess_ports::in::OPERATION, "Invalid operation must fail");
+        requireFailure(res, "操作类型", "Invalid operation must fail");
         REQUIRE(testview::status(res).message.find("unknown") != std::string::npos, "Error must include the invalid value");
     }
     {
@@ -86,7 +86,7 @@ void testImagePreprocessTool()
         inputs.emplace(preprocess_ports::in::OPERATION, std::string("gaussian"));
         inputs.emplace(preprocess_ports::in::KERNEL, std::int64_t(1) << 40);
         auto res = tool.execute(inputs);
-        requireFailure(res, preprocess_ports::in::KERNEL, "Kernel outside int range must fail before narrowing");
+        requireFailure(res, "高斯核大小", "Kernel outside int range must fail before narrowing");
     }
     {
         Values inputs;
@@ -94,7 +94,7 @@ void testImagePreprocessTool()
         inputs.emplace(preprocess_ports::in::OPERATION, std::string("threshold"));
         inputs.emplace(preprocess_ports::in::THRESHOLD, std::int64_t(300));
         auto res = tool.execute(inputs);
-        requireFailure(res, preprocess_ports::in::THRESHOLD, "Out-of-range threshold must fail");
+        requireFailure(res, "二值化阈值", "Out-of-range threshold must fail");
         REQUIRE(testview::status(res).message.find("[0, 255]") != std::string::npos, "Range must be stated");
     }
 

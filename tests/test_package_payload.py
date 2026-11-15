@@ -8,6 +8,14 @@ from package_support import PackageFixture, package
 
 
 class TestPackagePayload(PackageFixture):
+    def test_sdk_error_catalog_is_shipped_as_a_resource(self):
+        catalog = self.project / "python/author_sdk/visiontools_sdk/errors.json"
+        catalog.write_text('[{"code":1008,"message":"路径为空"}]', encoding="utf-8")
+        archive = self.publish()
+        with zipfile.ZipFile(archive) as bundle:
+            shipped = bundle.read("python/custom/examples/math/visiontools_sdk/errors.json")
+            self.assertEqual(json.loads(shipped)[0]["code"], 1008)
+
     def test_package_can_select_the_origin_root(self):
         self.document["implementation"]["package"] = "."
         self.document["implementation"]["file"] = "examples/math/tool.py"

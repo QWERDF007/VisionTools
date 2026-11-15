@@ -81,8 +81,8 @@ void testReadImageTool()
         // 1.1 空路径必须失败
         Values inputs = defaultInputs("");
         auto   res    = tool.execute(inputs);
-        requireFailure(res, read_ports::in::PATH, "Empty path must fail");
-        REQUIRE(testview::status(res).message.find("输入缺失") != std::string::npos,
+        requireFailure(res, "图像路径", "Empty path must fail");
+        REQUIRE(testview::status(res).message == "图像路径为空",
                 "Empty path must be reported as a missing input");
 
         // 1.2 不存在的路径必须报错
@@ -94,13 +94,13 @@ void testReadImageTool()
         inputs = defaultInputs(filesDir);
         inputs.insert_or_assign(read_ports::in::COUNT, std::int64_t(0));
         res = tool.execute(inputs);
-        requireFailure(res, read_ports::in::COUNT, "count < 1 must be rejected");
+        requireFailure(res, "图像数量", "count < 1 must be rejected");
 
         // 1.4 无效遍历模式拒绝
         inputs = defaultInputs(filesDir);
         inputs.insert_or_assign(read_ports::in::TRAVERSAL, std::string("random"));
         res = tool.execute(inputs);
-        requireFailure(res, read_ports::in::TRAVERSAL, "Invalid traversal must be rejected");
+        requireFailure(res, "遍历选项", "Invalid traversal must be rejected");
 
         // 1.5 空目录明确失败
         inputs = defaultInputs(emptyDir);
@@ -592,7 +592,7 @@ requireFailure(res, "图像序列已结束", "Exhausted non-loop sequence must f
         Values mistyped = inputs;
         mistyped.insert_or_assign(read_ports::in::RELOAD, std::string("true"));
         const auto rejected = tool.execute(mistyped);
-        requireFailure(rejected, read_ports::in::RELOAD, "a string RELOAD must be a type error");
+        requireFailure(rejected, "重新读图", "a string RELOAD must be a type error");
         for (const auto port : {read_ports::out::IMAGES, read_ports::out::PATHS, read_ports::out::CURRENT_INDEX,
                                 read_ports::out::TOTAL_COUNT, read_ports::out::END_REACHED})
             REQUIRE(isMissing(rejected.outputs.at(port)), "a rejected input must publish Missing business ports");

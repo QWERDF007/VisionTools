@@ -220,7 +220,7 @@ class ToolPayload:
             sdk = self.project_root / "python/author_sdk/visiontools_sdk"
             if not sdk.is_dir():
                 raise PackagingError(f"作者 SDK 缺失：{sdk}")
-            for path in _files(sdk, sdk, True):
+            for path in _files(sdk, sdk, False):
                 plan.add(path, destination / "visiontools_sdk" / path.relative_to(sdk))
         resources = self.resources()
         for source, destination, boundary in resources:

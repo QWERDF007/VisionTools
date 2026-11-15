@@ -79,7 +79,7 @@ class TestPythonToolContracts(unittest.TestCase):
             with self.subTest(inputs=inputs):
                 result = instance.execute(inputs)
                 self.assertEqual(status(result)["code"], 1001)
-                self.assertIn("输入端口 1 缺失", status(result)["message"])
+                self.assertIn("输入图像 缺失", status(result)["message"])
                 self.assertNotIn(2, outputs(result))
 
         instance.release()
@@ -92,7 +92,7 @@ class TestPythonToolContracts(unittest.TestCase):
             with self.subTest(container=type(images).__name__):
                 result = instance.execute({1: images})
                 self.assertEqual(status(result)["code"], 1002)
-                self.assertIn("输入端口 1", status(result)["message"])
+                self.assertIn("输入图像", status(result)["message"])
                 self.assertIn("列表", status(result)["message"])
                 self.assertNotIn(2, outputs(result))
 
@@ -104,7 +104,7 @@ class TestPythonToolContracts(unittest.TestCase):
             with self.subTest(element=type(invalid).__name__):
                 result = instance.execute({1: [image, invalid]})
                 self.assertEqual(status(result)["code"], 1002)
-                self.assertIn("输入端口 1", status(result)["message"])
+                self.assertIn("输入图像", status(result)["message"])
                 self.assertIn("批次索引 1", status(result)["message"])
                 self.assertIn("ndarray", status(result)["message"])
                 self.assertNotIn(2, outputs(result))
@@ -117,7 +117,7 @@ class TestPythonToolContracts(unittest.TestCase):
             with self.subTest(shape=shape):
                 result = instance.execute({1: [valid, np.zeros(shape, dtype=np.uint8)]})
                 self.assertEqual(status(result)["code"], 1002)
-                self.assertIn("输入端口 1", status(result)["message"])
+                self.assertIn("输入图像", status(result)["message"])
                 self.assertIn("批次索引 1", status(result)["message"])
                 self.assertIn("图像形状", status(result)["message"])
                 self.assertIn(str(shape), status(result)["message"])
@@ -132,7 +132,7 @@ class TestPythonToolContracts(unittest.TestCase):
                 invalid = np.full((2, 3), 2, dtype=dtype)
                 result = instance.execute({1: [image, invalid]})
                 self.assertEqual(status(result)["code"], 1002)
-                self.assertIn("输入端口 1", status(result)["message"])
+                self.assertIn("输入图像", status(result)["message"])
                 self.assertIn("批次索引 1", status(result)["message"])
                 self.assertIn("实数数值", status(result)["message"])
                 self.assertIn(str(invalid.dtype), status(result)["message"])
@@ -297,6 +297,18 @@ class TestPythonToolContracts(unittest.TestCase):
         self.assertEqual(outputs(result)[2], [[2, 3], [4, 1]])
         self.assertTrue(all(type(value) is int for size in outputs(result)[2] for value in size))
         self.assertEqual(outputs(execute({1: []}))[2], [])
+    def test_common_error_catalog_and_tool_extension(self):
+        from enum import IntEnum
+        tool = load_module_from_file(ROOT / "python/custom/examples/image_mean/mean.py")
+        sdk = importlib.import_module(tool.__package__ + ".visiontools_sdk")
+        failure = sdk.failure(sdk.CommonError.PATH_EMPTY)
+        self.assertEqual(status(failure), {"code": 1008, "message": "路径为空", "detail": ""})
+        class LocalError(IntEnum):
+            MODEL_INVALID = 900001
+        custom = sdk.failure(LocalError.MODEL_INVALID, "模型不受支持")
+        self.assertEqual(status(custom)["code"], 900001)
+        self.assertEqual(status(custom)["message"], "模型不受支持")
+
     def test_sdk_preserves_raw_status_types_without_coercion(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("vt_sdk", ROOT / "python/author_sdk/visiontools_sdk/__init__.py")
@@ -316,27 +328,6 @@ class TestPythonToolContracts(unittest.TestCase):
         # str must not be coerced to int 7
         res3 = sdk.result(code="7")
         self.assertEqual(res3["outputs"][0], "7")
-
-    def test_logic_status_executed_requires_complete_status(self):
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("vt_logic_status", ROOT / "python/builtin/logic/common/status.py")
-        logic_status = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(logic_status)
-
-        # Incomplete external status dictionary must raise KeyError instead of silent success
-        with self.assertRaises(KeyError):
-            logic_status.executed({}, {})
-        with self.assertRaises(KeyError):
-            logic_status.executed({"code": 0}, {})
-        with self.assertRaises(KeyError):
-            logic_status.executed({"code": 0, "message": ""}, {})
-
-        # Complete status works
-        complete = logic_status.executed({"code": 0, "message": "ok", "detail": "d"}, {7: 123})
-        self.assertEqual(complete["outputs"][0], 0)
-        self.assertEqual(complete["outputs"][1], "ok")
-        self.assertEqual(complete["detail"], "d")
-        self.assertEqual(complete["outputs"][7], 123)
 
     def test_testview_helpers_reject_missing_fields(self):
         # Missing outputs

@@ -15,16 +15,16 @@ namespace visiontools {
 
 // Shared image boundary for the tools that do not use the typed parameter view. A failure here is
 // an expected business failure: it leaves through the tool's own execute() as a status.
-inline const std::vector<cv::Mat> &requireImages(const visionrt::Values &inputs, visionrt::PortId id)
+inline const std::vector<cv::Mat> &requireImages(const visionrt::Values &inputs, visionrt::PortId id, std::string_view name)
 {
     const auto found = inputs.find(id);
     if (found == inputs.end() || visionrt::isMissing(found->second))
-        fail(CommonToolError::InputMissing, id);
+        fail(CommonToolError::InputMissing, name);
     const auto *images = std::get_if<visionrt::DataRef<visionrt::Image>>(&found->second);
     if (!images)
-        fail(CommonToolError::InputTypeMismatch, visionrt::portLabel(id) + " 必须是图像");
+        fail(CommonToolError::InputTypeMismatch, std::string(name) + " 必须是图像");
     if (images->get().empty())
-        fail(CommonToolError::InputMissing, visionrt::portLabel(id) + " 没有图像");
+        fail(CommonToolError::InputMissing, std::string(name) + " 没有图像");
     return images->get();
 }
 
@@ -56,21 +56,21 @@ inline std::pair<double, double> requireDepthRange(int depth)
     }
 }
 
-// border_value carries one scalar or one value per channel, in the image dtype range.
+// 边界填充值 carries one scalar or one value per channel, in the image dtype range.
 inline cv::Scalar borderScalar(const visionrt::PortValue &value, int channels, int depth)
 {
     if (visionrt::isMissing(value))
-        fail(CommonToolError::InputMissing, "border_value");
+        fail(CommonToolError::InputMissing, "边界填充值");
     const auto *array = std::get_if<visionrt::Array>(&value);
     if (!array || array->type() != visionrt::TypeSpec{visionrt::Type::Array, visionrt::DType::Float64, 1})
-        fail(CommonToolError::InputTypeMismatch, "border_value 必须是 Array(float64, rank=1)");
+        fail(CommonToolError::InputTypeMismatch, "边界填充值 必须是 Array(float64, rank=1)");
     const auto values = array->elements<double>();
     if (values.size() != 1 && values.size() != static_cast<std::size_t>(channels))
-        fail(CommonToolError::InputOutOfRange, "border_value 长度必须为 1 或图像通道数");
+        fail(CommonToolError::InputOutOfRange, "边界填充值 长度必须为 1 或图像通道数");
     const auto [minimum, maximum] = requireDepthRange(depth);
     for (const double item : values)
         if (!std::isfinite(item) || item < minimum || item > maximum)
-            fail(CommonToolError::InputOutOfRange, "border_value 超出图像深度可表示范围");
+            fail(CommonToolError::InputOutOfRange, "边界填充值 超出图像深度可表示范围");
     cv::Scalar scalar{values[0], values[0], values[0], values[0]};
     for (int channel = 0; channel < channels; ++channel)
         scalar[channel] = values.size() == 1 ? values[0] : values[static_cast<std::size_t>(channel)];

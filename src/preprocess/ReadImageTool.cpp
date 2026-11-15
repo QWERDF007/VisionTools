@@ -96,7 +96,7 @@ std::vector<std::filesystem::path> scanDirectory(const std::filesystem::path &ro
 
 visionrt::ToolStatus ReadImageInputs::readFields(visionrt::InputReader &reader)
 {
-    Readings readings(reader);
+    Readings readings(reader, "ReadImage");
     path      = readings.text(p::in::PATH);
     recursive = readings.boolean(p::in::RECURSIVE);
     traversal = readings.text(p::in::TRAVERSAL);
@@ -106,7 +106,7 @@ visionrt::ToolStatus ReadImageInputs::readFields(visionrt::InputReader &reader)
     if (readings.failed())
         return readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch);
     if (path.empty())
-        return status(CommonToolError::InputMissing, p::in::PATH, "读图路径不能为空");
+        return {static_cast<std::int64_t>(CommonToolError::PathEmpty), "图像路径为空"};
     return {};
 }
 
@@ -325,7 +325,7 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         else if (traversal == "不循环" || traversal == "once")
             isLoop = false;
         else
-            fail(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::TRAVERSAL) + " 只接受 循环/不循环，实际值：" + traversal);
+            fail(CommonToolError::InputOutOfRange, parameterName("ReadImage", "inputs", p::in::TRAVERSAL) + " 只接受 循环/不循环，实际值：" + traversal);
 
         const auto &order     = args.order;
         bool       isReverse = false;
@@ -335,12 +335,12 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
             isReverse = false;
         else
             fail(CommonToolError::InputOutOfRange,
-                 visionrt::portLabel(p::in::ORDER) + " 只接受 顺序（下一张）/逆序（上一张），实际值：" + order);
+                 parameterName("ReadImage", "inputs", p::in::ORDER) + " 只接受 顺序（下一张）/逆序（上一张），实际值：" + order);
 
         const auto count = args.count;
         if (count < 1 || count > kMaxCount)
             fail(CommonToolError::InputOutOfRange,
-                 visionrt::portLabel(p::in::COUNT) + " 必须在 1–" + std::to_string(kMaxCount) + " 之间，实际值：" + std::to_string(count));
+                 parameterName("ReadImage", "inputs", p::in::COUNT) + " 必须在 1–" + std::to_string(kMaxCount) + " 之间，实际值：" + std::to_string(count));
 
         std::filesystem::path resolved;
         try
@@ -356,7 +356,7 @@ visionrt::ToolResult ReadImageTool::execute(const visionrt::Values &inputs)
         const bool isDir  = std::filesystem::is_directory(resolved);
         const bool isFile = std::filesystem::is_regular_file(resolved);
         if (!isDir && !isFile)
-            fail(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::PATH) + " 只支持文件或目录：" + utf8Path(resolved));
+            fail(CommonToolError::InputOutOfRange, parameterName("ReadImage", "inputs", p::in::PATH) + " 只支持文件或目录：" + utf8Path(resolved));
 
         const bool sourceChanged = !catalog_ || catalog_->rawPath != rawPath || catalog_->recursive != recursive
                                 || catalog_->isDirectory != isDir;

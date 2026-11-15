@@ -27,6 +27,14 @@ protocol: a functional tool returns them directly, and a class tool uses
 """
 
 from abc import ABC, abstractmethod
+from enum import IntEnum
+import json as _json
+from pathlib import Path as _Path
+
+_COMMON_ERRORS = _json.loads((_Path(__file__).parent / "errors.json").read_text(encoding="utf-8"))
+CommonError = IntEnum("CommonError", {item["python"]: item["code"] for item in _COMMON_ERRORS})
+COMMON_MESSAGES = {item["code"]: item["message"] for item in _COMMON_ERRORS}
+
 
 # NumPy carries rectangular numeric arrays. The host refuses an interpreter without it, so a
 # missing import here is a broken environment, not a capability a tool may silently lose.
@@ -67,7 +75,7 @@ class ContractError(ValueError):
 
 def status(code=0, message="", detail=""):
     """The single status a lifecycle call returns."""
-    return {"code": code, "message": message, "detail": detail}
+    return {"code": int(code) if isinstance(code, IntEnum) else code, "message": message, "detail": detail}
 
 
 def result(outputs=None, code=0, message="", detail=""):
@@ -77,7 +85,7 @@ def result(outputs=None, code=0, message="", detail=""):
         _port(key)
         if key in RESERVED_PORTS:
             raise ContractError("状态由宿主发布，工具不得写入输出" + _label(key))
-    res[0] = code
+    res[0] = int(code) if isinstance(code, IntEnum) else code
     res[1] = message
     return {"outputs": res, "detail": detail}
 
@@ -87,9 +95,9 @@ def success(outputs=None, message="运行成功"):
     return result(outputs, 0, message)
 
 
-def failure(code, message, detail="", outputs=None):
+def failure(code, message=None, detail="", outputs=None):
     """A business failure. ``outputs`` keeps the declared ports, with ``None`` for no value."""
-    return result(outputs, code, message, detail)
+    return result(outputs, int(code), COMMON_MESSAGES[int(code)] if message is None else message, detail)
 
 
 def skipped(upstream_status, outputs=None):
@@ -105,14 +113,18 @@ def is_missing(value):
 class InputReader:
     """Typed reads over the same dict the host passes in."""
 
-    def __init__(self, values):
+    def __init__(self, values, names=None):
         if not isinstance(values, dict):
             raise ContractError("输入必须是端口字典")
         self._values = values
+        self._names = {} if names is None else names
 
     @property
     def values(self):
         return self._values
+
+    def _label(self, key):
+        return self._names.get(key, _label(key))
 
     def _find(self, key):
         value = self._values.get(_port(key))
@@ -124,37 +136,37 @@ class InputReader:
     def _require(self, key):
         value = self._find(key)
         if value is None:
-            raise ContractError("输入" + _label(key) + "缺失")
+            raise ContractError("输入" + self._label(key) + "缺失")
         return value
 
     def integer(self, key):
         value = self._require(key)
         if isinstance(value, bool) or not isinstance(value, int):
-            raise ContractError("输入" + _label(key) + "类型不匹配（期望整数）")
+            raise ContractError("输入" + self._label(key) + "类型不匹配（期望整数）")
         return value
 
     def real(self, key):
         value = self._require(key)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ContractError("输入" + _label(key) + "类型不匹配（期望浮点数）")
+            raise ContractError("输入" + self._label(key) + "类型不匹配（期望浮点数）")
         return float(value)
 
     def boolean(self, key):
         value = self._require(key)
         if not isinstance(value, bool):
-            raise ContractError("输入" + _label(key) + "类型不匹配（期望布尔值）")
+            raise ContractError("输入" + self._label(key) + "类型不匹配（期望布尔值）")
         return value
 
     def text(self, key):
         value = self._require(key)
         if not isinstance(value, str):
-            raise ContractError("输入" + _label(key) + "类型不匹配（期望字符串）")
+            raise ContractError("输入" + self._label(key) + "类型不匹配（期望字符串）")
         return value
 
     def array(self, key):
         value = self._require(key)
         if not _is_array(value):
-            raise ContractError("输入" + _label(key) + "类型不匹配（期望 ndarray 或列表）")
+            raise ContractError("输入" + self._label(key) + "类型不匹配（期望 ndarray 或列表）")
         return value
 
     def optional_integer(self, key):
@@ -162,7 +174,7 @@ class InputReader:
         if value is None:
             return None
         if isinstance(value, bool) or not isinstance(value, int):
-            raise ContractError("输入" + _label(key) + "类型不匹配（期望整数）")
+            raise ContractError("输入" + self._label(key) + "类型不匹配（期望整数）")
         return value
 
     def optional_real(self, key):
@@ -170,7 +182,7 @@ class InputReader:
         if value is None:
             return None
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ContractError("输入" + _label(key) + "类型不匹配（期望浮点数）")
+            raise ContractError("输入" + self._label(key) + "类型不匹配（期望浮点数）")
         return float(value)
 
     def optional_boolean(self, key):
@@ -178,7 +190,7 @@ class InputReader:
         if value is None:
             return None
         if not isinstance(value, bool):
-            raise ContractError("输入" + _label(key) + "类型不匹配（期望布尔值）")
+            raise ContractError("输入" + self._label(key) + "类型不匹配（期望布尔值）")
         return value
 
     def optional_text(self, key):
@@ -186,7 +198,7 @@ class InputReader:
         if value is None:
             return None
         if not isinstance(value, str):
-            raise ContractError("输入" + _label(key) + "类型不匹配（期望字符串）")
+            raise ContractError("输入" + self._label(key) + "类型不匹配（期望字符串）")
         return value
 
     def optional_array(self, key):
@@ -194,7 +206,7 @@ class InputReader:
         if value is None:
             return None
         if not _is_array(value):
-            raise ContractError("输入" + _label(key) + "类型不匹配（期望 ndarray 或列表）")
+            raise ContractError("输入" + self._label(key) + "类型不匹配（期望 ndarray 或列表）")
         return value
 
     # Raw access for ports a tool inspects without committing to one payload kind.
@@ -248,7 +260,7 @@ class InputParametersBase(ABC):
         self.upstream_status = 0
 
     def parse(self, values):
-        reader = InputReader(values)
+        reader = InputReader(values, getattr(self, "parameter_names", None))
         raw = reader.values.get(UPSTREAM_STATUS_PORT)
         if raw is None:
             self.upstream_status = 0

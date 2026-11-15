@@ -21,7 +21,7 @@ void testAdaptiveBinaryTool()
     // 1. Missing input
     {
         auto res = tool.execute({});
-        requireFailure(res, ab::in::IMAGES, "Missing input 'images' must fail");
+        requireFailure(res, "输入图像", "Missing input 'images' must fail");
         REQUIRE(testview::status(res).message.find("缺失") != std::string::npos, "Error must be Chinese");
         REQUIRE(isMissing(res.outputs[ab::out::IMAGES]), "Output must be Missing");
     }
@@ -32,7 +32,7 @@ void testAdaptiveBinaryTool()
         inputs.emplace(ab::in::IMAGES, std::int64_t(42));
         auto res = tool.execute(inputs);
         requireFailure(res, "图像", "Non-Image must fail");
-        REQUIRE(testview::status(res).message.find(portLabel(ab::in::IMAGES)) != std::string::npos, "Error must mention port 'images'");
+        REQUIRE(testview::status(res).message.find("图像") != std::string::npos, "Error must mention port 'images'");
     }
 
     // 3. B=0 -> success with empty batch
@@ -51,7 +51,7 @@ void testAdaptiveBinaryTool()
         Values inputs;
         inputs.emplace(ab::in::IMAGES, DataRef<Image>(Image{(gradient(32, 32)).clone()}));
         auto res = tool.execute(inputs);
-        requireFailure(res, ab::in::BLOCK_SIZE, "Missing block_size must fail");
+        requireFailure(res, "邻域大小", "Missing block_size must fail");
         REQUIRE(testview::status(res).message.find("缺失") != std::string::npos, "Missing value must be Chinese");
     }
 
@@ -74,7 +74,7 @@ void testAdaptiveBinaryTool()
         inputs.emplace(ab::in::BLOCK_SIZE, value);
         inputs.emplace(ab::in::CONSTANT_OFFSET, 2.0);
         auto res = tool.execute(inputs);
-        requireFailure(res, ab::in::BLOCK_SIZE, "block_size outside the declared range must fail");
+        requireFailure(res, "邻域大小", "block_size outside the declared range must fail");
         REQUIRE(testview::status(res).message.find("[3, 999]") != std::string::npos, "Range failure must state the allowed range");
     }
 
@@ -86,7 +86,7 @@ void testAdaptiveBinaryTool()
         inputs.emplace(ab::in::CONSTANT_OFFSET, std::int64_t(5));
         auto res = tool.execute(inputs);
         requireFailure(res, "浮点", "Int constant_offset must be strictly rejected");
-        REQUIRE(testview::status(res).message.find(portLabel(ab::in::CONSTANT_OFFSET)) != std::string::npos, "Error must mention constant_offset");
+        REQUIRE(testview::status(res).message.find("偏移常量") != std::string::npos, "Error must mention constant_offset");
     }
 
     // 8. Non-finite constant_offset rejected

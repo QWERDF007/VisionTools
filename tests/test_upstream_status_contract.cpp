@@ -111,7 +111,7 @@ void unselectedBranchStillValidatesItsContract()
                            {kUpstreamStatusPort, std::int64_t{0}}};
     const auto result = runBrightness(inputs, {bright::out::IMAGES, bright::out::APPLIED_MASK});
     assert(testview::status(result).code != 0);
-    assert(testview::status(result).message.find(portLabel(bright::in::IMAGES)) != std::string::npos);
+    assert(testview::status(result).message.find("图像") != std::string::npos);
 }
 
 } // namespace

@@ -27,3 +27,5 @@ set_target_properties(visiontools_infer PROPERTIES
     OUTPUT_NAME vst_infer
     WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
+
+target_include_directories(visiontools_infer PUBLIC "${PROJECT_BINARY_DIR}/generated")

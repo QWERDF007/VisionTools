@@ -11,13 +11,14 @@ are carried by reference — ``inplace`` mutates the caller's ndarray, ``copy`` 
 
 import numpy as np
 
-from .visiontools_sdk import ContractError, InputParametersBase, OutputParametersBase
+from .visiontools_sdk import CommonError, ContractError, InputParametersBase, OutputParametersBase
 
 IMAGES, MODE = 1, 2
 OUT_IMAGES = 2
 
 
 class ImageAddInputs(InputParametersBase):
+    parameter_names = {IMAGES: "图像", MODE: "模式"}
     def __init__(self):
         super().__init__()
         self.images = None
@@ -54,7 +55,7 @@ def execute(values):
         args.parse(values)
     except ContractError as error:
         out = ImageAddOutputs()
-        out.status_code = 1002
+        out.status_code = CommonError.INPUT_TYPE_MISMATCH
         out.status_message = str(error)
         return out.pack()
 
@@ -67,16 +68,16 @@ def execute(values):
         return out.pack()
 
     if args.images is None:
-        out.status_code = 1001
-        out.status_message = "输入端口 1 缺失"
+        out.status_code = CommonError.INPUT_MISSING
+        out.status_message = "输入图像 缺失"
         return out.pack()
 
     if args.mode not in ("copy", "inplace"):
-        out.status_code = 1003
+        out.status_code = CommonError.INPUT_OUT_OF_RANGE
         out.status_message = "输入端口 2 只能是 copy 或 inplace"
         return out.pack()
     if (problem := _validate_batch(args.images)) is not None:
-        out.status_code = 1002
+        out.status_code = CommonError.INPUT_TYPE_MISMATCH
         out.status_message = problem
         return out.pack()
 

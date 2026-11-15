@@ -44,7 +44,7 @@ void inRange(double value, double minimum, double maximum, visionrt::PortId id)
 {
     if (!std::isfinite(value) || value < minimum || value > maximum)
         fail(CommonToolError::InputOutOfRange,
-             visionrt::portLabel(id) + " 必须在 [" + std::to_string(minimum) + ", " + std::to_string(maximum)
+             parameterName(p::TOOL_ID, "inputs", id) + " 必须在 [" + std::to_string(minimum) + ", " + std::to_string(maximum)
                  + "] 内，实际值：" + std::to_string(value));
 }
 
@@ -79,7 +79,7 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
     // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
     if (const auto upstream = upstreamStatus(inputs); upstream != 0)
         return skippedByUpstream(upstream, missingOutputs());
-    Readings   readings(inputs);
+    Readings   readings(inputs, "MeasureCircle");
     const auto imagesRef = readings.image(p::in::IMAGES);
     CircleOptions options;
     options.calipers        = readings.integer(p::in::NUM_CALIPERS);
@@ -118,7 +118,7 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
         inRange(unitsPerPixel, 1.0e-9, 1.0e9, p::in::UNITS_PER_PIXEL);
         options.polarity = parsePolarity(polarityName);
         if (unit.empty())
-            fail(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::UNIT) + " 不能为空");
+            fail(CommonToolError::InputOutOfRange, parameterName("MeasureCircle", "inputs", p::in::UNIT) + " 不能为空");
         if (options.radiusMax < options.radiusMin)
             fail(CommonToolError::InputOutOfRange, "radius_max 必须不小于 radius_min");
         if (options.minPoints > options.calipers)
@@ -129,7 +129,7 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
         if (sampleCount * std::max(1.0, options.averageWidth) > 8.0e6)
             fail(CommonToolError::InputOutOfRange, "卡尺采样预算超限，请减小搜索宽度或平均宽度");
         if (!alignmentValue || !roiValue)
-            fail(CommonToolError::InputMissing, !alignmentValue ? p::in::ALIGNMENT : p::in::ROIS);
+            fail(CommonToolError::InputMissing, parameterName(p::TOOL_ID, "inputs", !alignmentValue ? p::in::ALIGNMENT : p::in::ROIS));
 
         const auto alignments = geometry::alignmentsFromValue(*alignmentValue, images.size());
         const auto records    = roi::groups(*roiValue, images.size(), "rois");

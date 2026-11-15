@@ -1,3 +1,4 @@
+include("${PROJECT_SOURCE_DIR}/cmake/GenerateToolMetadata.cmake")
 add_library(visiontools_common STATIC
     GeometryTransform.cpp
     ProductPaths.cpp
@@ -7,6 +8,7 @@ add_library(visiontools_common STATIC
 
 target_include_directories(visiontools_common PUBLIC
     "${CMAKE_SOURCE_DIR}/src"
+    "${PROJECT_BINARY_DIR}/generated"
 )
 
 target_link_libraries(visiontools_common PUBLIC

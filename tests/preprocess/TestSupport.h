@@ -48,11 +48,6 @@ inline void requireFailure(const visionrt::ToolResult &result, std::string_view 
             std::string(context) + ": " + testview::status(result).message);
 }
 
-// Port failures name the number; the readable sentence stays in the tool.
-inline void requireFailure(const visionrt::ToolResult &result, visionrt::PortId port, const char *context)
-{
-    requireFailure(result, visionrt::portLabel(port), context);
-}
 
 inline cv::Mat gradient(int rows, int cols)
 {

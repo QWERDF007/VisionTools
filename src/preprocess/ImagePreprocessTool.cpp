@@ -59,7 +59,7 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
         return skippedByUpstream(upstream, missingOutputs());
     // Only the parameter the chosen operation consumes is read: asking for a threshold while
     // running `identity` would reject a batch that never needed one.
-    Readings   readings(inputs);
+    Readings   readings(inputs, "PreprocessImage");
     const auto images    = readings.image(p::in::IMAGES);
     const auto operation = readings.text(p::in::OPERATION);
     if (readings.failed())
@@ -67,7 +67,7 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
                                     readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
     if (operation != "identity" && operation != "gray" && operation != "gaussian" && operation != "threshold")
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       visionrt::portLabel(p::in::OPERATION) + " 只接受 identity/gray/gaussian/threshold，实际值：" + operation);
+                       parameterName("PreprocessImage", "inputs", p::in::OPERATION) + " 只接受 identity/gray/gaussian/threshold，实际值：" + operation);
 
     int                kernel    = 0;
     std::int64_t       threshold = 0;
@@ -80,7 +80,7 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
                                                         CommonToolError::InputTypeMismatch));
         if (kernelValue < 1 || kernelValue > std::numeric_limits<int>::max() || kernelValue % 2 == 0)
             return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                           visionrt::portLabel(p::in::KERNEL) + " 必须为正的奇数（高斯核），实际值："
+                           parameterName("PreprocessImage", "inputs", p::in::KERNEL) + " 必须为正的奇数（高斯核），实际值："
                                + std::to_string(kernelValue));
         kernel = static_cast<int>(kernelValue);
     }
@@ -93,7 +93,7 @@ visionrt::ToolResult ImagePreprocessTool::execute(const visionrt::Values &inputs
                                                         CommonToolError::InputTypeMismatch));
         if (thresholdRaw < 0 || thresholdRaw > 255)
             return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                           visionrt::portLabel(p::in::THRESHOLD) + " 必须在 [0, 255] 内，实际值："
+                           parameterName("PreprocessImage", "inputs", p::in::THRESHOLD) + " 必须在 [0, 255] 内，实际值："
                                + std::to_string(thresholdRaw));
         threshold = thresholdRaw;
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/errors/ToolErrorDomains.h"
+#include "common/errors/ToolMetadata.h"
 
 #include <visionrt/contracts/Issue.h>
 #include <visionrt/contracts/Tool.h>
@@ -19,16 +20,7 @@ namespace visiontools {
 
 // Codes for failures that are not specific to one algorithm. A tool with its own failure classes
 // declares its own enum in its own header and only falls back to these for generic ports.
-enum class CommonToolError : std::int64_t
-{
-    InputMissing            = errorCode(domain::kCommon, 1),
-    InputTypeMismatch       = errorCode(domain::kCommon, 2),
-    InputOutOfRange         = errorCode(domain::kCommon, 3),
-    ResourceUnavailable     = errorCode(domain::kCommon, 4),
-    OperatorFailed          = errorCode(domain::kCommon, 5),
-    OutputContractViolation = errorCode(domain::kCommon, 6),
-    UnsupportedImage        = errorCode(domain::kCommon, 7)
-};
+
 
 // A business failure as the tool decided it: a precise code, a message a user can act on, and an
 // optional technical detail that stays out of the message.
@@ -59,13 +51,6 @@ inline visionrt::ToolStatus status(ErrorCode code, std::string_view context = {}
     return {static_cast<std::int64_t>(code), sentence(message(code), context), std::move(detail)};
 }
 
-template<class ErrorCode>
-    requires std::is_enum_v<ErrorCode>
-inline visionrt::ToolStatus status(ErrorCode code, visionrt::PortId port, std::string detail = {})
-{
-    return {static_cast<std::int64_t>(code), sentence(message(code), visionrt::portLabel(port)),
-            std::move(detail)};
-}
 
 // Reports an expected failure from inside an algorithm. It is thrown only to leave nested helpers
 // and is caught by that tool's own execute(), which turns it into a ToolResult status; it never
@@ -81,14 +66,6 @@ template<class ErrorCode>
     raise(static_cast<std::int64_t>(code), sentence(message(code), context), std::move(detail));
 }
 
-// Port context names the number so the sentence stays legible without a name lookup.
-template<class ErrorCode>
-    requires std::is_enum_v<ErrorCode>
-[[noreturn]] inline void fail(ErrorCode code, visionrt::PortId port, std::string detail = {})
-{
-    raise(static_cast<std::int64_t>(code), sentence(message(code), visionrt::portLabel(port)),
-          std::move(detail));
-}
 
 // The mechanical port-read issues every tool can meet, mapped onto that tool's own codes.
 visionrt::ToolStatus inputIssueStatus(const visionrt::PortIssue &issue, std::int64_t missingCode,
@@ -109,15 +86,5 @@ inline visionrt::ToolResult failureResult(visionrt::Values outputs, const ToolFa
     return visionrt::toolResult(std::move(outputs), status(error));
 }
 
-template<class ErrorCode>
-    requires std::is_enum_v<ErrorCode>
-inline visionrt::ToolResult failure(visionrt::Values outputs, ErrorCode code, visionrt::PortId port,
-                                    std::string detail = {})
-{
-    return visionrt::toolResult(
-        std::move(outputs),
-        {static_cast<std::int64_t>(code), sentence(message(code), visionrt::portLabel(port)),
-         std::move(detail)});
-}
 
 } // namespace visiontools

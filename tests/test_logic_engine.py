@@ -13,6 +13,9 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "python" / "builtin"
 sys.path.insert(0, str(PACKAGE_ROOT))
 
+import logic
+logic.__path__.append(str(PACKAGE_ROOT.parent / "author_sdk"))
+
 from logic.branch.tool import BranchTool  # noqa: E402
 from logic.common.engine import EngineError, Program  # noqa: E402
 from logic.expression.tool import ExpressionTool  # noqa: E402

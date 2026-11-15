@@ -46,13 +46,13 @@ struct Placeholder<visionrt::DataRef<T>>
 class Readings
 {
 public:
-    explicit Readings(const visionrt::Values &values) noexcept
-        : reader_(values)
+    explicit Readings(const visionrt::Values &values, std::string_view tool) noexcept
+        : reader_(values), tool_(tool)
     {
     }
 
-    explicit Readings(const visionrt::InputReader &reader) noexcept
-        : reader_(reader)
+    explicit Readings(const visionrt::InputReader &reader, std::string_view tool) noexcept
+        : reader_(reader), tool_(tool)
     {
     }
 
@@ -73,42 +73,42 @@ public:
 
     std::int64_t integer(visionrt::PortId id)
     {
-        return take(reader_.integer(id));
+        return take(reader_.integer(id), id);
     }
 
     double real(visionrt::PortId id)
     {
-        return take(reader_.real(id));
+        return take(reader_.real(id), id);
     }
 
     bool boolean(visionrt::PortId id)
     {
-        return take(reader_.boolean(id));
+        return take(reader_.boolean(id), id);
     }
 
     std::string text(visionrt::PortId id)
     {
-        return take(reader_.text(id));
+        return take(reader_.text(id), id);
     }
 
     visionrt::DataRef<visionrt::Image> image(visionrt::PortId id)
     {
-        return take(reader_.image(id));
+        return take(reader_.image(id), id);
     }
 
     visionrt::DataRef<visionrt::ROI> roi(visionrt::PortId id)
     {
-        return take(reader_.roi(id));
+        return take(reader_.roi(id), id);
     }
 
     std::optional<visionrt::DataRef<visionrt::Image>> nullableImage(visionrt::PortId id)
     {
-        return take(reader_.nullableImage(id));
+        return take(reader_.nullableImage(id), id);
     }
 
     visionrt::Array array(visionrt::PortId id)
     {
-        return take(reader_.array(id));
+        return take(reader_.array(id), id);
     }
 
     // The first failed read, or nothing when every read succeeded.
@@ -134,18 +134,22 @@ public:
 
 private:
     template<class T>
-    T take(visionrt::ReadResult<T> &&result)
+    T take(visionrt::ReadResult<T> &&result, visionrt::PortId id)
     {
         if (!result)
         {
             if (!issue_)
+            {
                 issue_ = result.issue();
+                issue_->field = parameterName(tool_, "inputs", id);
+            }
             return detail::Placeholder<T>::make();
         }
         return std::move(result.take());
     }
 
     visionrt::InputReader       reader_;
+    std::string_view tool_;
     std::optional<visionrt::PortIssue> issue_;
 };
 

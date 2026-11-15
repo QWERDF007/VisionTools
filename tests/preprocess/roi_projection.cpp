@@ -40,7 +40,7 @@ void testRoiProjectionTool()
         inputs.emplace(projection_ports::in::IMAGES, DataRef<Image>(Image{(img).clone()}));
         inputs.erase(projection_ports::in::AXIS);
         auto res = tool.execute(inputs);
-        requireFailure(res, projection_ports::in::AXIS, "Missing axis must fail");
+        requireFailure(res, "投影轴", "Missing axis must fail");
         REQUIRE(testview::status(res).message.find("缺失") != std::string::npos, "Missing value must be Chinese");
     }
     {
@@ -48,7 +48,7 @@ void testRoiProjectionTool()
         inputs.emplace(projection_ports::in::IMAGES, DataRef<Image>(Image{(img).clone()}));
         inputs.insert_or_assign(projection_ports::in::AXIS, std::string("z"));
         auto res = tool.execute(inputs);
-        requireFailure(res, projection_ports::in::AXIS, "Invalid axis must fail");
+        requireFailure(res, "投影轴", "Invalid axis must fail");
         REQUIRE(testview::status(res).message.find("只接受") != std::string::npos, "Invalid option must be Chinese");
     }
     {
@@ -56,14 +56,14 @@ void testRoiProjectionTool()
         inputs.emplace(projection_ports::in::IMAGES, DataRef<Image>(Image{(img).clone()}));
         inputs.insert_or_assign(projection_ports::in::POLARITY, std::string("mixed"));
         auto res = tool.execute(inputs);
-        requireFailure(res, projection_ports::in::POLARITY, "Invalid polarity must fail");
+        requireFailure(res, "极性", "Invalid polarity must fail");
     }
     {
         Values inputs = projectionInputs();
         inputs.emplace(projection_ports::in::IMAGES, DataRef<Image>(Image{(img).clone()}));
         inputs.insert_or_assign(projection_ports::in::THRESHOLD, std::int64_t(300));
         auto res = tool.execute(inputs);
-        requireFailure(res, projection_ports::in::THRESHOLD, "Out-of-range threshold must fail");
+        requireFailure(res, "二值化阈值", "Out-of-range threshold must fail");
         REQUIRE(testview::status(res).message.find("[0, 255]") != std::string::npos, "Range must be stated");
     }
     for (const auto &[key, value] : std::vector<std::pair<visionrt::PortId, std::int64_t>>{
@@ -77,7 +77,7 @@ void testRoiProjectionTool()
         inputs.emplace(projection_ports::in::IMAGES, DataRef<Image>(Image{(img).clone()}));
         inputs.insert_or_assign(key, value);
         auto res = tool.execute(inputs);
-        requireFailure(res, key, "Out-of-range projection parameter must fail");
+        requireFailure(res, "超出允许范围", "Out-of-range projection parameter must fail");
     }
 
     // Valid projection

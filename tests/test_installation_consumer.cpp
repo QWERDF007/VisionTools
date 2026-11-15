@@ -196,7 +196,7 @@ int main(int argc, char **argv)
         badInputs.insert_or_assign(2, std::string("not_an_int"));
         auto badRes = inst->execute(badInputs);
         REQUIRE(testview::status(badRes).code == 1002
-                    && testview::status(badRes).message.find(visionrt::portLabel(2)) != std::string::npos,
+                    && testview::status(badRes).message.find("邻域大小") != std::string::npos,
                 "Invalid block_size must return the operator-owned type-mismatch error");
 
         REQUIRE(inst->release().code == 0, "Release 1 must succeed");
@@ -278,7 +278,7 @@ int main(int argc, char **argv)
         badInputs.insert_or_assign(6, std::string("not_a_float"));
         auto badRes = inst->execute(badInputs);
         REQUIRE(testview::status(badRes).code == 1002
-                    && testview::status(badRes).message.find(visionrt::portLabel(6)) != std::string::npos,
+                    && testview::status(badRes).message.find("最低置信度") != std::string::npos,
                 "Invalid min_score must return the operator-owned business error");
 
         REQUIRE(inst->release().code == 0, "Filter release must succeed");

@@ -539,7 +539,7 @@ class Program:
         names = {}
         for variable in self.variables:
             if variable.port_id not in inputs:
-                raise EngineError(f"缺少输入端口：{variable.port_id}")
+                raise EngineError(f"输入变量缺失：{variable.symbol}")
             value = inputs[variable.port_id]
             if value is None:
                 if not variable.allow_missing:

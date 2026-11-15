@@ -40,7 +40,7 @@ visionrt::ToolResult AdaptiveBinaryTool::execute(const visionrt::Values &inputs)
 
     // An empty batch needs no threshold, so the images are read first: a caller that asked for
     // nothing gets an empty answer instead of a complaint about a parameter it never needed.
-    Readings   readings(inputs);
+    Readings   readings(inputs, "AdaptiveThreshold");
     const auto images = readings.image(p::in::IMAGES);
     if (readings.failed())
         return visionrt::toolResult(missingOutputs(),
@@ -61,11 +61,11 @@ visionrt::ToolResult AdaptiveBinaryTool::execute(const visionrt::Values &inputs)
                                     readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
     if (blockSize < 3 || blockSize > 999 || blockSize % 2 == 0)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       visionrt::portLabel(p::in::BLOCK_SIZE) + " 必须在 [3, 999] 内且为奇数，实际值："
+                       parameterName("AdaptiveThreshold", "inputs", p::in::BLOCK_SIZE) + " 必须在 [3, 999] 内且为奇数，实际值："
                            + std::to_string(blockSize));
     if (!std::isfinite(constantOffset))
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       visionrt::portLabel(p::in::CONSTANT_OFFSET) + " 必须为有限数值");
+                       parameterName("AdaptiveThreshold", "inputs", p::in::CONSTANT_OFFSET) + " 必须为有限数值");
     for (std::size_t index = 0; index < batchSize; ++index)
     {
         const auto &image = images.get()[index];

@@ -36,14 +36,14 @@ std::optional<cv::Point2d> requestedCenter(const visionrt::Values &inputs)
         return std::nullopt;
     const auto *array = std::get_if<visionrt::Array>(&found->second);
     if (!array || array->type() != visionrt::TypeSpec{visionrt::Type::Array, visionrt::DType::Float64, 1})
-        fail(CommonToolError::InputTypeMismatch, visionrt::portLabel(p::in::CENTER) + " 必须是 Array(float64, rank=1)");
+        fail(CommonToolError::InputTypeMismatch, parameterName("RotateImage", "inputs", p::in::CENTER) + " 必须是 Array(float64, rank=1)");
     const auto values = array->elements<double>();
     if (values.empty())
         return std::nullopt;
     if (values.size() != 2)
-        fail(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::CENTER) + " 必须为空或恰好两个有限值");
+        fail(CommonToolError::InputOutOfRange, parameterName("RotateImage", "inputs", p::in::CENTER) + " 必须为空或恰好两个有限值");
     if (!std::isfinite(values[0]) || !std::isfinite(values[1]))
-        fail(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::CENTER) + " 必须为有限数值");
+        fail(CommonToolError::InputOutOfRange, parameterName("RotateImage", "inputs", p::in::CENTER) + " 必须为有限数值");
     return cv::Point2d{values[0], values[1]};
 }
 
@@ -79,7 +79,7 @@ visionrt::ToolResult RotateImageTool::execute(const visionrt::Values &inputs)
         return skippedByUpstream(upstream, missingOutputs());
     try
     {
-        Readings   readings(inputs);
+        Readings   readings(inputs, "RotateImage");
         const auto imagesRef     = readings.image(p::in::IMAGES);
         const auto angle         = readings.real(p::in::ANGLE_DEG);
         const auto canvas        = readings.text(p::in::CANVAS);
@@ -91,17 +91,17 @@ visionrt::ToolResult RotateImageTool::execute(const visionrt::Values &inputs)
                                         readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
         const auto &images = imagesRef.get();
         if (images.empty())
-            return failure(missingOutputs(), CommonToolError::InputMissing, visionrt::portLabel(p::in::IMAGES) + " 没有图像");
+            return failure(missingOutputs(), CommonToolError::InputMissing, parameterName("RotateImage", "inputs", p::in::IMAGES) + " 没有图像");
         if (!std::isfinite(angle) || angle < -1.0e9 || angle > 1.0e9)
             return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                           visionrt::portLabel(p::in::ANGLE_DEG) + " 必须在 [-1e9, 1e9] 内，实际值：" + std::to_string(angle));
+                           parameterName("RotateImage", "inputs", p::in::ANGLE_DEG) + " 必须在 [-1e9, 1e9] 内，实际值：" + std::to_string(angle));
         if (canvas != "keep" && canvas != "expand")
             return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                           visionrt::portLabel(p::in::CANVAS) + " 只接受 keep/expand，实际值：" + canvas);
+                           parameterName("RotateImage", "inputs", p::in::CANVAS) + " 只接受 keep/expand，实际值：" + canvas);
         if (!alignmentValue)
-            return failure(missingOutputs(), CommonToolError::InputMissing, visionrt::portLabel(p::in::ALIGNMENT));
+            return failure(missingOutputs(), CommonToolError::InputMissing, parameterName("RotateImage", "inputs", p::in::ALIGNMENT));
         if (!borderValue)
-            return failure(missingOutputs(), CommonToolError::InputMissing, visionrt::portLabel(p::in::BORDER_VALUE));
+            return failure(missingOutputs(), CommonToolError::InputMissing, parameterName("RotateImage", "inputs", p::in::BORDER_VALUE));
         const auto interpolation = interpolationFlag(interpolationName);
         const auto center        = requestedCenter(inputs);
         const auto alignments    = geometry::alignmentsFromValue(*alignmentValue, images.size());

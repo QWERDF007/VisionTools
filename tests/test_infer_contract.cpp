@@ -32,7 +32,7 @@ void testYoloMissingInitParameters(const std::filesystem::path &executable)
     auto empty = tool.initialize({});
     REQUIRE(empty.code == 1001, "Missing init parameters must fail before any GPU work");
     REQUIRE(empty.message.find("输入缺失") != std::string::npos, "Missing init error must be Chinese");
-    REQUIRE(empty.message.find(visionrt::portLabel(0)) != std::string::npos, "Missing init error must name the port");
+    REQUIRE(empty.message.find("模型名称") != std::string::npos, "Missing init error must name the port");
 
     visionrt::Values partial;
     partial.emplace(0, std::string("yolov8n"));
@@ -47,9 +47,16 @@ void testYoloMissingInitParameters(const std::filesystem::path &executable)
     auto missingLabels = tool.initialize(partial);
     // labels_path is a required initialization parameter, so its absence is a missing input.
     REQUIRE(missingLabels.code == 1001, "Missing labels_path must fail before GPU work");
-    REQUIRE(missingLabels.message.find(visionrt::portLabel(4)) != std::string::npos,
+    REQUIRE(missingLabels.message.find("标签路径") != std::string::npos,
             "Missing labels_path must be named");
-    partial.emplace(4, std::string("contract-missing-labels.txt"));
+    partial.emplace(4, std::string(""));
+    partial[2] = std::string("");
+    const auto emptyPath = tool.initialize(partial);
+    REQUIRE(emptyPath.message == "模型路径为空", "empty model path must be actionable");
+    partial[2] = std::string("contract-missing.engine");
+    const auto absentModel = tool.initialize(partial);
+    REQUIRE(absentModel.message.find("模型文件不存在") != std::string::npos, "missing model must fail before GPU access");
+    partial[4] = std::string("contract-missing-labels.txt");
     const auto labels = tool.initialize(partial);
     const auto target = (executable.parent_path() / "contract-missing-labels.txt").generic_u8string();
     auto message = labels.message;

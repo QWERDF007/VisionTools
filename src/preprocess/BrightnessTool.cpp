@@ -59,7 +59,7 @@ cv::Mat combinedMask(const std::vector<roi::Record> &records, bool wholeImage,
 
 visionrt::ToolStatus BrightnessInputs::readFields(visionrt::InputReader &reader)
 {
-    Readings readings(reader);
+    Readings readings(reader, "AdjustBrightness");
     images   = readings.nullableImage(p::in::IMAGES);
     gain     = readings.real(p::in::GAIN);
     offset   = readings.real(p::in::OFFSET);
@@ -67,17 +67,17 @@ visionrt::ToolStatus BrightnessInputs::readFields(visionrt::InputReader &reader)
     if (readings.failed())
         return readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch);
     if (!inRange(gain, 0.0, 1.0e12))
-        return status(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::GAIN) + " 必须在 [0, 1e12] 内");
+        return status(CommonToolError::InputOutOfRange, parameterName("AdjustBrightness", "inputs", p::in::GAIN) + " 必须在 [0, 1e12] 内");
     if (!inRange(offset, -1.0e12, 1.0e12))
-        return status(CommonToolError::InputOutOfRange, visionrt::portLabel(p::in::OFFSET) + " 必须在 [-1e12, 1e12] 内");
+        return status(CommonToolError::InputOutOfRange, parameterName("AdjustBrightness", "inputs", p::in::OFFSET) + " 必须在 [-1e12, 1e12] 内");
     // The shared kernels interpret these two values; the parameter view only keeps the handle.
     const auto *rois = reader.find(p::in::ROIS);
     if (!rois)
-        return status(CommonToolError::InputMissing, visionrt::portLabel(p::in::ROIS));
+        return status(CommonToolError::InputMissing, parameterName("AdjustBrightness", "inputs", p::in::ROIS));
     this->rois = *rois;
     const auto *alignment = reader.find(p::in::ALIGNMENT);
     if (!alignment)
-        return status(CommonToolError::InputMissing, visionrt::portLabel(p::in::ALIGNMENT));
+        return status(CommonToolError::InputMissing, parameterName("AdjustBrightness", "inputs", p::in::ALIGNMENT));
     this->alignment = *alignment;
     return {};
 }
@@ -104,7 +104,7 @@ visionrt::ToolResult brightnessTool(const visionrt::Values &values)
     }
     if (!inputs.images)
     {
-        outputs.status = status(CommonToolError::InputMissing, p::in::IMAGES);
+        outputs.status = status(CommonToolError::InputMissing, parameterName("AdjustBrightness", "inputs", p::in::IMAGES));
         return outputs.pack();
     }
 

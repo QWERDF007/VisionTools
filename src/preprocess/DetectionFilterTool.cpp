@@ -63,7 +63,7 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
     // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
     if (const auto upstream = upstreamStatus(inputs); upstream != 0)
         return skippedByUpstream(upstream, missingOutputs());
-    Readings   readings(inputs);
+    Readings   readings(inputs, "FilterDetections");
     const auto images       = readings.image(p::in::IMAGES);
     const auto roisRef      = readings.roi(p::in::ROIS);
     const auto scoresRef    = readings.array(p::in::SCORES);
@@ -77,10 +77,10 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
                                     readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
     if (!std::isfinite(minimumScore) || minimumScore < 0.0 || minimumScore > 1.0)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       visionrt::portLabel(p::in::MIN_SCORE) + " 必须在 [0, 1] 内，实际值：" + std::to_string(minimumScore));
+                       parameterName("FilterDetections", "inputs", p::in::MIN_SCORE) + " 必须在 [0, 1] 内，实际值：" + std::to_string(minimumScore));
     if (!std::isfinite(minimumArea) || minimumArea < 0.0)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       visionrt::portLabel(p::in::MIN_AREA) + " 必须为非负有限数值，实际值：" + std::to_string(minimumArea));
+                       parameterName("FilterDetections", "inputs", p::in::MIN_AREA) + " 必须为非负有限数值，实际值：" + std::to_string(minimumArea));
 
     const auto &rois      = roisRef.get();
     const auto &scores    = scoresRef;

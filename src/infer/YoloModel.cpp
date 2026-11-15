@@ -38,14 +38,14 @@ constexpr std::array                  strides{8, 16, 32};
 constexpr std::array<const char *, 3> outputNames{"output0", "output1", "output2"};
 
 template<class T>
-T requiredParameter(const Values &values, PortId id)
+T requiredParameter(const Values &values, PortId id, std::string_view stage = "init_params")
 {
     const auto found = values.find(id);
     if (found == values.end() || isMissing(found->second))
-        fail(CommonToolError::InputMissing, std::string("初始化参数 ") + portLabel(id));
+        fail(CommonToolError::InputMissing, visiontools::parameterName(yolo_ports::TOOL_ID, stage, id));
     if (const auto *value = std::get_if<T>(&found->second))
         return *value;
-    fail(CommonToolError::InputTypeMismatch, std::string("初始化参数 ") + portLabel(id));
+    fail(CommonToolError::InputTypeMismatch, visiontools::parameterName(yolo_ports::TOOL_ID, stage, id));
 }
 
 int integer(const Values &values, PortId id, int minimum)
@@ -53,7 +53,7 @@ int integer(const Values &values, PortId id, int minimum)
     const auto value = requiredParameter<std::int64_t>(values, id);
     if (value < minimum || value > std::numeric_limits<int>::max())
         fail(CommonToolError::InputOutOfRange,
-             portLabel(id) + " 的值 " + std::to_string(value) + " 超出整数范围");
+             visiontools::parameterName(yolo_ports::TOOL_ID, "init_params", id) + " 的值 " + std::to_string(value) + " 超出整数范围");
     return static_cast<int>(value);
 }
 
@@ -228,11 +228,11 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         if (modelName != "yolov8n")
             fail(YoloError::ModelUnsupported, "仅支持原生 yolov8n，实际模型：" + modelName);
         if (mode != "engine" && mode != "build_wts")
-            fail(CommonToolError::InputOutOfRange, portLabel(yolo_ports::init::LOAD_MODE) + " 只接受 engine/build_wts，实际值：" + mode);
+            fail(CommonToolError::InputOutOfRange, visiontools::parameterName(yolo_ports::TOOL_ID, "init_params", yolo_ports::init::LOAD_MODE) + " 只接受 engine/build_wts，实际值：" + mode);
         if (precision != "fp32" && precision != "fp16")
-            fail(CommonToolError::InputOutOfRange, portLabel(yolo_ports::init::PRECISION) + " 只接受 fp32/fp16，实际值：" + precision);
+            fail(CommonToolError::InputOutOfRange, visiontools::parameterName(yolo_ports::TOOL_ID, "init_params", yolo_ports::init::PRECISION) + " 只接受 fp32/fp16，实际值：" + precision);
         if (modelPath.empty())
-            fail(CommonToolError::InputMissing, yolo_ports::init::MODEL_PATH);
+            throw ToolFailure{static_cast<std::int64_t>(CommonToolError::PathEmpty), "模型路径为空", {}};
         state->device  = integer(parameters, yolo_ports::init::GPU_INDEX, 0);
         state->width   = integer(parameters, yolo_ports::init::INPUT_WIDTH, 32);
         state->height  = integer(parameters, yolo_ports::init::INPUT_HEIGHT, 32);
@@ -240,6 +240,15 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         if (state->width % 32 || state->height % 32 || state->classes > std::numeric_limits<int>::max() - 4)
             fail(CommonToolError::InputOutOfRange, "原生 yolov8n 输入尺寸必须为 32 的倍数；num_classes 必须满足 4+C 的整数范围");
         state->names      = labels(parameters, state->classes);
+        const auto resolved = resolvedPath(modelPath, YoloError::ModelLoadFailed);
+        std::error_code fileError;
+        const auto fileState = std::filesystem::status(resolved, fileError);
+        if (fileError && fileError != std::errc::no_such_file_or_directory && fileError != std::errc::not_a_directory)
+            throw ToolFailure{static_cast<std::int64_t>(CommonToolError::FileReadFailed), "无法读取模型文件：" + utf8Path(resolved), fileError.message()};
+        if (!std::filesystem::exists(fileState))
+            throw ToolFailure{static_cast<std::int64_t>(CommonToolError::FileNotFound), "模型文件不存在：" + utf8Path(resolved), {}};
+        if (!std::filesystem::is_regular_file(fileState))
+            throw ToolFailure{static_cast<std::int64_t>(CommonToolError::InputTypeMismatch), "模型路径必须指向文件：" + utf8Path(resolved), {}};
         int  deviceCount  = 0;
         auto deviceStatus = cudaGetDeviceCount(&deviceCount);
         if (deviceStatus != cudaSuccess)
@@ -263,7 +272,6 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         state->model = irt::model::CreateModel(modelName, std::move(config));
         if (!state->model)
             return status(YoloError::ModelLoadFailed, "InferRT CreateModel(yolov8n) 返回空");
-        const auto resolved = resolvedPath(modelPath, YoloError::ModelLoadFailed);
         try
         {
             if (mode == "engine")
@@ -365,14 +373,14 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             return missingResult({upstream, "上游未选中本分支，工具未执行"});
         const auto found = inputs.find(yolo_ports::in::IMAGES);
         if (found == inputs.end() || isMissing(found->second))
-            fail(CommonToolError::InputMissing, yolo_ports::in::IMAGES);
+            fail(CommonToolError::InputMissing, "图像");
         const auto *imagesPtr = std::get_if<DataRef<Image>>(&found->second);
         if (!imagesPtr)
-            fail(CommonToolError::InputTypeMismatch, portLabel(yolo_ports::in::IMAGES) + " 必须是图像");
+            fail(CommonToolError::InputTypeMismatch, visiontools::parameterName(yolo_ports::TOOL_ID, "inputs", yolo_ports::in::IMAGES) + " 必须是图像");
         const auto               &images = *imagesPtr;
-        const DetectionParameters parameters{requiredParameter<double>(inputs, yolo_ports::in::CONF_THRESHOLD),
-                                             requiredParameter<double>(inputs, yolo_ports::in::NMS_THRESHOLD),
-                                             requiredParameter<std::int64_t>(inputs, yolo_ports::in::MAX_DETECTIONS)};
+        const DetectionParameters parameters{requiredParameter<double>(inputs, yolo_ports::in::CONF_THRESHOLD, "inputs"),
+                                             requiredParameter<double>(inputs, yolo_ports::in::NMS_THRESHOLD, "inputs"),
+                                             requiredParameter<std::int64_t>(inputs, yolo_ports::in::MAX_DETECTIONS, "inputs")};
         validateParameters(parameters);
         for (const auto &image : images.get())
         {

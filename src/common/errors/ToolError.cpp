@@ -53,7 +53,8 @@ visionrt::ToolStatus inputIssueStatus(const visionrt::PortIssue &issue, std::int
 {
     const auto code = issue.kind == visionrt::PortIssueKind::Missing ? missingCode : typeCode;
     // The SDK issue already names the port and the reason; repeating it in detail adds nothing.
-    return {code, issue.describe(), {}};
+    return {code, issue.field + (issue.kind == visionrt::PortIssueKind::Missing ? "缺失" : "类型不匹配")
+                      + (issue.text.empty() ? "" : "：" + issue.text), {}};
 }
 
 } // namespace visiontools

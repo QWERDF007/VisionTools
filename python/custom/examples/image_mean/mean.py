@@ -10,7 +10,7 @@ value, and the status carries the reason. Nothing here raises to control the flo
 
 import numpy as np
 
-from .visiontools_sdk import ContractError, InputReader, failure, success
+from .visiontools_sdk import CommonError, ContractError, InputReader, failure, success
 
 
 # Port-level problems use the shared common codes; a tool with algorithm-specific failures adds
@@ -18,22 +18,22 @@ from .visiontools_sdk import ContractError, InputReader, failure, success
 IMAGES = 1
 MEANS = 2
 
-MISSING_INPUT = 1001
-INVALID_INPUT = 1002
+MISSING_INPUT = CommonError.INPUT_MISSING
+INVALID_INPUT = CommonError.INPUT_TYPE_MISMATCH
 
 def _check_batch(images):
     """Returns the first unusable image as a readable sentence, or None for a valid batch."""
     if not isinstance(images, (list, tuple)):
-        return f"输入端口 1 需要图像批次列表，实际 {type(images).__name__}"
+        return f"输入图像 需要图像批次列表，实际 {type(images).__name__}"
     for index, image in enumerate(images):
         if not isinstance(image, np.ndarray):
-            return (f"输入端口 1 批次索引 {index} 需要 NumPy ndarray，"
+            return (f"输入图像 批次索引 {index} 需要 NumPy ndarray，"
                     f"实际 {type(image).__name__}")
         if image.ndim not in (2, 3) or image.size == 0:
-            return (f"输入端口 1 批次索引 {index} 图像形状 {image.shape} "
+            return (f"输入图像 批次索引 {index} 图像形状 {image.shape} "
                     "必须为非空 HxW 或 HxWxC")
         if image.dtype.kind not in "uif":
-            return (f"输入端口 1 批次索引 {index} 图像像素需要实数数值类型，"
+            return (f"输入图像 批次索引 {index} 图像像素需要实数数值类型，"
                     f"实际 {image.dtype}")
     return None
 
@@ -43,11 +43,11 @@ class ToolInstance:
 
     def execute(self, inputs):
         try:
-            images = InputReader(inputs).optional_array(IMAGES)
+            images = InputReader(inputs, {IMAGES: "图像"}).optional_array(IMAGES)
         except ContractError as error:
             return failure(INVALID_INPUT, str(error))
         if images is None:
-            return failure(MISSING_INPUT, "输入端口 1 缺失")
+            return failure(MISSING_INPUT, "输入图像 缺失")
 
         problem = _check_batch(images)
         if problem is not None:
