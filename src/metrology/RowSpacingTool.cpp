@@ -4,7 +4,7 @@
 #include "errors/MetrologyErrors.h"
 #include "common/errors/ToolError.h"
 
-#include "EdgeProfile.h"
+#include "common/EdgeProfile.h"
 #include "RowSpacingKernel.h"
 
 #include "common/GeometryTransform.h"
@@ -20,6 +20,8 @@
 #include <vector>
 
 namespace visiontools::metrology {
+
+using edge::grayscale;
 namespace {
 namespace p = ports::measure_row_spacing;
 constexpr double kPi = 3.14159265358979323846;

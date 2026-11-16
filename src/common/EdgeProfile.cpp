@@ -7,7 +7,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace visiontools::metrology {
+namespace visiontools::edge {
 namespace {
 constexpr double kPi = 3.14159265358979323846;
 
@@ -223,4 +223,4 @@ cv::Mat grayscale(const cv::Mat &image)
         throw std::runtime_error("测量工具只支持 1、3 或 4 通道图像");
     }
 }
-} // namespace visiontools::metrology
+} // namespace visiontools::edge

@@ -1,0 +1,113 @@
+{
+  "name_en": "PickStraightEdge",
+  "name_zh": "直边智能点选",
+  "version": "1.0.0",
+  "implementation": {
+    "kind": "cpp"
+  },
+  "ui": {
+    "visibility": "assist"
+  },
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "当前图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "光标像素坐标",
+      "type": "vec_float",
+      "ui": {
+        "editor": "array"
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "辅助阶段",
+      "type": "string",
+      "default": "hover",
+      "constraints": {
+        "options": [
+          "hover",
+          "learn"
+        ]
+      },
+      "ui": {
+        "editor": "text"
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "候选种子",
+      "type": "roi",
+      "default": [],
+      "ui": {
+        "editor": "array"
+      },
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        }
+      }
+    },
+    {
+      "id": 5,
+      "name_zh": "参考到当前变换",
+      "type": "vec_vec_vec_float",
+      "ui": {
+        "editor": "array"
+      }
+    },
+    {
+      "id": 6,
+      "name_zh": "最大搜索半径",
+      "type": "int",
+      "default": 128,
+      "constraints": {
+        "min": 16,
+        "max": 2048
+      },
+      "ui": {
+        "editor": "number"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "候选轮廓",
+      "type": "roi",
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        }
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "拟提交ROI",
+      "type": "roi"
+    },
+    {
+      "id": 4,
+      "name_zh": "候选有效",
+      "type": "bool"
+    },
+    {
+      "id": 5,
+      "name_zh": "候选质量说明",
+      "type": "string"
+    },
+    {
+      "id": 6,
+      "name_zh": "建议极性",
+      "type": "string"
+    }
+  ]
+}

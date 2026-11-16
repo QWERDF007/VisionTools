@@ -1,0 +1,141 @@
+{
+  "name_en": "RecognizeColor",
+  "name_zh": "识别颜色",
+  "version": "1.0.0",
+  "implementation": {
+    "kind": "cpp"
+  },
+  "init_params": [
+    {
+      "id": 0,
+      "name_zh": "训练数据路径",
+      "type": "string",
+      "ui": {
+        "editor": "path"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "对齐数据",
+      "type": "vec_vec_vec_float",
+      "ui": {
+        "editor": "array"
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "检测区域",
+      "type": "roi",
+      "default": [],
+      "ui": {
+        "editor": "array"
+      },
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        },
+        "alignment": {
+          "stage": "inputs",
+          "id": 2
+        }
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "最低分数",
+      "type": "float",
+      "default": 0.05,
+      "constraints": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "检测",
+        "decimals": 3
+      }
+    },
+    {
+      "id": 5,
+      "name_zh": "最低分类像素比例",
+      "type": "float",
+      "default": 0.5,
+      "constraints": {
+        "min": 0.0,
+        "max": 1.0
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "检测",
+        "decimals": 3
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "显示图像",
+      "type": "image",
+      "relations": {
+        "same_geometry_as": {
+          "stage": "inputs",
+          "id": 1
+        }
+      },
+      "display": {
+        "visible": true
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "检测区域",
+      "type": "roi",
+      "relations": {
+        "image": {
+          "stage": "outputs",
+          "id": 2
+        }
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "识别颜色",
+      "type": "vec_vec_string"
+    },
+    {
+      "id": 5,
+      "name_zh": "颜色分数",
+      "type": "vec_vec_float32"
+    },
+    {
+      "id": 6,
+      "name_zh": "分类像素比例",
+      "type": "vec_vec_float32"
+    },
+    {
+      "id": 7,
+      "name_zh": "中心 X",
+      "type": "vec_vec_float32"
+    },
+    {
+      "id": 8,
+      "name_zh": "中心 Y",
+      "type": "vec_vec_float32"
+    }
+  ],
+  "training": {
+    "kind": "color_samples",
+    "asset_param": 0
+  }
+}

@@ -1,11 +1,16 @@
 #include "RowSpacingKernel.h"
 
-#include "EdgeProfile.h"
+#include "common/EdgeProfile.h"
 
 #include <algorithm>
 #include <cmath>
 
 namespace visiontools::metrology {
+
+using edge::buildProfile;
+using edge::detectEdges;
+using edge::EdgePolarity;
+using edge::ProfileConfig;
 namespace {
 constexpr double kPi = 3.14159265358979323846;
 

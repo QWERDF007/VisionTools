@@ -13,6 +13,7 @@ inline constexpr std::int64_t kReadImage        = 101; // 101001–101999
 inline constexpr std::int64_t kImageCrop        = 102; // 102001–102999
 inline constexpr std::int64_t kImageGeometry    = 103; // 103001–103999
 inline constexpr std::int64_t kMetrology        = 104; // 104001–104999
+inline constexpr std::int64_t kRecognition      = 105; // 105001–105999
 inline constexpr std::int64_t kInfer            = 301; // 301001–301999
 inline constexpr std::int64_t kPythonExpression = 401; // 401001–401999
 inline constexpr std::int64_t kPythonBranch     = 402; // 402001–402999

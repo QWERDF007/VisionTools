@@ -1,5 +1,4 @@
 add_library(visiontools_metrology SHARED
-    EdgeProfile.cpp
     CircleFit.cpp
     CircleMeasureKernel.cpp
     CircleTool.cpp

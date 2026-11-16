@@ -1,7 +1,7 @@
 #include "AssistSupport.h"
 
 #include "CircleMeasureKernel.h"
-#include "EdgeProfile.h"
+#include "common/EdgeProfile.h"
 #include "RowSpacingKernel.h"
 
 #include <opencv2/imgproc.hpp>
@@ -12,6 +12,12 @@
 #include <optional>
 
 namespace visiontools::metrology {
+
+using edge::buildProfile;
+using edge::detectEdges;
+using edge::EdgeCandidate;
+using edge::EdgePolarity;
+using edge::ProfileConfig;
 namespace {
 constexpr double kPi = 3.14159265358979323846;
 

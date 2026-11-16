@@ -3,6 +3,7 @@
   "modules": [
     "visiontools_preprocess",
     "visiontools_metrology",
+    "visiontools_recognition",
     "visiontools_infer"
   ],
   "tools": [
@@ -12,6 +13,18 @@
     {
       "definition": "assets/tools/builtin/处理/检测/缺陷过滤.json",
       "module": "visiontools_preprocess"
+    },
+    {
+      "definition": "assets/tools/builtin/处理/识别/通过直边确定对齐.json",
+      "module": "visiontools_recognition"
+    },
+    {
+      "definition": "assets/tools/builtin/处理/识别/识别颜色.json",
+      "module": "visiontools_recognition"
+    },
+    {
+      "definition": "assets/tools/builtin/处理/识别/直边智能点选.json",
+      "module": "visiontools_recognition"
     },
     {
       "definition": "assets/tools/builtin/流程控制/分支合流.json"

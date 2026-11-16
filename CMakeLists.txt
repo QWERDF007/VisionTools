@@ -30,7 +30,7 @@ if(VISIONTOOLS_BUILD_PYTHON)
 endif()
 
 set(VISIONTOOLS_DISTRIBUTION "${PROJECT_NAME}-${PROJECT_VERSION}" CACHE STRING "Distribution configuration name")
-set(VISIONTOOLS_BUILT_MODULES visiontools_preprocess visiontools_metrology)
+set(VISIONTOOLS_BUILT_MODULES visiontools_preprocess visiontools_metrology visiontools_recognition)
 if(VISIONTOOLS_BUILD_INFER)
     list(APPEND VISIONTOOLS_BUILT_MODULES visiontools_infer)
 endif()
@@ -84,6 +84,7 @@ file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/devenv_paths.txt" CONTENT "${_
 add_subdirectory(src/common)
 add_subdirectory(src/preprocess)
 add_subdirectory(src/metrology)
+add_subdirectory(src/recognition)
 
 # 包含推理领域模块 (可选)
 if(VISIONTOOLS_BUILD_INFER AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/infer")
@@ -159,7 +160,7 @@ if(VISIONTOOLS_BUILD_TESTS)
 endif()
 
 # 工具包构建元数据：时刻取自发行模块产物，配置时刻不能冒充构建时刻（Ticket VT-01 / S45-03）。
-set(_vt_build_info_deps visiontools_metrology visiontools_preprocess)
+set(_vt_build_info_deps visiontools_metrology visiontools_preprocess visiontools_recognition)
 if(TARGET visiontools_infer)
     list(APPEND _vt_build_info_deps visiontools_infer)
 endif()

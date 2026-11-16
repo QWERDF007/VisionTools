@@ -30,6 +30,66 @@
 - ...
 -->
 
+### 2026-11-16 — 汇总识别工具提交验收
+
+**目标**
+- 将直边对齐、颜色识别、EasyTouch 直边助手及共享边缘内核改动提交并推送至 VisionTools dev。
+
+**当前状态**
+- 已完成：核对识别模块、三份声明、发行目录表、nlohmann JSON 单头文件依赖及回归测试；Contracts 子模块无未提交改动。
+- 具体算法与接口以识别模块及前述两条任务记录为准，本轮仅汇总提交，不扩大实现范围。
+
+**验证证据**
+- `cmake --build build --target visiontools_recognition test_recognition_contract test_geometry_contract test_module_contract test_output_ownership_contract` → 构建通过。
+- `ctest --test-dir build -R '^(test_recognition_contract|test_geometry_contract|test_module_contract|test_output_ownership_contract)$' --output-on-failure` → 4/4 通过。
+- `git diff --check` → 通过；提交前 `HEAD...origin/dev` 为 `0 0`。
+- `tools/build.cmd` 本机无法正确解析；使用 MSVC 14.29.30133 与 Windows SDK 10.0.19041.0 环境直接运行 CMake 完成上述构建。
+
+**下一步**
+- 以 `git status -sb` 与 `git ls-remote origin refs/heads/dev` 核对远程提交同步状态。
+
+### 2026-11-16 — 直边智能点选助手
+
+**目标**
+- 让对齐工具的训练页复用工作台的 EasyTouch：在参考图上点一下边缘就得到一条参考边与搜索框，而不是由宿主自造"画矩形"开关。
+
+**当前状态**
+- 已完成：`PickStraightEdge`（`ui.visibility = assist`，声明在 `处理/识别/直边智能点选.json`），复用计量助手的 cursor/phase/seeds/alignment/search_extent 协议端口与 preview/proposal 输出。
+- 已完成：`StraightEdgeProbe` 先用结构张量在光标窗口估计边缘方向（要求相干性 ≥ 0.2），再用已有的 `locateSegment` 在该方向的带状搜索框内拟合直线；返回值是"长边沿边缘、短边为搜索范围"的旋转矩形，正好是训练资产里一条 reference edge 的几何。
+- 已完成：回归目录 `package_catalog.json` 增加该工具（发行 25 个工具），`test_recognition_contract` 增加三例：水平边缘给出水平带、垂直边缘给出 90° 带、空白处不产出候选。
+
+**验证证据**
+- `cmake --build build --target visiontools_recognition test_recognition_contract` → 通过。
+- `tests/test_recognition_contract.exe` → 通过（含新增 `straightEdgeProbe` 三例）。
+- `python tools/package_tools.py --profile rtx40-build` → 25 个工具打包成功，模块表含 `visiontools_recognition`。
+
+**下一步**
+- 尚无：颜色训练仍是手工框选矩形，若以后也要点选，可另加 `PickColorRegion` 助手。
+
+### 2026-11-16 — 新增识别领域：直边对齐与颜色识别
+
+**目标**
+- 按 `VisionRT/docs/VisionRT_颜色识别_修订方案` 的 P0 落地两个 CPU 工具：通过直边确定对齐、识别颜色；训练数据作为唯一源，不新增 Contracts 训练契约与独立模型文件。
+
+**当前状态**
+- 已完成：`metrology/EdgeProfile` 上移到 `common`（命名空间 `visiontools::edge`），计量工具改为引用共享内核，直边工具复用同一套双线性采样、梯度与极性检测。
+- 已完成：新增 `src/recognition` 模块与错误域 `kRecognition`；`TrainingAssets` 解析两种训练资产（`straight_edges`、`color_samples`）；`AlignStraightBordersTool` 输出参考到当前的刚体变换、找到的边与搜索区域；`RecognizeColorTool` 在 U/V 上按类高斯分类，输出颜色、分数、分类像素比例与中心坐标，门限不足输出 `unknown`。
+- 已完成：两份工具声明（`处理/识别/`）、`package_catalog` 模块与工具归属、`visiontools_recognition` 目标、`test_recognition_contract`。
+- 已完成：`识别颜色.json` 增加 `training` 块（`color_samples`，资产参数 0），由 VisionRT 宿主按工具声明显示训练入口；直边对齐工具暂不声明训练，避免出现无实现的 Tab。
+- 未完成：VisionRT 的训练能力声明、处理/训练 Tab 与训练会话；示例工程与真实 `cable_11` 回归；11 张原始样本的逐图验收。
+- 设计取舍：训练资产只保存图片路径与几何，工具在 `initialize` 重建统计模型，因此应用训练数据不会留下第二份派生模型；相对路径沿用产品规则，以主程序目录为基准。
+
+**验证证据**
+- `cmake --build build --target visiontools_recognition` → `vst_recognition.dll` 链接成功。
+- `cmake --build build --target test_recognition_contract test_geometry_contract test_module_contract test_output_ownership_contract` → 四个目标编译通过。
+- `tests/test_recognition_contract.exe` → 通过：参考图输出近似单位变换（平移 0.5 px 像素中心量化内）、已知旋转+平移姿态误差小于 0.75 px、极性不符返回 `EdgeNotFound` 且三个业务端口为 Missing、五圆颜色索引为 purple/red/blue/yellow/purple、未训练绿色为 `unknown`、双图批量按图保持索引。
+- `tests/test_geometry_contract.exe`、`tests/test_module_contract.exe`、`tests/test_output_ownership_contract.exe` → 全部通过，边缘内核上移未改变计量行为。
+- `tools/package_catalog.json` 与全部声明的模块归属、端口编号唯一性用脚本核对通过（24 工具、4 模块）。
+- 未验证：`visionrt_validate_tool.exe` 对当前声明报 `name_en` 未知字段，但现有 `圆测量.json` 同样报错，判断为该二进制与当前 Contracts 不一致；宿主实际解析未在本轮验证。
+
+**下一步**
+- 在 VisionRT 增加工具声明的可选 `training` 描述与训练会话，接处理/训练文字 Tab、训练记录列表与应用训练数据；随后组装 `examples/03_综合示例/02_识别线缆颜色` 并用真实样本回归。
+
 ### 2026-11-14 — 调整亮度始终发布已声明的应用区域
 
 **目标**

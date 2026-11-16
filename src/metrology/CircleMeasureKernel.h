@@ -1,6 +1,6 @@
 #pragma once
 
-#include "EdgeProfile.h"
+#include "common/EdgeProfile.h"
 
 #include <opencv2/core.hpp>
 
@@ -8,6 +8,9 @@
 #include <vector>
 
 namespace visiontools::metrology {
+
+// The caliper options keep the shared edge vocabulary visible without renaming it.
+using edge::EdgePolarity;
 
 struct CircleOptions
 {

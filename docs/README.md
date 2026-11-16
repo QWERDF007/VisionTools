@@ -1,11 +1,12 @@
 # VisionTools 文档索引
 
 - [公共值、状态与注册接口](../3rdparty/VisionRTContracts/docs/README.md)
-- [CPU 注册](../src/preprocess/PreprocessModule.cpp)、[推理注册](../src/infer/InferModule.cpp)、[模块内构造与销毁](../src/ToolFactory.h)
+- [CPU 注册](../src/preprocess/PreprocessModule.cpp)、[识别注册](../src/recognition/RecognitionModule.cpp)、[推理注册](../src/infer/InferModule.cpp)、[模块内构造与销毁](../src/ToolFactory.h)
 - [作者声明](../assets/tools)、[发行目录表](../tools/package_catalog.json)
 - [构建与安装](../CMakeLists.txt)、[依赖解析](../cmake/ConfigDependencyDefaults.cmake)、[预设](../CMakePresets.json)
 - [作者 JSON 与资源收集](../tools/package_payload.py)、[双来源与路径边界验证](../tests/test_package_payload.py)、[发行事务与目标保护](../tools/package_tools.py)、[事务验证](../tests/test_package.py)
 - [真实模块注册验证](../tests/test_module_contract.cpp)、[动态消费](../tests/test_installation_consumer.cpp)、[算法数值](../tests/test_preprocess_contract.cpp)
+- [直边对齐与颜色识别契约](../tests/test_recognition_contract.cpp)、[共享边缘采样](../src/common/EdgeProfile.h)、[训练资产格式](../src/recognition/TrainingAssets.h)
 - [分工具数值与边界用例](../tests/preprocess)、[裁剪独立像素金标与资源存活](../tests/preprocess/image_crop.cpp)、[真实 Mat 分配观测](../tests/preprocess/MatAllocationProbe.h)、[读图预算边界](../tests/preprocess/read_image.cpp)、[共享裁剪视图及外部保活](../tests/test_writable_tools_contract.cpp)
 - [状态与原始异常详情](../3rdparty/VisionRTContracts/include/visionrt/contracts/Tool.h)、[图像解码边界](../src/preprocess/ReadImageTool.cpp)
 - [C++ 参数子类](../3rdparty/VisionRTContracts/include/visionrt/contracts/Parameters.h)、[读图参数示例](../src/preprocess/ReadImageParameters.h)、[函数工具示例](../src/preprocess/BrightnessTool.h)、[Python 作者 SDK（唯一来源）](../python/author_sdk/visiontools_sdk/__init__.py)、[SDK 消费示例](../python/custom/examples/image_add/tool.py)

@@ -70,6 +70,11 @@ visiontools_add_test(test_geometry_contract
     LIBRARIES visiontools_metrology visiontools_preprocess visiontools_common VisionRT::Contracts ${OpenCV_LIBS}
 )
 
+visiontools_add_test(test_recognition_contract
+    SOURCES test_recognition_contract.cpp
+    LIBRARIES visiontools_recognition visiontools_common VisionRT::Contracts ${OpenCV_LIBS}
+)
+
 visiontools_add_test(test_module_contract
     SOURCES test_module_contract.cpp
     LIBRARIES visiontools_preprocess VisionRT::Contracts

@@ -16,6 +16,9 @@
 #include <vector>
 
 namespace visiontools::metrology {
+
+using edge::EdgePolarity;
+using edge::grayscale;
 namespace {
 namespace p = ports::measure_circle;
 

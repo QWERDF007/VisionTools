@@ -5,7 +5,9 @@
 #include <optional>
 #include <vector>
 
-namespace visiontools::metrology {
+// Tangentially averaged edge sampling shared by every tool that measures intensity transitions:
+// metrology calipers, row spacing and the recognition tools. It owns no tool policy, only sampling.
+namespace visiontools::edge {
 
 enum class EdgePolarity
 {

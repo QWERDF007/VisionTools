@@ -1,5 +1,6 @@
 include("${PROJECT_SOURCE_DIR}/cmake/GenerateToolMetadata.cmake")
 add_library(visiontools_common STATIC
+    EdgeProfile.cpp
     GeometryTransform.cpp
     ProductPaths.cpp
     RoiSupport.cpp

@@ -1,7 +1,7 @@
 #include "AssistTools.h"
 
 #include "AssistSupport.h"
-#include "EdgeProfile.h"
+#include "common/EdgeProfile.h"
 
 #include "common/GeometryTransform.h"
 #include "common/ImageSupport.h"
@@ -14,6 +14,8 @@
 #include <vector>
 
 namespace visiontools::metrology {
+
+using edge::grayscale;
 namespace {
 namespace p = ports::assist;
 

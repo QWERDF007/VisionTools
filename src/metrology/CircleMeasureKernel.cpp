@@ -6,6 +6,11 @@
 #include <cmath>
 
 namespace visiontools::metrology {
+
+using edge::buildProfile;
+using edge::detectEdges;
+using edge::nearestEdge;
+using edge::ProfileConfig;
 namespace {
 constexpr double kPi = 3.14159265358979323846;
 } // namespace
