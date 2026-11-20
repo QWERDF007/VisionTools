@@ -3,13 +3,15 @@
   "name_zh": "调整亮度",
   "version": "1.0.0",
   "implementation": {
-    "kind": "cpp"
+    "kind": 0
   },
   "inputs": [
     {
       "id": 1,
       "name_zh": "输入图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -17,40 +19,46 @@
     {
       "id": 2,
       "name_zh": "增益",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 1.0,
       "constraints": {
         "min": 0.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 3
       }
     },
     {
       "id": 3,
       "name_zh": "偏移",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 3
       }
     },
     {
       "id": 4,
       "name_zh": "测量区域",
-      "type": "roi",
+      "type": {
+        "type": 6
+      },
       "default": [],
       "ui": {
-        "editor": "array"
+        "editor": 7
       },
       "relations": {
         "image": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 1
         },
         "alignment": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 6
         }
       }
@@ -58,7 +66,9 @@
     {
       "id": 5,
       "name_zh": "输入掩码",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -66,9 +76,13 @@
     {
       "id": 6,
       "name_zh": "参考到当前变换",
-      "type": "vec_vec_vec_float",
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      },
       "ui": {
-        "editor": "array"
+        "editor": 7
       }
     }
   ],
@@ -76,10 +90,12 @@
     {
       "id": 2,
       "name_zh": "输出图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "relations": {
         "same_geometry_as": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 1
         }
       },
@@ -90,11 +106,14 @@
     {
       "id": 3,
       "name_zh": "应用区域",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
-        "color_order": "Gray",
+        "color_order": 1,
         "visible": true
       }
     }
-  ]
+  ],
+  "schema_version": 1
 }

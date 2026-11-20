@@ -9,6 +9,8 @@ deletes a previous usable package.
 
 from __future__ import annotations
 
+from protocol_enums import ToolKind
+
 import argparse
 from dataclasses import dataclass
 import os
@@ -189,12 +191,12 @@ def _load_build(build_dir: Path, config: str, project_root: Path, validator: Pat
         identities.add(tool_id)
         module = entry.get("module")
         kind = declaration.get("implementation", {}).get("kind")
-        if kind == "cpp":
+        if kind == ToolKind.Cpp:
             if module not in known_modules:
                 raise PackagingError(f"C++ 工具缺少有效模块归属：{tool_id}")
             if module not in modules:
                 continue
-        elif kind in ("host", "python_function", "python_class"):
+        elif kind in (ToolKind.Host, ToolKind.PythonFunction, ToolKind.PythonClass):
             if module is not None:
                 raise PackagingError(f"非 C++ 工具不能关联原生模块：{tool_id}")
         else:

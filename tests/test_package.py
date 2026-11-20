@@ -34,8 +34,8 @@ class TestPackageTransaction(PackageFixture):
         source = self.declaration.read_text(encoding="utf-8")
         invalid = (
             source.replace('"name_en": "custom.math"', '"name_en": "ignored", "name_en": "custom.math"'),
-            source.replace('"type": "int"', '"type": "float", "type": "int"'),
-            source.replace('"type": "int"', '"type": "float", "t\\u0079pe": "int"'),
+            source.replace('"type": 0', '"type": 1, "type": 0'),
+            source.replace('"type": 0', '"type": 1, "t\\u0079pe": 0'),
             source.replace('"version": "1.0.0"', '"version": "1.0.0", "version": "1.0.0"'),
         )
         for document in invalid:
@@ -188,7 +188,7 @@ class TestPackageTransaction(PackageFixture):
             self.assertFalse(any(name.startswith("assets/") for name in bundle.namelist()))
 
     def test_native_tool_can_ship_declared_data_without_python(self):
-        self.document["implementation"] = {"kind": "cpp"}
+        self.document["implementation"] = {"kind": 0}
         resource = self.declaration.parent / "resources/native/bias.dat"
         resource.parent.mkdir(parents=True)
         resource.write_text("42", encoding="utf-8")
@@ -206,7 +206,7 @@ class TestPackageTransaction(PackageFixture):
         self.assertEqual((installed.parent / resource_path).resolve(), self.output / "tools/custom/Math/Arithmetic/resources/native/bias.dat")
 
     def test_platform_only_package_has_no_fake_module(self):
-        self.document["implementation"] = {"kind": "host", "binding": "visionrt.receiver"}
+        self.document["implementation"] = {"kind": 3, "binding": "visionrt.receiver"}
         archive = self.publish()
         with zipfile.ZipFile(archive) as bundle:
             self.assertFalse(any(name.startswith("bin/") for name in bundle.namelist()))

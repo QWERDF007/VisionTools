@@ -30,6 +30,42 @@
 - ...
 -->
 
+### 2026-11-20 — 汇总数字协议与工具包交付
+
+**目标**
+- 提交并推送数字声明、生成式SDK、逻辑工具、训练读取和相关功能测试。
+
+**当前状态**
+- 已完成：Contracts e0af8c6 已推送 origin/main，与 VisionRT 使用同一提交。
+- 本条与本轮工具实现、作者声明、打包脚本、文档和测试一并提交，发布分支为origin/dev。
+
+**验证证据**
+- 操作前dev与远程同步；所有待提交源文件通过 git diff --check。
+- 原生、Python及发行8项通过，SDK依赖调整后4项复验通过；25工具rtx40-runtime包通过真实宿主校验，具体日志见前一条记录。
+- 两仓 Contracts 的准备索引树与已发布提交一致，通过无强制的切换同步子模块引用。
+
+**下一步**
+- 发布状态通过 git status -sb、git ls-remote 与 Git 历史核对；无需重复执行已通过的测试。
+
+### 2026-11-20 — 数字枚举声明与生成式 Python SDK
+
+**目标**
+- 配合 VisionRT 样式与协议重构，统一 C++、QML、Python 使用的有限状态及声明格式。
+
+**当前状态**
+- 已完成：作者 JSON 改用数字枚举和结构化 TypeSpec；训练资产读取使用共享版本与 TrainingKind；逻辑工具按共享枚举解析类型和条件输入模式。
+- 已完成：SDK 枚举从 Contracts 头文件导出，构建与打包复用同一生成器；构建侧复制 SDK 源文件时跟踪输入依赖。删除声明常量、静态源码等重复断言，保留真实 Python、原生模块和发行流程测试。
+- 已完成：rtx40-runtime 包含25个工具，通过真实 VisionRT 校验器；产物位于 F:/tmp/VisionTools-ui、F:/tmp/VisionTools-ui.zip。未提交、未推送、未部署到用户安装目录。
+
+**验证证据**
+- `cmake --build build` 的受影响原生目标构建通过，日志：F:/tmp/visiontools-final-build.log。
+- 原生几何、识别、模块注册及 Python、逻辑引擎、资源收集、发行事务8项全部通过，日志：F:/tmp/visiontools-verified-results.log。
+- SDK 输入依赖调整后重新配置，Python、逻辑引擎、声明发行及资源收集4项通过，日志：F:/tmp/visiontools-sdk-verified-results.log。
+- `python tools/package_tools.py --build-dir build --install-dir F:/tmp/VisionTools-ui --profile rtx40-runtime --validator F:/Projects/VisionRT/build/bin/visionrt_validate_tool.exe --allow-dirty` → 25个工具通过，日志：F:/tmp/visiontools-delivery-package.log。
+
+**下一步**
+- 当前实现与包验证完成；如继续提交工作，先提交 Contracts 的共享变更，再更新两仓 gitlink。宿主状态见 F:/Projects/VisionRT/WORKLOG.md。
+
 ### 2026-11-16 — 汇总识别工具提交验收
 
 **目标**

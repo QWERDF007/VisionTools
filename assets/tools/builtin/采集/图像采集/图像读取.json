@@ -3,29 +3,35 @@
   "name_zh": "图像读取",
   "version": "1.0.0",
   "implementation": {
-    "kind": "cpp"
+    "kind": 0
   },
   "inputs": [
     {
       "id": 1,
       "name_zh": "图像路径",
-      "type": "string",
+      "type": {
+        "type": 3
+      },
       "ui": {
-        "editor": "path"
+        "editor": 6
       }
     },
     {
       "id": 2,
       "name_zh": "递归选项",
-      "type": "bool",
+      "type": {
+        "type": 2
+      },
       "ui": {
-        "editor": "recursive"
+        "editor": 5
       }
     },
     {
       "id": 3,
       "name_zh": "遍历选项",
-      "type": "string",
+      "type": {
+        "type": 3
+      },
       "default": "循环",
       "constraints": {
         "options": [
@@ -34,13 +40,15 @@
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": 2
       }
     },
     {
       "id": 4,
       "name_zh": "遍历顺序",
-      "type": "string",
+      "type": {
+        "type": 3
+      },
       "default": "顺序（下一张）",
       "constraints": {
         "options": [
@@ -49,28 +57,32 @@
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": 2
       }
     },
     {
       "id": 5,
       "name_zh": "图像数量",
-      "type": "int",
+      "type": {
+        "type": 0
+      },
       "default": 1,
       "constraints": {
         "min": 1,
         "max": 64
       },
       "ui": {
-        "editor": "number"
+        "editor": 1
       }
     },
     {
       "id": 6,
       "name_zh": "重新读图",
-      "type": "bool",
+      "type": {
+        "type": 2
+      },
       "ui": {
-        "editor": "switch"
+        "editor": 4
       }
     }
   ],
@@ -78,7 +90,9 @@
     {
       "id": 2,
       "name_zh": "图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -86,22 +100,33 @@
     {
       "id": 3,
       "name_zh": "文件路径",
-      "type": "vec_string"
+      "type": {
+        "type": 5,
+        "dtype": 6,
+        "rank": 1
+      }
     },
     {
       "id": 4,
       "name_zh": "当前索引",
-      "type": "int"
+      "type": {
+        "type": 0
+      }
     },
     {
       "id": 5,
       "name_zh": "目录总数量",
-      "type": "int"
+      "type": {
+        "type": 0
+      }
     },
     {
       "id": 6,
       "name_zh": "已到末项",
-      "type": "bool"
+      "type": {
+        "type": 2
+      }
     }
-  ]
+  ],
+  "schema_version": 1
 }

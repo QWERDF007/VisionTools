@@ -82,8 +82,8 @@ std::filesystem::path straightEdgeAsset(const std::filesystem::path &directory)
 {
     const auto path = directory / "alignment.json";
     writeText(path, std::string{"{\n"
-                                "  \"schema_version\": 1,\n"
-                                "  \"kind\": \"straight_edges\",\n"
+                                "  \"schema_version\": 2,\n"
+                                "  \"kind\": 1,\n"
                                 "  \"reference_image\": \""}
                         + generic(directory / "reference.png")
                         + "\",\n"
@@ -230,7 +230,7 @@ void colorTraining(const std::filesystem::path &directory, std::filesystem::path
     REQUIRE(cv::imwrite(reference.string(), image), "training image must be writable");
     asset = directory / "colors.json";
     writeText(asset,
-              "{\n  \"schema_version\": 1,\n  \"kind\": \"color_samples\",\n  \"records\": [\n" + records
+              "{\n  \"schema_version\": 2,\n  \"kind\": 0,\n  \"records\": [\n" + records
                   + "\n  ]\n}\n");
 }
 
@@ -323,7 +323,7 @@ void assetValidation(const std::filesystem::path &directory)
 {
     const auto brokenAlignment = directory / "broken_alignment.json";
     writeText(brokenAlignment,
-              "{\n  \"schema_version\": 1,\n  \"kind\": \"straight_edges\",\n"
+              "{\n  \"schema_version\": 2,\n  \"kind\": 1,\n"
               "  \"reference_image\": \"none.png\",\n"
               "  \"segments\": [{\"name\": \"one\", \"from\": [0, 0], \"to\": [10, 0], \"search\": [5, 0, 10, 10, 0]}]\n}\n");
     recognition::AlignStraightBordersTool tool;
@@ -335,7 +335,7 @@ void assetValidation(const std::filesystem::path &directory)
 
     const auto brokenColor = directory / "broken_color.json";
     writeText(brokenColor,
-              "{\n  \"schema_version\": 1,\n  \"kind\": \"color_samples\",\n  \"records\": []\n}\n");
+              "{\n  \"schema_version\": 2,\n  \"kind\": 0,\n  \"records\": []\n}\n");
     recognition::RecognizeColorTool colorTool;
     Values                           colorInit;
     colorInit.emplace(color::init::TRAINING, generic(brokenColor));

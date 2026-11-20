@@ -27,6 +27,22 @@ endif()
 if(VISIONTOOLS_BUILD_PYTHON)
     include(ConfigPython)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(_contracts "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/VisionRTContracts")
+    set(_sdk "${CMAKE_CURRENT_BINARY_DIR}/python/visiontools_sdk")
+    foreach(_file __init__.py errors.json)
+        configure_file("python/author_sdk/visiontools_sdk/${_file}" "${_sdk}/${_file}" COPYONLY)
+    endforeach()
+    execute_process(COMMAND "${Python3_EXECUTABLE}" "${_contracts}/tools/export_enums.py"
+        --python "${_sdk}/enums.py"
+        "${_contracts}/include/visionrt/contracts/ProtocolEnums.h"
+        "${_contracts}/include/visionrt/contracts/TypeSpec.h"
+        "${_contracts}/include/visionrt/contracts/ROI.h"
+        COMMAND_ERROR_IS_FATAL ANY)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${_contracts}/tools/export_enums.py"
+        "${_contracts}/include/visionrt/contracts/ProtocolEnums.h"
+        "${_contracts}/include/visionrt/contracts/TypeSpec.h"
+        "${_contracts}/include/visionrt/contracts/ROI.h")
 endif()
 
 set(VISIONTOOLS_DISTRIBUTION "${PROJECT_NAME}-${PROJECT_VERSION}" CACHE STRING "Distribution configuration name")

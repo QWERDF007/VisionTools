@@ -3,16 +3,18 @@
   "name_zh": "行间距智能点选",
   "version": "1.0.0",
   "implementation": {
-    "kind": "cpp"
+    "kind": 0
   },
   "ui": {
-    "visibility": "assist"
+    "visibility": 1
   },
   "inputs": [
     {
       "id": 1,
       "name_zh": "当前图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -20,15 +22,21 @@
     {
       "id": 2,
       "name_zh": "光标像素坐标",
-      "type": "vec_float",
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 1
+      },
       "ui": {
-        "editor": "array"
+        "editor": 7
       }
     },
     {
       "id": 3,
       "name_zh": "辅助阶段",
-      "type": "string",
+      "type": {
+        "type": 3
+      },
       "default": "hover",
       "constraints": {
         "options": [
@@ -37,24 +45,26 @@
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": 2
       }
     },
     {
       "id": 4,
       "name_zh": "候选种子",
-      "type": "roi",
+      "type": {
+        "type": 6
+      },
       "default": [],
       "ui": {
-        "editor": "array"
+        "editor": 7
       },
       "relations": {
         "image": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 1
         },
         "alignment": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 5
         }
       }
@@ -62,22 +72,28 @@
     {
       "id": 5,
       "name_zh": "参考到当前变换",
-      "type": "vec_vec_vec_float",
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      },
       "ui": {
-        "editor": "array"
+        "editor": 7
       }
     },
     {
       "id": 6,
       "name_zh": "最大搜索半径",
-      "type": "int",
+      "type": {
+        "type": 0
+      },
       "default": 256,
       "constraints": {
         "min": 16,
         "max": 2048
       },
       "ui": {
-        "editor": "number"
+        "editor": 1
       }
     }
   ],
@@ -85,10 +101,12 @@
     {
       "id": 2,
       "name_zh": "候选轮廓",
-      "type": "roi",
+      "type": {
+        "type": 6
+      },
       "relations": {
         "image": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 1
         }
       }
@@ -96,32 +114,45 @@
     {
       "id": 3,
       "name_zh": "拟提交ROI",
-      "type": "roi"
+      "type": {
+        "type": 6
+      }
     },
     {
       "id": 4,
       "name_zh": "候选有效",
-      "type": "bool"
+      "type": {
+        "type": 2
+      }
     },
     {
       "id": 5,
       "name_zh": "候选质量说明",
-      "type": "string"
+      "type": {
+        "type": 3
+      }
     },
     {
       "id": 6,
       "name_zh": "建议极性",
-      "type": "string"
+      "type": {
+        "type": 3
+      }
     },
     {
       "id": 7,
       "name_zh": "建议宽度下限",
-      "type": "float"
+      "type": {
+        "type": 1
+      }
     },
     {
       "id": 8,
       "name_zh": "建议宽度上限",
-      "type": "float"
+      "type": {
+        "type": 1
+      }
     }
-  ]
+  ],
+  "schema_version": 1
 }

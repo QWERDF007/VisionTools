@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..visiontools_sdk import status as lifecycle_status, result as tool_result
 from ..common.engine import EngineError, Program
+from ..visiontools_sdk.enums import BindingMode
 from .errors import (
     CONDITION_NOT_BOOLEAN,
     EVALUATION_FAILED,
@@ -16,14 +17,14 @@ VARIABLES, PROGRAM, CONDITION_MODE = 0, 1, 2
 CONDITION = 1
 ON_TRUE, ON_FALSE, ON_TRUE_STATUS, ON_FALSE_STATUS = 2, 3, 4, 5
 
-FORMULA = "formula"
-UPSTREAM = "upstream"
+FORMULA = BindingMode.Literal
+UPSTREAM = BindingMode.Upstream
 
 
 class BranchTool:
     def __init__(self):
         self._program: Program | None = None
-        self._mode: str | None = None
+        self._mode: BindingMode | None = None
 
     def initialize(self, params):
         mode = params.get(CONDITION_MODE, FORMULA)

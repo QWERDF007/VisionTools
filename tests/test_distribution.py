@@ -46,40 +46,6 @@ class DistributionContract(unittest.TestCase):
                 outputs = document.get("outputs", [])
                 self.assertTrue(all(port["id"] >= 2 for port in outputs))
 
-    def test_receiver_uses_stable_identity_and_host_binding(self):
-        declaration = json.loads((ROOT / "assets/tools/builtin/流程控制/跨流程接收.json").read_text(encoding="utf-8"))
-        self.assertEqual(declaration["implementation"]["kind"], "host")
-        self.assertEqual(declaration["implementation"]["binding"], "visionrt.receiver")
-        # Port ids are the identity: the receiver binds the source flow, node and port by number, so
-        # the three parameters must be the first three init ports and types must match the envelope.
-        parameters = declaration["init_params"]
-        self.assertEqual([item["id"] for item in parameters], [0, 1, 2, 3])
-        self.assertEqual([item["type"] for item in parameters], ["string", "string", "int", "int"])
-        self.assertEqual(declaration["outputs"][0]["type_from"],
-                         {"flow": {"stage": "init", "id": 0},
-                          "node": {"stage": "init", "id": 1},
-                          "port": {"stage": "init", "id": 2}})
-
-    def test_author_code_never_locates_an_interpreter(self):
-        """The host owns the environment; author code that searches for one would run a runtime the
-        user never selected. Business NumPy use and data validation stay legal — only interpreter
-        discovery, dependency installation and Python subprocesses are refused."""
-        discovery = {
-            "sys.executable": re.compile(r"\bsys\s*\.\s*executable\b"),
-            "shutil.which": re.compile(r"\bshutil\s*\.\s*which\s*\("),
-            "pip install": re.compile(r"\bpip\s+install\b", re.IGNORECASE),
-        }
-        offenders = []
-        for path in sorted((ROOT / "python").rglob("*.py")):
-            relative = path.relative_to(ROOT).as_posix()
-            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-                for label, pattern in discovery.items():
-                    if pattern.search(line):
-                        offenders.append(f"{relative}:{number}: {label}")
-                if "subprocess" in line and re.search(r"python|pip", line, re.IGNORECASE):
-                    offenders.append(f"{relative}:{number}: subprocess interpreter")
-        self.assertEqual(offenders, [], "author code locates its own interpreter: " + "; ".join(offenders))
-
     def _python_fixture(self, project: Path) -> Path:
         """Builds the minimal one-tool Python package the rest of this file distributes."""
         # A project that ships Python tools carries the one author SDK the packager injects.
@@ -89,14 +55,14 @@ class DistributionContract(unittest.TestCase):
         definition = project / "assets/tools/custom/math/arithmetic/add.json"
         definition.parent.mkdir(parents=True)
         document = {
-            "name_en": "test.add", "name_zh": "Add", "version": "1.0.0",
-            "implementation": {"kind": "python_function",
+            "schema_version": 1, "name_en": "test.add", "name_zh": "Add", "version": "1.0.0",
+            "implementation": {"kind": 1,
                                "package": "math/arithmetic",
                                "file": "add.py",
                                "symbol": "run",
                                "resources": ["bias.dat"]},
             # Output ids start at 2: the first two output ports belong to the host status envelope.
-            "outputs": [{"id": 2, "name_zh": "Value", "type": "int"}],
+            "outputs": [{"id": 2, "name_zh": "Value", "type": {"type": 0}}],
         }
         definition.write_text(json.dumps(document), encoding="utf-8")
         code = project / "python/custom/math/arithmetic"

@@ -17,6 +17,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .vendor import simpleeval
+from ..visiontools_sdk.enums import Type, DType
 
 MAX_EXPRESSION_CHARS = 4096
 MAX_AST_NODES = 512
@@ -31,13 +32,13 @@ INT64_MIN = -(2**63)
 INT64_MAX = 2**63 - 1
 
 DTYPES = {
-    "uint8": (int, 0, 255),
-    "int32": (int, -(2**31), 2**31 - 1),
-    "int64": (int, INT64_MIN, INT64_MAX),
-    "float32": (float, None, None),
-    "float64": (float, None, None),
-    "bool": (bool, None, None),
-    "string": (str, None, None),
+    DType.UInt8: (int, 0, 255),
+    DType.Int32: (int, -(2**31), 2**31 - 1),
+    DType.Int64: (int, INT64_MIN, INT64_MAX),
+    DType.Float32: (float, None, None),
+    DType.Float64: (float, None, None),
+    DType.Bool: (bool, None, None),
+    DType.String: (str, None, None),
 }
 
 
@@ -68,26 +69,25 @@ class Budget:
 
 @dataclass(frozen=True)
 class TypeSpec:
-    name: str
-    dtype: str | None = None
+    name: Type
+    dtype: DType | None = None
     rank: int = -1
 
     @classmethod
     def parse(cls, name: str, dtype: str, rank: str) -> "TypeSpec":
-        known = {"Int", "Float", "Bool", "String", "Array"}
-        if name not in known:
-            raise EngineError(f"表达式不支持的类型：{name}")
-        if name == "Array":
-            if dtype not in DTYPES:
-                raise EngineError(f"数组元素类型无效：{dtype or '空'}")
-            try:
+        try:
+            port_type = Type(int(name))
+            if port_type not in (Type.Int, Type.Float, Type.Bool, Type.String, Type.Array):
+                raise ValueError
+            if port_type == Type.Array:
+                element_type = DType(int(dtype))
                 parsed_rank = int(rank)
-            except (TypeError, ValueError):
-                raise EngineError("数组维度必须是整数") from None
-            if parsed_rank < 1 or parsed_rank > MAX_ARRAY_RANK:
-                raise EngineError(f"数组维度必须在 1 到 {MAX_ARRAY_RANK} 之间")
-            return cls(name, dtype, parsed_rank)
-        return cls(name)
+                if parsed_rank < 1 or parsed_rank > MAX_ARRAY_RANK:
+                    raise ValueError
+                return cls(port_type, element_type, parsed_rank)
+            return cls(port_type)
+        except (TypeError, ValueError):
+            raise EngineError(f"表达式类型无效：{name}/{dtype}/{rank}") from None
 
 
 @dataclass(frozen=True)
@@ -111,22 +111,22 @@ def _is_number(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def _check_leaf(value, dtype: str, location: str):
+def _check_leaf(value, dtype: DType, location: str):
     expected, minimum, maximum = DTYPES[dtype]
-    if dtype == "float32" or dtype == "float64":
+    if dtype == DType.Float32 or dtype == DType.Float64:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise EngineError(f"{location} 需要数值，实际为 {type(value).__name__}")
         converted = float(value)
         if not math.isfinite(converted):
             raise EngineError(f"{location} 必须是有限数值")
-        if dtype == "float32" and abs(converted) > FLOAT32_MAX:
+        if dtype == DType.Float32 and abs(converted) > FLOAT32_MAX:
             raise EngineError(f"{location} 超出 float32 可表示范围")
         return converted
-    if dtype == "bool":
+    if dtype == DType.Bool:
         if not isinstance(value, bool):
             raise EngineError(f"{location} 需要布尔值")
         return value
-    if dtype == "string":
+    if dtype == DType.String:
         if not isinstance(value, str):
             raise EngineError(f"{location} 需要字符串")
         if len(value) > MAX_STRING_CHARS:
@@ -141,30 +141,30 @@ def _check_leaf(value, dtype: str, location: str):
 
 def check_value(value, spec: TypeSpec, location: str, budget: Budget | None = None):
     """Returns a normalised value or raises EngineError with the exact path."""
-    if spec.name == "Int":
+    if spec.name == Type.Int:
         if isinstance(value, bool) or not isinstance(value, int):
             raise EngineError(f"{location} 需要整数，实际为 {type(value).__name__}")
         if value < INT64_MIN or value > INT64_MAX:
             raise EngineError(f"{location} 超出整数可表示范围")
         return value
-    if spec.name == "Float":
+    if spec.name == Type.Float:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise EngineError(f"{location} 需要数值，实际为 {type(value).__name__}")
         converted = float(value)
         if not math.isfinite(converted):
             raise EngineError(f"{location} 必须是有限数值")
         return converted
-    if spec.name == "Bool":
+    if spec.name == Type.Bool:
         if not isinstance(value, bool):
             raise EngineError(f"{location} 需要布尔值，实际为 {type(value).__name__}")
         return value
-    if spec.name == "String":
+    if spec.name == Type.String:
         if not isinstance(value, str):
             raise EngineError(f"{location} 需要字符串，实际为 {type(value).__name__}")
         if len(value) > MAX_STRING_CHARS:
             raise EngineError(f"{location} 字符串超出长度上限")
         return value
-    if spec.name == "Array":
+    if spec.name == Type.Array:
         if isinstance(value, np.ndarray):
             return _check_numpy(value, spec, location, budget)
         if not isinstance(value, list):
@@ -179,11 +179,11 @@ def _check_numpy(value, spec: TypeSpec, location: str, budget: Budget | None):
     The host does not copy numeric arrays before crossing into Python, so the engine converts
     once at this single entry instead of expecting every expression to handle ndarray.
     """
-    if spec.dtype == "string":
+    if spec.dtype == DType.String:
         raise EngineError(f"{location} 不接受 NumPy 字符串数组")
     if value.ndim != spec.rank:
         raise EngineError(f"{location} 数组维度不匹配：声明 {spec.rank}，实际 {value.ndim}")
-    if value.dtype != np.dtype(spec.dtype):
+    if value.dtype != np.dtype(spec.dtype.name.lower()):
         raise EngineError(f"{location} 数组元素类型不匹配：声明 {spec.dtype}，实际 {value.dtype}")
     # A shape such as (huge, 0) has zero leaves, but tolist() still builds every empty inner list,
     # so the container count is bounded before the conversion allocates anything.
@@ -457,7 +457,7 @@ class CompiledResult:
 def port_cell(value, location: str) -> int:
     """Read the port number out of one table cell.
 
-    The initialization tables stay vec_vec_string — every cell is text — so the number travels as
+    The initialization tables use a rank-2 string array — every cell is text — so the number travels as
     its canonical decimal digits and the engine reads it back here. Anything else is a host bug and
     is reported instead of being guessed at.
     """
@@ -530,7 +530,7 @@ class Program:
         if condition:
             if len(results) != 1:
                 raise EngineError("条件工具必须恰好一条公式")
-            if results[0].spec.name != "Bool" or results[0].exposed:
+            if results[0].spec.name != Type.Bool or results[0].exposed:
                 raise EngineError("条件公式必须是 Bool 类型且不暴露端口")
         return cls(variables, results, trees)
 

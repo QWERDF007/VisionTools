@@ -3,13 +3,15 @@
   "name_zh": "缺陷过滤",
   "version": "1.0.0",
   "implementation": {
-    "kind": "cpp"
+    "kind": 0
   },
   "inputs": [
     {
       "id": 1,
       "name_zh": "图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -17,10 +19,12 @@
     {
       "id": 2,
       "name_zh": "候选ROI",
-      "type": "roi",
+      "type": {
+        "type": 6
+      },
       "relations": {
         "image": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 1
         }
       }
@@ -28,51 +32,71 @@
     {
       "id": 3,
       "name_zh": "置信度得分",
-      "type": "vec_vec_float32"
+      "type": {
+        "type": 5,
+        "dtype": 3,
+        "rank": 2
+      }
     },
     {
       "id": 4,
       "name_zh": "类别ID",
-      "type": "vec_vec_int"
+      "type": {
+        "type": 5,
+        "dtype": 2,
+        "rank": 2
+      }
     },
     {
       "id": 5,
       "name_zh": "类别名称",
-      "type": "vec_vec_string"
+      "type": {
+        "type": 5,
+        "dtype": 6,
+        "rank": 2
+      }
     },
     {
       "id": 6,
       "name_zh": "最低置信度",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 0.5,
       "constraints": {
         "min": 0,
         "max": 1
       },
       "ui": {
-        "tab": "检测",
+        "tab": 2,
         "step": 0.05
       }
     },
     {
       "id": 7,
       "name_zh": "最小面积",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 1,
       "constraints": {
         "min": 0
       },
       "ui": {
-        "tab": "检测",
+        "tab": 2,
         "step": 1
       }
     },
     {
       "id": 8,
       "name_zh": "保留类别",
-      "type": "vec_int",
+      "type": {
+        "type": 5,
+        "dtype": 2,
+        "rank": 1
+      },
       "ui": {
-        "tab": "检测"
+        "tab": 2
       }
     }
   ],
@@ -80,25 +104,29 @@
     {
       "id": 2,
       "name_zh": "输出图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "relations": {
         "same_geometry_as": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 1
         }
       },
       "display": {
-        "color_order": "BGR",
+        "color_order": 2,
         "visible": true
       }
     },
     {
       "id": 3,
       "name_zh": "过滤后ROI",
-      "type": "roi",
+      "type": {
+        "type": 6
+      },
       "relations": {
         "image": {
-          "stage": "outputs",
+          "stage": 2,
           "id": 2
         }
       }
@@ -106,22 +134,39 @@
     {
       "id": 4,
       "name_zh": "过滤后得分",
-      "type": "vec_vec_float32"
+      "type": {
+        "type": 5,
+        "dtype": 3,
+        "rank": 2
+      }
     },
     {
       "id": 5,
       "name_zh": "过滤后类别",
-      "type": "vec_vec_int"
+      "type": {
+        "type": 5,
+        "dtype": 2,
+        "rank": 2
+      }
     },
     {
       "id": 6,
       "name_zh": "过滤后类别名",
-      "type": "vec_vec_string"
+      "type": {
+        "type": 5,
+        "dtype": 6,
+        "rank": 2
+      }
     },
     {
       "id": 7,
       "name_zh": "目标数量",
-      "type": "vec_int"
+      "type": {
+        "type": 5,
+        "dtype": 2,
+        "rank": 1
+      }
     }
-  ]
+  ],
+  "schema_version": 1
 }

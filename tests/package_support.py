@@ -32,18 +32,18 @@ class PackageFixture(unittest.TestCase):
         self.validator = validator_path()
         self.declaration = self.project / "assets/tools/custom/Math/Arithmetic/tool.json"
         self.declaration.parent.mkdir(parents=True)
-        self.document = {
+        self.document = {"schema_version": 1,
             "name_en": "custom.math", "name_zh": "Math",
             "version": "1.0.0",
             "implementation": {
-                "kind": "python_function",
+                "kind": 1,
                 "package": "examples/math",
                 "file": "tool.py",
                 "symbol": "run",
                 "resources": ["bias.dat"],
             },
             # Output ids start at 2: the first two output ports belong to the host status envelope.
-            "outputs": [{"id": 2, "name_zh": "Value", "type": "int"}],
+            "outputs": [{"id": 2, "name_zh": "Value", "type": {'type': 0}}],
         }
         # Every project that ships Python tools carries the one author SDK the packager injects.
         sdk = self.project / "python/author_sdk/visiontools_sdk"

@@ -3,13 +3,15 @@
   "name_zh": "测量圆",
   "version": "1.0.0",
   "implementation": {
-    "kind": "cpp"
+    "kind": 0
   },
   "inputs": [
     {
       "id": 1,
       "name_zh": "图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -17,18 +19,20 @@
     {
       "id": 2,
       "name_zh": "测量区域",
-      "type": "roi",
+      "type": {
+        "type": 6
+      },
       "default": [],
       "ui": {
-        "editor": "array"
+        "editor": 7
       },
       "relations": {
         "image": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 1
         },
         "alignment": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 3
         }
       }
@@ -36,84 +40,100 @@
     {
       "id": 3,
       "name_zh": "参考到当前变换",
-      "type": "vec_vec_vec_float",
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      },
       "ui": {
-        "editor": "array"
+        "editor": 7
       }
     },
     {
       "id": 4,
       "name_zh": "卡尺数量",
-      "type": "int",
+      "type": {
+        "type": 0
+      },
       "default": 64,
       "constraints": {
         "min": 12,
         "max": 4096
       },
       "ui": {
-        "editor": "number"
+        "editor": 1
       }
     },
     {
       "id": 5,
       "name_zh": "径向半搜索宽度",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 8.0,
       "constraints": {
         "min": 0.5,
         "max": 4096.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 2
       }
     },
     {
       "id": 6,
       "name_zh": "切向平均宽度",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 3.0,
       "constraints": {
         "min": 1.0,
         "max": 1024.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 2
       }
     },
     {
       "id": 7,
       "name_zh": "平滑标准差",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 1.0,
       "constraints": {
         "min": 0.1,
         "max": 20.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 2
       }
     },
     {
       "id": 8,
       "name_zh": "最小梯度",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 8.0,
       "constraints": {
         "min": 0.0,
         "max": 255.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 2
       }
     },
     {
       "id": 9,
       "name_zh": "边缘极性",
-      "type": "string",
+      "type": {
+        "type": 3
+      },
       "default": "any",
       "constraints": {
         "options": [
@@ -123,109 +143,125 @@
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": 2
       }
     },
     {
       "id": 10,
       "name_zh": "最少有效点",
-      "type": "int",
+      "type": {
+        "type": 0
+      },
       "default": 12,
       "constraints": {
         "min": 3,
         "max": 4096
       },
       "ui": {
-        "editor": "number"
+        "editor": 1
       }
     },
     {
       "id": 11,
       "name_zh": "最小完整度",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 0.6,
       "constraints": {
         "min": 0.0,
         "max": 1.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 2
       }
     },
     {
       "id": 12,
       "name_zh": "最小覆盖角度",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 180.0,
       "constraints": {
         "min": 0.0,
         "max": 360.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 1
       }
     },
     {
       "id": 13,
       "name_zh": "最小半径",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 0.5,
       "constraints": {
         "min": 0.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 3
       }
     },
     {
       "id": 14,
       "name_zh": "最大半径",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 1000000.0,
       "constraints": {
         "min": 0.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 3
       }
     },
     {
       "id": 15,
       "name_zh": "最大拟合误差",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 1.0,
       "constraints": {
         "min": 0.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 3
       }
     },
     {
       "id": 16,
       "name_zh": "每像素物理长度",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 1.0,
       "constraints": {
         "min": 1e-09
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 6
       }
     },
     {
       "id": 17,
       "name_zh": "单位",
-      "type": "string",
+      "type": {
+        "type": 3
+      },
       "default": "px",
       "ui": {
-        "editor": "text"
+        "editor": 2
       }
     }
   ],
@@ -233,39 +269,59 @@
     {
       "id": 2,
       "name_zh": "显示图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
-        "color_order": "BGR",
+        "color_order": 2,
         "visible": true
       }
     },
     {
       "id": 3,
       "name_zh": "逐ROI有效性",
-      "type": "vec_vec_bool"
+      "type": {
+        "type": 5,
+        "dtype": 5,
+        "rank": 2
+      }
     },
     {
       "id": 4,
       "name_zh": "逐ROI说明",
-      "type": "vec_vec_string"
+      "type": {
+        "type": 5,
+        "dtype": 6,
+        "rank": 2
+      }
     },
     {
       "id": 5,
       "name_zh": "逐图有效圆数量",
-      "type": "vec_int"
+      "type": {
+        "type": 5,
+        "dtype": 2,
+        "rank": 1
+      }
     },
     {
       "id": 6,
       "name_zh": "有效圆来源索引",
-      "type": "vec_vec_int"
+      "type": {
+        "type": 5,
+        "dtype": 2,
+        "rank": 2
+      }
     },
     {
       "id": 7,
       "name_zh": "测得圆",
-      "type": "roi",
+      "type": {
+        "type": 6
+      },
       "relations": {
         "image": {
-          "stage": "outputs",
+          "stage": 2,
           "id": 2
         }
       }
@@ -273,35 +329,57 @@
     {
       "id": 8,
       "name_zh": "圆心坐标",
-      "type": "vec_vec_vec_float"
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      }
     },
     {
       "id": 9,
       "name_zh": "半径像素值",
-      "type": "vec_vec_float"
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 2
+      }
     },
     {
       "id": 10,
       "name_zh": "半径物理值",
-      "type": "vec_vec_float"
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 2
+      }
     },
     {
       "id": 11,
       "name_zh": "拟合误差像素值",
-      "type": "vec_vec_float"
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 2
+      }
     },
     {
       "id": 12,
       "name_zh": "完整度",
-      "type": "vec_vec_float"
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 2
+      }
     },
     {
       "id": 13,
       "name_zh": "拟合边缘点",
-      "type": "roi",
+      "type": {
+        "type": 6
+      },
       "relations": {
         "image": {
-          "stage": "outputs",
+          "stage": 2,
           "id": 2
         }
       }
@@ -309,7 +387,9 @@
     {
       "id": 14,
       "name_zh": "单位",
-      "type": "string"
+      "type": {
+        "type": 3
+      }
     }
   ],
   "interaction": {
@@ -318,21 +398,21 @@
       {
         "helper_port_id": 1,
         "source": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 1
         }
       },
       {
         "helper_port_id": 4,
         "source": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 2
         }
       },
       {
         "helper_port_id": 5,
         "source": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 3
         }
       }
@@ -341,27 +421,28 @@
       {
         "helper_port_id": 3,
         "target": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 2
         }
       },
       {
         "helper_port_id": 7,
         "target": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 5
         }
       },
       {
         "helper_port_id": 6,
         "target": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 9
         }
       }
     ],
     "roi_kinds": [
-      "circle"
+      3
     ]
-  }
+  },
+  "schema_version": 1
 }

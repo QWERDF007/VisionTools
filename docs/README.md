@@ -1,7 +1,8 @@
 # VisionTools 文档索引
 
 - [公共值、状态与注册接口](../3rdparty/VisionRTContracts/docs/README.md)
-- [CPU 注册](../src/preprocess/PreprocessModule.cpp)、[识别注册](../src/recognition/RecognitionModule.cpp)、[推理注册](../src/infer/InferModule.cpp)、[模块内构造与销毁](../src/ToolFactory.h)
+- [CPU 注册](../src/preprocess/PreprocessModule.cpp)、[识别注册](../src/recognition/RecognitionModule.cpp)、[推理注册](../src/infer/InferModule.cpp)、[函数与类实例注册](../3rdparty/VisionRTContracts/include/visionrt/contracts/FunctionTool.h)
+- [公共枚举源定义](../3rdparty/VisionRTContracts/include/visionrt/contracts/ProtocolEnums.h)、[枚举导出](../3rdparty/VisionRTContracts/tools/export_enums.py)、[打包侧枚举与 SDK 生成](../tools/protocol_enums.py)
 - [作者声明](../assets/tools)、[发行目录表](../tools/package_catalog.json)
 - [构建与安装](../CMakeLists.txt)、[依赖解析](../cmake/ConfigDependencyDefaults.cmake)、[预设](../CMakePresets.json)
 - [作者 JSON 与资源收集](../tools/package_payload.py)、[双来源与路径边界验证](../tests/test_package_payload.py)、[发行事务与目标保护](../tools/package_tools.py)、[事务验证](../tests/test_package.py)
@@ -18,7 +19,7 @@
 
 Python 来源、入口及资源规则见 [资源收集器](../tools/package_payload.py) 与 [测试](../tests/test_package.py)。
 
-Python 工具以 `from .visiontools_sdk import ...` 使用作者 SDK。仓库里只有 [一个 SDK 源文件](../python/author_sdk/visiontools_sdk/__init__.py)；出包时由 [资源收集器](../tools/package_payload.py) 把它写进每个 Python 工具包，工具目录本身不再保存副本，也不修改 `sys.path`。
+Python 工具以 `from .visiontools_sdk import ...` 使用[作者 SDK](../python/author_sdk/visiontools_sdk)。[资源收集器](../tools/package_payload.py) 将 SDK 及从 Contracts 生成的 `enums.py` 写入各 Python 工具包；工具目录不保存副本。构建侧 SDK 的生成与测试导入位置见 [CMakeLists.txt](../CMakeLists.txt)。
 
 ## 目标 profile 与出包集合
 

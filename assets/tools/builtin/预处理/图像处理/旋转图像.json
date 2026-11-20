@@ -3,13 +3,15 @@
   "name_zh": "旋转图像",
   "version": "1.0.0",
   "implementation": {
-    "kind": "cpp"
+    "kind": 0
   },
   "inputs": [
     {
       "id": 1,
       "name_zh": "输入图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -17,24 +19,32 @@
     {
       "id": 2,
       "name_zh": "顺时针角度",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 3
       }
     },
     {
       "id": 3,
       "name_zh": "旋转中心",
-      "type": "vec_float",
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 1
+      },
       "ui": {
-        "editor": "array"
+        "editor": 7
       }
     },
     {
       "id": 4,
       "name_zh": "画布模式",
-      "type": "string",
+      "type": {
+        "type": 3
+      },
       "default": "keep",
       "constraints": {
         "options": [
@@ -43,13 +53,15 @@
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": 2
       }
     },
     {
       "id": 5,
       "name_zh": "插值方式",
-      "type": "string",
+      "type": {
+        "type": 3
+      },
       "default": "linear",
       "constraints": {
         "options": [
@@ -59,26 +71,34 @@
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": 2
       }
     },
     {
       "id": 6,
       "name_zh": "边界填充值",
-      "type": "vec_float",
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 1
+      },
       "default": [
         0.0
       ],
       "ui": {
-        "editor": "array"
+        "editor": 7
       }
     },
     {
       "id": 7,
       "name_zh": "参考到当前变换",
-      "type": "vec_vec_vec_float",
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      },
       "ui": {
-        "editor": "array"
+        "editor": 7
       }
     }
   ],
@@ -86,7 +106,9 @@
     {
       "id": 2,
       "name_zh": "旋转图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -94,7 +116,12 @@
     {
       "id": 3,
       "name_zh": "参考到输出变换",
-      "type": "vec_vec_vec_float"
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      }
     }
-  ]
+  ],
+  "schema_version": 1
 }

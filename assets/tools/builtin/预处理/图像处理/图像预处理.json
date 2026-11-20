@@ -3,13 +3,15 @@
   "name_zh": "图像预处理",
   "version": "1.0.0",
   "implementation": {
-    "kind": "cpp"
+    "kind": 0
   },
   "inputs": [
     {
       "id": 1,
       "name_zh": "图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -17,7 +19,9 @@
     {
       "id": 2,
       "name_zh": "操作类型",
-      "type": "string",
+      "type": {
+        "type": 3
+      },
       "default": "identity",
       "constraints": {
         "options": [
@@ -28,35 +32,39 @@
         ]
       },
       "ui": {
-        "tab": "预处理"
+        "tab": 1
       }
     },
     {
       "id": 3,
       "name_zh": "高斯核大小",
-      "type": "int",
+      "type": {
+        "type": 0
+      },
       "default": 3,
       "constraints": {
         "min": 1
       },
       "ui": {
-        "editor": "number",
-        "tab": "预处理",
+        "editor": 1,
+        "tab": 1,
         "step": 2
       }
     },
     {
       "id": 4,
       "name_zh": "二值化阈值",
-      "type": "int",
+      "type": {
+        "type": 0
+      },
       "default": 128,
       "constraints": {
         "min": 0,
         "max": 255
       },
       "ui": {
-        "editor": "number",
-        "tab": "预处理",
+        "editor": 1,
+        "tab": 1,
         "step": 1
       }
     }
@@ -65,17 +73,20 @@
     {
       "id": 2,
       "name_zh": "处理后图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "relations": {
         "same_geometry_as": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 1
         }
       },
       "display": {
-        "color_order": "BGR",
+        "color_order": 2,
         "visible": true
       }
     }
-  ]
+  ],
+  "schema_version": 1
 }

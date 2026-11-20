@@ -3,13 +3,15 @@
   "name_zh": "测量行间距",
   "version": "1.0.0",
   "implementation": {
-    "kind": "cpp"
+    "kind": 0
   },
   "inputs": [
     {
       "id": 1,
       "name_zh": "图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -17,18 +19,20 @@
     {
       "id": 2,
       "name_zh": "测量区域",
-      "type": "roi",
+      "type": {
+        "type": 6
+      },
       "default": [],
       "ui": {
-        "editor": "array"
+        "editor": 7
       },
       "relations": {
         "image": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 1
         },
         "alignment": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 3
         }
       }
@@ -36,43 +40,53 @@
     {
       "id": 3,
       "name_zh": "参考到当前变换",
-      "type": "vec_vec_vec_float",
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      },
       "ui": {
-        "editor": "array"
+        "editor": 7
       }
     },
     {
       "id": 4,
       "name_zh": "平滑标准差",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 1.0,
       "constraints": {
         "min": 0.1,
         "max": 20.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 2
       }
     },
     {
       "id": 5,
       "name_zh": "最小梯度",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 8.0,
       "constraints": {
         "min": 0.0,
         "max": 255.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 2
       }
     },
     {
       "id": 6,
       "name_zh": "物体极性",
-      "type": "string",
+      "type": {
+        "type": 3
+      },
       "default": "bright",
       "constraints": {
         "options": [
@@ -81,55 +95,63 @@
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": 2
       }
     },
     {
       "id": 7,
       "name_zh": "合格宽度下限",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 1.0,
       "constraints": {
         "min": 0.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 3
       }
     },
     {
       "id": 8,
       "name_zh": "合格宽度上限",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 1000000.0,
       "constraints": {
         "min": 0.0
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 3
       }
     },
     {
       "id": 9,
       "name_zh": "每像素物理长度",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 1.0,
       "constraints": {
         "min": 1e-09
       },
       "ui": {
-        "editor": "number",
+        "editor": 1,
         "decimals": 6
       }
     },
     {
       "id": 10,
       "name_zh": "单位",
-      "type": "string",
+      "type": {
+        "type": 3
+      },
       "default": "px",
       "ui": {
-        "editor": "text"
+        "editor": 2
       }
     }
   ],
@@ -137,84 +159,140 @@
     {
       "id": 2,
       "name_zh": "显示图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
-        "color_order": "BGR",
+        "color_order": 2,
         "visible": true
       }
     },
     {
       "id": 3,
       "name_zh": "逐ROI有效性",
-      "type": "vec_vec_bool"
+      "type": {
+        "type": 5,
+        "dtype": 5,
+        "rank": 2
+      }
     },
     {
       "id": 4,
       "name_zh": "逐ROI说明",
-      "type": "vec_vec_string"
+      "type": {
+        "type": 5,
+        "dtype": 6,
+        "rank": 2
+      }
     },
     {
       "id": 5,
       "name_zh": "完整物体数量",
-      "type": "vec_vec_int"
+      "type": {
+        "type": 5,
+        "dtype": 2,
+        "rank": 2
+      }
     },
     {
       "id": 6,
       "name_zh": "宽度合格数量",
-      "type": "vec_vec_int"
+      "type": {
+        "type": 5,
+        "dtype": 2,
+        "rank": 2
+      }
     },
     {
       "id": 7,
       "name_zh": "未配对边缘数量",
-      "type": "vec_vec_int"
+      "type": {
+        "type": 5,
+        "dtype": 2,
+        "rank": 2
+      }
     },
     {
       "id": 8,
       "name_zh": "逐物体宽度合格",
-      "type": "vec_vec_vec_bool"
+      "type": {
+        "type": 5,
+        "dtype": 5,
+        "rank": 3
+      }
     },
     {
       "id": 9,
       "name_zh": "宽度像素值",
-      "type": "vec_vec_vec_float"
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      }
     },
     {
       "id": 10,
       "name_zh": "间隙像素值",
-      "type": "vec_vec_vec_float"
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      }
     },
     {
       "id": 11,
       "name_zh": "节距像素值",
-      "type": "vec_vec_vec_float"
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      }
     },
     {
       "id": 12,
       "name_zh": "宽度物理值",
-      "type": "vec_vec_vec_float"
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      }
     },
     {
       "id": 13,
       "name_zh": "间隙物理值",
-      "type": "vec_vec_vec_float"
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      }
     },
     {
       "id": 14,
       "name_zh": "节距物理值",
-      "type": "vec_vec_vec_float"
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      }
     },
     {
       "id": 15,
       "name_zh": "物体边缘中点",
-      "type": "vec_vec_vec_vec_float"
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 4
+      }
     },
     {
       "id": 16,
       "name_zh": "边缘显示线段",
-      "type": "roi",
+      "type": {
+        "type": 6
+      },
       "relations": {
         "image": {
-          "stage": "outputs",
+          "stage": 2,
           "id": 2
         }
       }
@@ -222,7 +300,9 @@
     {
       "id": 17,
       "name_zh": "单位",
-      "type": "string"
+      "type": {
+        "type": 3
+      }
     }
   ],
   "interaction": {
@@ -231,21 +311,21 @@
       {
         "helper_port_id": 1,
         "source": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 1
         }
       },
       {
         "helper_port_id": 4,
         "source": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 2
         }
       },
       {
         "helper_port_id": 5,
         "source": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 3
         }
       }
@@ -254,34 +334,35 @@
       {
         "helper_port_id": 3,
         "target": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 2
         }
       },
       {
         "helper_port_id": 6,
         "target": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 6
         }
       },
       {
         "helper_port_id": 7,
         "target": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 7
         }
       },
       {
         "helper_port_id": 8,
         "target": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 8
         }
       }
     ],
     "roi_kinds": [
-      "rectangle"
+      2
     ]
-  }
+  },
+  "schema_version": 1
 }

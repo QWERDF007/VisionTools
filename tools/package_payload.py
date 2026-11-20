@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from protocol_enums import ToolKind, SDK_SOURCE
+
 import json
 import os
 from pathlib import Path
@@ -162,7 +164,7 @@ class ToolPayload:
 
     @property
     def is_python(self) -> bool:
-        return self.implementation.get("kind") in ("python_function", "python_class")
+        return self.implementation.get("kind") in (ToolKind.PythonFunction, ToolKind.PythonClass)
 
     @property
     def python_package(self) -> tuple[Path, Path]:
@@ -214,7 +216,7 @@ class ToolPayload:
             source, destination = self.python_package
             for path in _files(source, source, True):
                 plan.add(path, destination / path.relative_to(source))
-            # The author SDK has one source file in the repository; the packager is the only writer
+            # The author SDK has one source directory; the packager is the only writer
             # that puts it inside a tool package, so every shipped tool imports the same code and
             # no example carries a hand-maintained copy.
             sdk = self.project_root / "python/author_sdk/visiontools_sdk"
@@ -222,6 +224,7 @@ class ToolPayload:
                 raise PackagingError(f"作者 SDK 缺失：{sdk}")
             for path in _files(sdk, sdk, False):
                 plan.add(path, destination / "visiontools_sdk" / path.relative_to(sdk))
+            plan.add(SDK_SOURCE, destination / "visiontools_sdk/enums.py")
         resources = self.resources()
         for source, destination, boundary in resources:
             if source.is_dir():

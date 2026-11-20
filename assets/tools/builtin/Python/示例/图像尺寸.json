@@ -3,7 +3,7 @@
   "name_zh": "图像尺寸",
   "version": "1.0.0",
   "implementation": {
-    "kind": "python_function",
+    "kind": 1,
     "package": "examples/image_sizes",
     "file": "tool.py",
     "symbol": "execute"
@@ -12,7 +12,9 @@
     {
       "id": 1,
       "name_zh": "输入图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -22,7 +24,12 @@
     {
       "id": 2,
       "name_zh": "图像尺寸",
-      "type": "vec_vec_int"
+      "type": {
+        "type": 5,
+        "dtype": 2,
+        "rank": 2
+      }
     }
-  ]
+  ],
+  "schema_version": 1
 }

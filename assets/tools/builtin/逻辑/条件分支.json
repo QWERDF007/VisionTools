@@ -3,7 +3,7 @@
   "name_zh": "条件分支",
   "version": "1.0.0",
   "implementation": {
-    "kind": "python_class",
+    "kind": 2,
     "package": "logic",
     "file": "branch/tool.py",
     "symbol": "BranchTool"
@@ -12,26 +12,36 @@
     {
       "id": 0,
       "name_zh": "派生变量表",
-      "type": "vec_vec_string"
+      "type": {
+        "type": 5,
+        "dtype": 6,
+        "rank": 2
+      }
     },
     {
       "id": 1,
       "name_zh": "派生表达式表",
-      "type": "vec_vec_string"
+      "type": {
+        "type": 5,
+        "dtype": 6,
+        "rank": 2
+      }
     },
     {
       "id": 2,
       "name_zh": "条件来源",
-      "type": "string",
-      "default": "formula",
+      "type": {
+        "type": 0
+      },
+      "default": 0,
       "constraints": {
         "options": [
-          "formula",
-          "upstream"
+          0,
+          1
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": 0
       }
     }
   ],
@@ -39,23 +49,32 @@
     {
       "id": 2,
       "name_zh": "条件成立",
-      "type": "bool"
+      "type": {
+        "type": 2
+      }
     },
     {
       "id": 3,
       "name_zh": "否则",
-      "type": "bool"
+      "type": {
+        "type": 2
+      }
     },
     {
       "id": 4,
       "name_zh": "成立分支状态",
-      "type": "int"
+      "type": {
+        "type": 0
+      }
     },
     {
       "id": 5,
       "name_zh": "否则分支状态",
-      "type": "int"
+      "type": {
+        "type": 0
+      }
     }
   ],
-  "node_model": "condition"
+  "node_model": 2,
+  "schema_version": 1
 }

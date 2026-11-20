@@ -3,15 +3,17 @@
   "name_zh": "识别颜色",
   "version": "1.0.0",
   "implementation": {
-    "kind": "cpp"
+    "kind": 0
   },
   "init_params": [
     {
       "id": 0,
       "name_zh": "训练数据路径",
-      "type": "string",
+      "type": {
+        "type": 3
+      },
       "ui": {
-        "editor": "path"
+        "editor": 6
       }
     }
   ],
@@ -19,7 +21,9 @@
     {
       "id": 1,
       "name_zh": "图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -27,26 +31,32 @@
     {
       "id": 2,
       "name_zh": "对齐数据",
-      "type": "vec_vec_vec_float",
+      "type": {
+        "type": 5,
+        "dtype": 4,
+        "rank": 3
+      },
       "ui": {
-        "editor": "array"
+        "editor": 7
       }
     },
     {
       "id": 3,
       "name_zh": "检测区域",
-      "type": "roi",
+      "type": {
+        "type": 6
+      },
       "default": [],
       "ui": {
-        "editor": "array"
+        "editor": 7
       },
       "relations": {
         "image": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 1
         },
         "alignment": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 2
         }
       }
@@ -54,30 +64,34 @@
     {
       "id": 4,
       "name_zh": "最低分数",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 0.05,
       "constraints": {
         "min": 0.0,
         "max": 1.0
       },
       "ui": {
-        "editor": "number",
-        "tab": "检测",
+        "editor": 1,
+        "tab": 2,
         "decimals": 3
       }
     },
     {
       "id": 5,
       "name_zh": "最低分类像素比例",
-      "type": "float",
+      "type": {
+        "type": 1
+      },
       "default": 0.5,
       "constraints": {
         "min": 0.0,
         "max": 1.0
       },
       "ui": {
-        "editor": "number",
-        "tab": "检测",
+        "editor": 1,
+        "tab": 2,
         "decimals": 3
       }
     }
@@ -86,10 +100,12 @@
     {
       "id": 2,
       "name_zh": "显示图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "relations": {
         "same_geometry_as": {
-          "stage": "inputs",
+          "stage": 1,
           "id": 1
         }
       },
@@ -100,10 +116,12 @@
     {
       "id": 3,
       "name_zh": "检测区域",
-      "type": "roi",
+      "type": {
+        "type": 6
+      },
       "relations": {
         "image": {
-          "stage": "outputs",
+          "stage": 2,
           "id": 2
         }
       }
@@ -111,31 +129,52 @@
     {
       "id": 4,
       "name_zh": "识别颜色",
-      "type": "vec_vec_string"
+      "type": {
+        "type": 5,
+        "dtype": 6,
+        "rank": 2
+      }
     },
     {
       "id": 5,
       "name_zh": "颜色分数",
-      "type": "vec_vec_float32"
+      "type": {
+        "type": 5,
+        "dtype": 3,
+        "rank": 2
+      }
     },
     {
       "id": 6,
       "name_zh": "分类像素比例",
-      "type": "vec_vec_float32"
+      "type": {
+        "type": 5,
+        "dtype": 3,
+        "rank": 2
+      }
     },
     {
       "id": 7,
       "name_zh": "中心 X",
-      "type": "vec_vec_float32"
+      "type": {
+        "type": 5,
+        "dtype": 3,
+        "rank": 2
+      }
     },
     {
       "id": 8,
       "name_zh": "中心 Y",
-      "type": "vec_vec_float32"
+      "type": {
+        "type": 5,
+        "dtype": 3,
+        "rank": 2
+      }
     }
   ],
   "training": {
-    "kind": "color_samples",
+    "kind": 0,
     "asset_param": 0
-  }
+  },
+  "schema_version": 1
 }

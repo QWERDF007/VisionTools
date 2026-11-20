@@ -3,7 +3,7 @@
   "name_zh": "图像加一",
   "version": "1.0.0",
   "implementation": {
-    "kind": "python_function",
+    "kind": 1,
     "package": "examples/image_add",
     "file": "tool.py",
     "symbol": "execute"
@@ -12,7 +12,9 @@
     {
       "id": 1,
       "name_zh": "输入图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -20,7 +22,9 @@
     {
       "id": 2,
       "name_zh": "处理方式",
-      "type": "string",
+      "type": {
+        "type": 3
+      },
       "default": "copy",
       "constraints": {
         "options": [
@@ -34,10 +38,13 @@
     {
       "id": 2,
       "name_zh": "输出图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
     }
-  ]
+  ],
+  "schema_version": 1
 }

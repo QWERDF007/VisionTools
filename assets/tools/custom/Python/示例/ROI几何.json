@@ -3,7 +3,7 @@
   "name_zh": "ROI几何",
   "version": "1.0.0",
   "implementation": {
-    "kind": "python_function",
+    "kind": 1,
     "package": "examples/roi_geometry",
     "file": "tool.py",
     "symbol": "execute"
@@ -12,7 +12,9 @@
     {
       "id": 1,
       "name_zh": "输入图像",
-      "type": "image",
+      "type": {
+        "type": 4
+      },
       "display": {
         "visible": true
       }
@@ -22,7 +24,10 @@
     {
       "id": 2,
       "name_zh": "逐图ROI",
-      "type": "roi"
+      "type": {
+        "type": 6
+      }
     }
-  ]
+  ],
+  "schema_version": 1
 }

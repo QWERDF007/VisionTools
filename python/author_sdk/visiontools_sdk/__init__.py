@@ -1,9 +1,9 @@
 """VisionTools author SDK: typed parameter helpers for Python tools.
 
 This directory is the single source of the SDK. A tool imports it as ``visiontools_sdk`` next to
-its own module (``from .visiontools_sdk import ...``); the packaging step copies this one file into
-each Python tool package, so no example keeps a hand-maintained copy and the shipped layout is the
-one the tests exercise.
+its own module (``from .visiontools_sdk import ...``). Packaging copies this directory and adds
+``enums.py`` generated from VisionRTContracts. Examples keep no SDK copies; tests use the same
+generated SDK layout.
 
 The SDK mirrors the C++ ``visionrt/contracts/Parameters.h`` interface: an
 ``InputReader``/``OutputWriter`` pair owns the dict keys, and the tool keeps every

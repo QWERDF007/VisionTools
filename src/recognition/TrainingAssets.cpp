@@ -1,4 +1,5 @@
 #include "TrainingAssets.h"
+#include <visionrt/contracts/ProtocolEnums.h>
 
 #include "common/ProductPaths.h"
 #include "common/errors/ToolError.h"
@@ -16,7 +17,6 @@ namespace visiontools::recognition {
 namespace {
 using Json = nlohmann::json;
 
-constexpr int kSchemaVersion = 1;
 
 std::string utf8(const std::filesystem::path &path)
 {
@@ -102,13 +102,13 @@ std::filesystem::path resolveImage(const std::string &path, std::string_view con
     return common::resolveResourcePath(path);
 }
 
-void requireSchema(const Json &document, std::string_view kind, std::string_view context)
+void requireSchema(const Json &document, visionrt::TrainingKind kind, std::string_view context)
 {
     const auto &version = field(document, "schema_version", context);
-    if (!version.is_number_integer() || version.get<int>() != kSchemaVersion)
-        fail(RecognitionError::AssetFormatInvalid, context, "schema_version 必须为 1");
-    if (text(field(document, "kind", context), context) != kind)
-        fail(RecognitionError::AssetFormatInvalid, context, std::string("kind 必须为 ") + std::string(kind));
+    if (!version.is_number_integer() || version.get<int>() != visionrt::kTrainingAssetVersion)
+        fail(RecognitionError::AssetFormatInvalid, context, "schema_version 必须为 2");
+    if (field(document, "kind", context) != static_cast<int>(kind))
+        fail(RecognitionError::AssetFormatInvalid, context, "训练类型不匹配");
 }
 } // namespace
 
@@ -116,7 +116,7 @@ StraightEdgeTraining loadStraightEdgeTraining(const std::filesystem::path &asset
 {
     const auto context = utf8(asset);
     const auto document = readDocument(asset);
-    requireSchema(document, "straight_edges", context);
+    requireSchema(document, visionrt::TrainingKind::StraightEdges, context);
 
     StraightEdgeTraining training;
     training.referenceImage
@@ -150,7 +150,7 @@ ColorTraining loadColorTraining(const std::filesystem::path &asset)
 {
     const auto context = utf8(asset);
     const auto document = readDocument(asset);
-    requireSchema(document, "color_samples", context);
+    requireSchema(document, visionrt::TrainingKind::ColorSamples, context);
 
     const auto &records = field(document, "records", context);
     if (!records.is_array() || records.empty())
