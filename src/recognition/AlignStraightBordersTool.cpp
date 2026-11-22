@@ -1,7 +1,6 @@
 #include "AlignStraightBordersTool.h"
 
 #include "StraightEdgeLocator.h"
-
 #include "common/EdgeProfile.h"
 #include "common/GeometryTransform.h"
 #include "common/ImageSupport.h"
@@ -11,9 +10,11 @@
 #include "common/ToolOutputs.h"
 #include "common/UpstreamStatus.h"
 #include "common/errors/ToolError.h"
-
 #include "errors/RecognitionErrors.h"
 
+#include <cstdint>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -42,13 +43,18 @@ visionrt::ToolStatus AlignStraightBordersTool::initialize(const visionrt::Values
 {
     try
     {
-        const auto found = parameters.find(p::init::TRAINING);
+        const auto found = parameters.find(p::init::MODEL);
         if (found == parameters.end() || !std::holds_alternative<std::string>(found->second))
-            return status(RecognitionError::AssetPathMissing, "初始化参数 0");
+            return status(RecognitionError::StraightEdgeModelPathMissing, "初始化参数 1");
         const auto &path = std::get<std::string>(found->second);
         if (path.empty())
-            return status(RecognitionError::AssetPathMissing, "初始化参数 0");
-        training_ = loadStraightEdgeTraining(common::resolveResourcePath(path));
+            return status(RecognitionError::StraightEdgeModelPathMissing, "初始化参数 1");
+        const auto    resolved = common::resolveResourcePath(path);
+        std::ifstream file(resolved, std::ios::binary);
+        if (!file)
+            return status(RecognitionError::StraightEdgeModelUnreadable, path, "文件不存在或无法打开");
+        const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+        model_ = StraightEdgeModel::decode(bytes);
         return {};
     }
     catch (const ToolFailure &error)
@@ -57,7 +63,7 @@ visionrt::ToolStatus AlignStraightBordersTool::initialize(const visionrt::Values
     }
     catch (const std::exception &error)
     {
-        return status(CommonToolError::OperatorFailed, "加载训练数据失败", error.what());
+        return status(CommonToolError::OperatorFailed, "加载直边模型失败", error.what());
     }
 }
 
@@ -65,8 +71,9 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
 {
     if (const auto upstream = upstreamStatus(inputs); upstream != 0)
         return skippedByUpstream(upstream, missingOutputs());
-    if (training_.segments.size() != 2)
-        return failure(missingOutputs(), RecognitionError::AssetPathMissing, "训练数据未加载");
+    if (model_.empty())
+        return failure(missingOutputs(), RecognitionError::StraightEdgeModelPathMissing, "直边模型未加载");
+    const auto &trained = model_.segments();
 
     Readings    readings(inputs, p::TOOL_ID);
     const auto  imagesRef     = readings.image(p::in::IMAGES);
@@ -105,14 +112,14 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
                 fail(CommonToolError::UnsupportedImage, "第 " + std::to_string(index + 1) + " 张图不是 8 位图像");
             const cv::Mat gray = edge::grayscale(images[index]);
 
-            const auto first  = locateSegment(gray, training_.segments[0], options);
-            const auto second = locateSegment(gray, training_.segments[1], options);
+            const auto first  = locateSegment(gray, trained[0], options);
+            const auto second = locateSegment(gray, trained[1], options);
             if (!first)
-                fail(RecognitionError::EdgeNotFound, training_.segments[0].name, "第 " + std::to_string(index + 1) + " 张图");
+                fail(RecognitionError::EdgeNotFound, trained[0].name, "第 " + std::to_string(index + 1) + " 张图");
             if (!second)
-                fail(RecognitionError::EdgeNotFound, training_.segments[1].name, "第 " + std::to_string(index + 1) + " 张图");
+                fail(RecognitionError::EdgeNotFound, trained[1].name, "第 " + std::to_string(index + 1) + " 张图");
 
-            const auto alignment = rigidTransform(training_.segments[0], *first, training_.segments[1], *second);
+            const auto alignment = rigidTransform(trained[0], *first, trained[1], *second);
             if (!alignment)
                 fail(RecognitionError::ReferenceSegmentsParallel, "训练数据");
 
@@ -123,7 +130,7 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
             foundSegments.push_back(std::move(segments));
 
             std::vector<roi::Record> regions;
-            for (const auto &segment : training_.segments)
+            for (const auto &segment : trained)
                 regions.push_back(roi::rectangle(segment.search.center.x, segment.search.center.y,
                                                  segment.search.width, segment.search.height,
                                                  segment.search.angle));
@@ -152,7 +159,7 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
 
 visionrt::ToolStatus AlignStraightBordersTool::release()
 {
-    training_ = {};
+    model_ = {};
     return {};
 }
 

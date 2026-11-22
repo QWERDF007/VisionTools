@@ -3,17 +3,15 @@
   "name_zh": "识别颜色",
   "version": "1.0.0",
   "implementation": {
-    "kind": 0
+    "kind": "cpp"
   },
   "init_params": [
     {
-      "id": 0,
-      "name_zh": "训练数据路径",
-      "type": {
-        "type": 3
-      },
+      "id": 1,
+      "name_zh": "颜色模型路径",
+      "type": "string",
       "ui": {
-        "editor": 6
+        "editor": "path"
       }
     }
   ],
@@ -21,9 +19,7 @@
     {
       "id": 1,
       "name_zh": "图像",
-      "type": {
-        "type": 4
-      },
+      "type": "image",
       "display": {
         "visible": true
       }
@@ -32,31 +28,29 @@
       "id": 2,
       "name_zh": "对齐数据",
       "type": {
-        "type": 5,
-        "dtype": 4,
+        "type": "array",
+        "dtype": "float64",
         "rank": 3
       },
       "ui": {
-        "editor": 7
+        "editor": "array"
       }
     },
     {
       "id": 3,
       "name_zh": "检测区域",
-      "type": {
-        "type": 6
-      },
+      "type": "roi",
       "default": [],
       "ui": {
-        "editor": 7
+        "editor": "array"
       },
       "relations": {
         "image": {
-          "stage": 1,
+          "stage": "inputs",
           "id": 1
         },
         "alignment": {
-          "stage": 1,
+          "stage": "inputs",
           "id": 2
         }
       }
@@ -64,34 +58,30 @@
     {
       "id": 4,
       "name_zh": "最低分数",
-      "type": {
-        "type": 1
-      },
+      "type": "float",
       "default": 0.05,
       "constraints": {
         "min": 0.0,
         "max": 1.0
       },
       "ui": {
-        "editor": 1,
-        "tab": 2,
+        "editor": "number",
+        "tab": "detection",
         "decimals": 3
       }
     },
     {
       "id": 5,
       "name_zh": "最低分类像素比例",
-      "type": {
-        "type": 1
-      },
+      "type": "float",
       "default": 0.5,
       "constraints": {
         "min": 0.0,
         "max": 1.0
       },
       "ui": {
-        "editor": 1,
-        "tab": 2,
+        "editor": "number",
+        "tab": "detection",
         "decimals": 3
       }
     }
@@ -100,12 +90,10 @@
     {
       "id": 2,
       "name_zh": "显示图像",
-      "type": {
-        "type": 4
-      },
+      "type": "image",
       "relations": {
         "same_geometry_as": {
-          "stage": 1,
+          "stage": "inputs",
           "id": 1
         }
       },
@@ -116,12 +104,10 @@
     {
       "id": 3,
       "name_zh": "检测区域",
-      "type": {
-        "type": 6
-      },
+      "type": "roi",
       "relations": {
         "image": {
-          "stage": 2,
+          "stage": "outputs",
           "id": 2
         }
       }
@@ -130,8 +116,8 @@
       "id": 4,
       "name_zh": "识别颜色",
       "type": {
-        "type": 5,
-        "dtype": 6,
+        "type": "array",
+        "dtype": "string",
         "rank": 2
       }
     },
@@ -139,8 +125,8 @@
       "id": 5,
       "name_zh": "颜色分数",
       "type": {
-        "type": 5,
-        "dtype": 3,
+        "type": "array",
+        "dtype": "float32",
         "rank": 2
       }
     },
@@ -148,8 +134,8 @@
       "id": 6,
       "name_zh": "分类像素比例",
       "type": {
-        "type": 5,
-        "dtype": 3,
+        "type": "array",
+        "dtype": "float32",
         "rank": 2
       }
     },
@@ -157,8 +143,8 @@
       "id": 7,
       "name_zh": "中心 X",
       "type": {
-        "type": 5,
-        "dtype": 3,
+        "type": "array",
+        "dtype": "float32",
         "rank": 2
       }
     },
@@ -166,15 +152,64 @@
       "id": 8,
       "name_zh": "中心 Y",
       "type": {
-        "type": 5,
-        "dtype": 3,
+        "type": "array",
+        "dtype": "float32",
         "rank": 2
       }
     }
   ],
   "training": {
-    "kind": 0,
-    "asset_param": 0
+    "image": {
+      "stage": "inputs",
+      "id": 1
+    },
+    "records": {
+      "fields": [
+        {
+          "id": 1,
+          "name_zh": "颜色名称",
+          "type": "string"
+        },
+        {
+          "id": 2,
+          "name_zh": "采样区",
+          "type": "roi",
+          "roi": true,
+          "regions": {
+            "min": 1
+          }
+        }
+      ]
+    },
+    "call": {
+      "tool": "TrainColorModel",
+      "inputs": [
+        {
+          "port": 1,
+          "context": "training_set"
+        },
+        {
+          "port": 2,
+          "field_id": 1
+        },
+        {
+          "port": 3,
+          "field_id": 2
+        }
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "color-model",
+        "source_port": 2,
+        "format": "visiontools.color-model",
+        "version": 1,
+        "target": {
+          "stage": "init",
+          "id": 1
+        }
+      }
+    ]
   },
-  "schema_version": 1
+  "schema_version": 2
 }

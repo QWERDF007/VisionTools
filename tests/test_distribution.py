@@ -55,14 +55,14 @@ class DistributionContract(unittest.TestCase):
         definition = project / "assets/tools/custom/math/arithmetic/add.json"
         definition.parent.mkdir(parents=True)
         document = {
-            "schema_version": 1, "name_en": "test.add", "name_zh": "Add", "version": "1.0.0",
-            "implementation": {"kind": 1,
+            "schema_version": 2, "name_en": "test.add", "name_zh": "Add", "version": "1.0.0",
+            "implementation": {"kind": "python_function",
                                "package": "math/arithmetic",
                                "file": "add.py",
                                "symbol": "run",
                                "resources": ["bias.dat"]},
             # Output ids start at 2: the first two output ports belong to the host status envelope.
-            "outputs": [{"id": 2, "name_zh": "Value", "type": {"type": 0}}],
+            "outputs": [{"id": 2, "name_zh": "Value", "type": "int"}],
         }
         definition.write_text(json.dumps(document), encoding="utf-8")
         code = project / "python/custom/math/arithmetic"

@@ -1,17 +1,16 @@
 // Geometry, image transform and metrology contract for the seven-tool delivery.
 // Synthetic fixtures provide analytic ground truth; no model or GPU is involved.
-#include "preprocess/BrightnessTool.h"
 #include "ToolResultAssertions.h"
-#include "preprocess/RotateImageTool.h"
-#include "metrology/CircleFit.h"
-#include "metrology/CircleMeasureKernel.h"
-#include "metrology/CircleTool.h"
-#include "metrology/RowSpacingTool.h"
-#include "metrology/AssistTools.h"
-
 #include "common/GeometryTransform.h"
 #include "common/RoiSupport.h"
 #include "common/errors/ToolError.h"
+#include "metrology/CircleFit.h"
+#include "metrology/CircleMeasureKernel.h"
+#include "metrology/CircleTool.h"
+#include "metrology/LocatorTools.h"
+#include "metrology/RowSpacingTool.h"
+#include "preprocess/BrightnessTool.h"
+#include "preprocess/RotateImageTool.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -43,7 +42,7 @@ namespace rot    = preprocess::ports::image_rotate;
 namespace bright = preprocess::ports::image_brightness;
 namespace circle = metrology::ports::measure_circle;
 namespace rows   = metrology::ports::measure_row_spacing;
-namespace assist = metrology::ports::assist;
+namespace assist = metrology::ports::locate;
 
 // Every image tool publishes its image input as port 1; this helper is shared by all of them.
 Values withImages(const cv::Mat &image)
@@ -257,14 +256,12 @@ void assistCandidate()
 {
     cv::Mat gray(200, 200, CV_8UC1, cv::Scalar(15));
     cv::circle(gray, cv::Point(100, 100), 30, cv::Scalar(220), cv::FILLED, cv::LINE_AA);
-    metrology::AssistCircleTool tool;
+    metrology::LocateCircleTool tool;
     Values inputs;
     inputs.emplace(assist::in::IMAGES, DataRef<Image>(Image{gray}));
-    inputs.emplace(assist::in::CURSOR, Array::fromNested(NestedVector<double, 1>{130.0, 100.0}));
-    inputs.emplace(assist::in::PHASE, std::string("hover"));
+    inputs.emplace(assist::in::SEARCH_REGION, DataRef<ROI>(ROI{{makeCircle({130, 100}, 128)}}));
     inputs.emplace(assist::in::SEED_ROIS, DataRef<ROI>(ROI{}));
     inputs.emplace(assist::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
-    inputs.emplace(assist::in::SEARCH_EXTENT, std::int64_t{128});
     const auto result = tool.execute(inputs);
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     REQUIRE(std::get<bool>(result.outputs.at(assist::out::CANDIDATE_VALID)), "assist must find the synthetic circle");
@@ -391,14 +388,12 @@ void assistLocalWindow()
 {
     cv::Mat gray(400, 400, CV_8UC1, cv::Scalar(15));
     cv::circle(gray, cv::Point(320, 320), 30, cv::Scalar(220), cv::FILLED, cv::LINE_AA);
-    metrology::AssistCircleTool tool;
+    metrology::LocateCircleTool tool;
     Values                      inputs;
     inputs.emplace(assist::in::IMAGES, DataRef<Image>(Image{gray}));
-    inputs.emplace(assist::in::CURSOR, Array::fromNested(NestedVector<double, 1>{60.0, 60.0}));
-    inputs.emplace(assist::in::PHASE, std::string("hover"));
+    inputs.emplace(assist::in::SEARCH_REGION, DataRef<ROI>(ROI{{makeCircle({60, 60}, 80)}}));
     inputs.emplace(assist::in::SEED_ROIS, DataRef<ROI>(ROI{}));
     inputs.emplace(assist::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
-    inputs.emplace(assist::in::SEARCH_EXTENT, std::int64_t{80});
     const auto outside = tool.execute(inputs);
     REQUIRE(testview::status(outside).code == 0, testview::status(outside).message);
     REQUIRE(!std::get<bool>(outside.outputs.at(assist::out::CANDIDATE_VALID)),
@@ -407,8 +402,7 @@ void assistLocalWindow()
     // Non-integer resize factors must still map back through pixel centres.
     cv::Mat odd = diskImage(401, 200.5, 200.5, 40.0);
     inputs[assist::in::IMAGES] = DataRef<Image>(Image{odd});
-    inputs[assist::in::CURSOR] = Array::fromNested(NestedVector<double, 1>{240.0, 200.5});
-    inputs[assist::in::SEARCH_EXTENT] = std::int64_t{160};
+    inputs[assist::in::SEARCH_REGION] = DataRef<ROI>(ROI{{makeCircle({240.0, 200.5}, 160)}});
     const auto scaled = tool.execute(inputs);
     REQUIRE(testview::status(scaled).code == 0, testview::status(scaled).message);
     REQUIRE(std::get<bool>(scaled.outputs.at(assist::out::CANDIDATE_VALID)), "odd-sized images must still be searched");
@@ -418,14 +412,34 @@ void assistLocalWindow()
 
     // A seed states the nominal geometry: the contour search is skipped, so a radius outside the
     // search extent still resolves as long as the user pointed at the target.
-    inputs[assist::in::CURSOR] = Array::fromNested(NestedVector<double, 1>{240.5, 200.5});
-    inputs[assist::in::SEARCH_EXTENT] = std::int64_t{50};
+    inputs[assist::in::SEARCH_REGION] = DataRef<ROI>(ROI{{makeCircle({240.5, 200.5}, 50)}});
     inputs[assist::in::SEED_ROIS]     = DataRef<ROI>(ROI{{{3, 200.5, 200.5, 40.0}}});
     const auto seeded = tool.execute(inputs);
     REQUIRE(testview::status(seeded).code == 0, testview::status(seeded).message);
     REQUIRE(std::get<bool>(seeded.outputs.at(assist::out::CANDIDATE_VALID)), "seed geometry must not depend on contour search");
     const auto seededProposal = std::get<DataRef<ROI>>(seeded.outputs.at(assist::out::PROPOSAL_ROIS)).get();
     REQUIRE(std::abs(seededProposal[0][0][3] - 40.0) <= 0.8, "seeded radius must survive refinement");
+}
+
+// The locator returns geometry in both coordinate spaces, independently of a GUI.
+void locatedCircleCoordinates()
+{
+    cv::Mat image(400, 400, CV_8UC1, cv::Scalar(15));
+    cv::circle(image, {320, 210}, 30, cv::Scalar(220), cv::FILLED, cv::LINE_AA);
+    metrology::LocateCircleTool tool;
+    const Values                inputs{
+                       {assist::in::IMAGES, DataRef<Image>(Image{image})},
+                       {assist::in::SEARCH_REGION, DataRef<ROI>(ROI{{makeCircle({350, 210}, 80)}})},
+                       {assist::in::SEED_ROIS, DataRef<ROI>(ROI{})},
+                       {assist::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{{{2, 0, 10}, {0, 2, -4}, {0, 0, 1}}})}
+    };
+    const auto result = tool.execute(inputs);
+    REQUIRE(testview::status(result).code == 0, testview::status(result).message);
+    const auto &regions = std::get<DataRef<ROI>>(result.outputs.at(assist::out::PROPOSAL_ROIS)).get();
+    REQUIRE(regions.size() == 1 && regions.front().size() == 1, "one candidate per search");
+    const auto ref = RegionView(regions.front().front()).circle();
+    REQUIRE(cv::norm(ref.center() - cv::Point2d{155, 107}) < 1 && std::abs(ref.radius() - 15) < 1,
+            "candidate in reference coordinates");
 }
 
 } // namespace
@@ -440,6 +454,7 @@ int main()
     assistCandidate();
     circleQualityGate();
     assistLocalWindow();
+    locatedCircleCoordinates();
     std::cout << "GEOMETRY_METROLOGY_PASS rotate, brightness, ROI, circle, row spacing and assist verified"
               << std::endl;
     return 0;

@@ -30,6 +30,17 @@ bool pointInPolygon(const visionrt::PolygonView &polygon, double x, double y)
 }
 } // namespace
 
+CircularSearch circularSearch(const visionrt::PortValue &value, const char *portName)
+{
+    const auto regions = groups(value, 1, portName);
+    if (regions.size() != 1 || regions.front().size() != 1)
+        fail(CommonToolError::InputOutOfRange, std::string(portName) + " 必须包含一个圆形搜索区域");
+    const auto region = visionrt::RegionView(regions.front().front()).circle();
+    if (region.radius() < 16 || region.radius() > 2048)
+        fail(CommonToolError::InputOutOfRange, std::string(portName) + " 搜索半径必须在 [16, 2048] 内");
+    return {region.center(), static_cast<int>(region.radius())};
+}
+
 std::vector<std::vector<Record>> groups(const visionrt::PortValue &value, std::size_t imageCount,
                                         const char *portName)
 {

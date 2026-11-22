@@ -3,7 +3,7 @@
   "name_zh": "调用计数器",
   "version": "1.0.0",
   "implementation": {
-    "kind": 2,
+    "kind": "python_class",
     "package": "examples/call_counter",
     "file": "counter.py",
     "symbol": "CounterTool"
@@ -12,10 +12,8 @@
     {
       "id": 2,
       "name_zh": "累计调用次数",
-      "type": {
-        "type": 0
-      }
+      "type": "int"
     }
   ],
-  "schema_version": 1
+  "schema_version": 2
 }

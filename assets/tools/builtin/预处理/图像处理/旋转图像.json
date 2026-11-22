@@ -3,15 +3,13 @@
   "name_zh": "旋转图像",
   "version": "1.0.0",
   "implementation": {
-    "kind": 0
+    "kind": "cpp"
   },
   "inputs": [
     {
       "id": 1,
       "name_zh": "输入图像",
-      "type": {
-        "type": 4
-      },
+      "type": "image",
       "display": {
         "visible": true
       }
@@ -19,11 +17,9 @@
     {
       "id": 2,
       "name_zh": "顺时针角度",
-      "type": {
-        "type": 1
-      },
+      "type": "float",
       "ui": {
-        "editor": 1,
+        "editor": "number",
         "decimals": 3
       }
     },
@@ -31,20 +27,18 @@
       "id": 3,
       "name_zh": "旋转中心",
       "type": {
-        "type": 5,
-        "dtype": 4,
+        "type": "array",
+        "dtype": "float64",
         "rank": 1
       },
       "ui": {
-        "editor": 7
+        "editor": "array"
       }
     },
     {
       "id": 4,
       "name_zh": "画布模式",
-      "type": {
-        "type": 3
-      },
+      "type": "string",
       "default": "keep",
       "constraints": {
         "options": [
@@ -53,15 +47,13 @@
         ]
       },
       "ui": {
-        "editor": 2
+        "editor": "text"
       }
     },
     {
       "id": 5,
       "name_zh": "插值方式",
-      "type": {
-        "type": 3
-      },
+      "type": "string",
       "default": "linear",
       "constraints": {
         "options": [
@@ -71,34 +63,34 @@
         ]
       },
       "ui": {
-        "editor": 2
+        "editor": "text"
       }
     },
     {
       "id": 6,
       "name_zh": "边界填充值",
       "type": {
-        "type": 5,
-        "dtype": 4,
+        "type": "array",
+        "dtype": "float64",
         "rank": 1
       },
       "default": [
         0.0
       ],
       "ui": {
-        "editor": 7
+        "editor": "array"
       }
     },
     {
       "id": 7,
       "name_zh": "参考到当前变换",
       "type": {
-        "type": 5,
-        "dtype": 4,
+        "type": "array",
+        "dtype": "float64",
         "rank": 3
       },
       "ui": {
-        "editor": 7
+        "editor": "array"
       }
     }
   ],
@@ -106,9 +98,7 @@
     {
       "id": 2,
       "name_zh": "旋转图像",
-      "type": {
-        "type": 4
-      },
+      "type": "image",
       "display": {
         "visible": true
       }
@@ -117,11 +107,11 @@
       "id": 3,
       "name_zh": "参考到输出变换",
       "type": {
-        "type": 5,
-        "dtype": 4,
+        "type": "array",
+        "dtype": "float64",
         "rank": 3
       }
     }
   ],
-  "schema_version": 1
+  "schema_version": 2
 }

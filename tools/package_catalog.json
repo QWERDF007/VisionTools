@@ -16,14 +16,50 @@
     },
     {
       "definition": "assets/tools/builtin/处理/识别/通过直边确定对齐.json",
-      "module": "visiontools_recognition"
+      "module": "visiontools_recognition",
+      "training_locator": {
+        "algorithm": "LocateStraightEdge",
+        "image_source": 1,
+        "region_target": 1,
+        "frame_input": 1,
+        "search_input": 2,
+        "search_radius": 128,
+        "candidate_output": 3,
+        "preview_output": 2,
+        "valid_output": 4,
+        "message_output": 5,
+        "alignment_input": 5,
+        "seed_input": 4,
+        "parameters": [
+          {
+            "output": 6,
+            "parameter": 4
+          },
+          {
+            "output": 7,
+            "parameter": 2
+          },
+          {
+            "output": 8,
+            "parameter": 3
+          }
+        ]
+      }
     },
     {
       "definition": "assets/tools/builtin/处理/识别/识别颜色.json",
       "module": "visiontools_recognition"
     },
     {
-      "definition": "assets/tools/builtin/处理/识别/直边智能点选.json",
+      "definition": "assets/tools/builtin/处理/识别/颜色模型训练.json",
+      "module": "visiontools_recognition"
+    },
+    {
+      "definition": "assets/tools/builtin/处理/识别/直边模型训练.json",
+      "module": "visiontools_recognition"
+    },
+    {
+      "definition": "assets/tools/builtin/处理/识别/直边定位.json",
       "module": "visiontools_recognition"
     },
     {
@@ -33,20 +69,79 @@
       "definition": "assets/tools/builtin/流程控制/跨流程接收.json"
     },
     {
-      "definition": "assets/tools/builtin/测量/圆智能点选.json",
+      "definition": "assets/tools/builtin/测量/圆定位.json",
       "module": "visiontools_metrology"
     },
     {
       "definition": "assets/tools/builtin/测量/圆测量.json",
-      "module": "visiontools_metrology"
+      "module": "visiontools_metrology",
+      "processing_locator": {
+        "algorithm": "LocateCircle",
+        "image_source": 1,
+        "region_target": 2,
+        "frame_input": 1,
+        "search_input": 2,
+        "search_radius": 256,
+        "candidate_output": 3,
+        "preview_output": 2,
+        "valid_output": 4,
+        "message_output": 5,
+        "seed_input": 4,
+        "alignment_input": 5,
+        "parameters": [
+          {
+            "output": 7,
+            "input": 5,
+            "limit": "minimum"
+          },
+          {
+            "output": 8,
+            "input": 7
+          },
+          {
+            "output": 6,
+            "input": 9
+          }
+        ]
+      }
     },
     {
-      "definition": "assets/tools/builtin/测量/行间距智能点选.json",
+      "definition": "assets/tools/builtin/测量/行间距定位.json",
       "module": "visiontools_metrology"
     },
     {
       "definition": "assets/tools/builtin/测量/行间距测量.json",
-      "module": "visiontools_metrology"
+      "module": "visiontools_metrology",
+      "processing_locator": {
+        "algorithm": "LocateRowSpacing",
+        "image_source": 1,
+        "region_target": 2,
+        "frame_input": 1,
+        "search_input": 2,
+        "search_radius": 256,
+        "candidate_output": 3,
+        "preview_output": 2,
+        "valid_output": 4,
+        "message_output": 5,
+        "seed_input": 4,
+        "alignment_input": 5,
+        "parameters": [
+          {
+            "output": 6,
+            "input": 6
+          },
+          {
+            "output": 7,
+            "input": 7,
+            "limit": "maximum"
+          },
+          {
+            "output": 8,
+            "input": 8,
+            "limit": "minimum"
+          }
+        ]
+      }
     },
     {
       "definition": "assets/tools/builtin/深度学习/目标检测/YOLO目标检测.json",

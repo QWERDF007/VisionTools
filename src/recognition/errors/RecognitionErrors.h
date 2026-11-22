@@ -20,7 +20,14 @@ enum class RecognitionError : std::int64_t
     ColorSamplesTooSmall      = errorCode(domain::kRecognition, 9),
     UnsupportedColorImage     = errorCode(domain::kRecognition, 10),
     DetectionRegionMissing    = errorCode(domain::kRecognition, 11),
-    DetectionRegionNotCircle  = errorCode(domain::kRecognition, 12)
+    DetectionRegionNotCircle      = errorCode(domain::kRecognition, 12),
+    ColorModelUnreadable          = errorCode(domain::kRecognition, 13),
+    ColorModelIncompatible        = errorCode(domain::kRecognition, 14),
+    ColorModelPathMissing         = errorCode(domain::kRecognition, 15),
+    StraightEdgeModelUnreadable   = errorCode(domain::kRecognition, 16),
+    StraightEdgeModelIncompatible = errorCode(domain::kRecognition, 17),
+    StraightEdgeModelPathMissing  = errorCode(domain::kRecognition, 18),
+    StraightEdgeRegionsInvalid    = errorCode(domain::kRecognition, 19)
 };
 
 inline std::string_view message(RecognitionError code) noexcept
@@ -51,6 +58,20 @@ inline std::string_view message(RecognitionError code) noexcept
         return "检测区域未配置";
     case RecognitionError::DetectionRegionNotCircle:
         return "检测区域必须是圆";
+    case RecognitionError::ColorModelUnreadable:
+        return "颜色模型无法读取";
+    case RecognitionError::ColorModelIncompatible:
+        return "颜色模型格式不兼容或已损坏";
+    case RecognitionError::ColorModelPathMissing:
+        return "颜色模型路径未配置";
+    case RecognitionError::StraightEdgeModelUnreadable:
+        return "直边模型无法读取";
+    case RecognitionError::StraightEdgeModelIncompatible:
+        return "直边模型格式不兼容或已损坏";
+    case RecognitionError::StraightEdgeModelPathMissing:
+        return "直边模型路径未配置";
+    case RecognitionError::StraightEdgeRegionsInvalid:
+        return "直边训练需要两个有效的搜索矩形";
     }
     return "识别失败";
 }

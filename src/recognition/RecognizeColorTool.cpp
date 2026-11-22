@@ -8,9 +8,11 @@
 #include "common/ToolOutputs.h"
 #include "common/UpstreamStatus.h"
 #include "common/errors/ToolError.h"
-
 #include "errors/RecognitionErrors.h"
 
+#include <cstdint>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -51,19 +53,29 @@ std::vector<DetectionCircle> circlesFor(const visionrt::ROI &groups, std::size_t
         fail(RecognitionError::DetectionRegionMissing, "第 " + std::to_string(image + 1) + " 张图");
     return circles;
 }
+
+std::vector<std::uint8_t> readModel(const std::filesystem::path &path)
+{
+    const auto    text = path.generic_u8string();
+    std::ifstream file(path, std::ios::binary);
+    if (!file)
+        fail(RecognitionError::ColorModelUnreadable,
+             std::string(reinterpret_cast<const char *>(text.data()), text.size()), "文件不存在或无法打开");
+    return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+}
 } // namespace
 
 visionrt::ToolStatus RecognizeColorTool::initialize(const visionrt::Values &parameters)
 {
     try
     {
-        const auto found = parameters.find(p::init::TRAINING);
+        const auto found = parameters.find(p::init::MODEL);
         if (found == parameters.end() || !std::holds_alternative<std::string>(found->second))
-            return status(RecognitionError::AssetPathMissing, "初始化参数 0");
+            return status(RecognitionError::ColorModelPathMissing, "初始化参数 1");
         const auto &path = std::get<std::string>(found->second);
         if (path.empty())
-            return status(RecognitionError::AssetPathMissing, "初始化参数 0");
-        model_ = ColorModel::train(loadColorTraining(common::resolveResourcePath(path)));
+            return status(RecognitionError::ColorModelPathMissing, "初始化参数 1");
+        model_ = ColorModel::decode(readModel(common::resolveResourcePath(path)));
         return {};
     }
     catch (const ToolFailure &error)
@@ -72,7 +84,7 @@ visionrt::ToolStatus RecognizeColorTool::initialize(const visionrt::Values &para
     }
     catch (const std::exception &error)
     {
-        return status(CommonToolError::OperatorFailed, "加载颜色训练数据失败", error.what());
+        return status(CommonToolError::OperatorFailed, "加载颜色模型失败", error.what());
     }
 }
 
@@ -81,7 +93,7 @@ visionrt::ToolResult RecognizeColorTool::execute(const visionrt::Values &inputs)
     if (const auto upstream = upstreamStatus(inputs); upstream != 0)
         return skippedByUpstream(upstream, missingOutputs());
     if (model_.empty())
-        return failure(missingOutputs(), RecognitionError::AssetPathMissing, "颜色模型未加载");
+        return failure(missingOutputs(), RecognitionError::ColorModelPathMissing, "颜色模型未加载");
 
     Readings   readings(inputs, p::TOOL_ID);
     const auto imagesRef = readings.image(p::in::IMAGES);

@@ -1,15 +1,34 @@
 #pragma once
 
-#include "TrainingAssets.h"
-
 #include "common/EdgeProfile.h"
 #include "common/GeometryTransform.h"
 
 #include <opencv2/core.hpp>
 
 #include <optional>
+#include <string>
 
 namespace visiontools::recognition {
+
+// A rotated search band the locator samples across. The centre is in reference image coordinates,
+// the angle follows the VisionRT rectangle convention (x right, y down, positive clockwise).
+struct SearchRectangle
+{
+    cv::Point2d center;
+    double      width  = 0;
+    double      height = 0;
+    double      angle  = 0;
+};
+
+// One reference edge: the nominal segment and the band searched across it. The published model
+// stores the measured endpoints here, so a node never re-derives them from the band.
+struct ReferenceSegment
+{
+    std::string     name;
+    cv::Point2d     from;
+    cv::Point2d     to;
+    SearchRectangle search;
+};
 
 // How the locator samples one trained segment. Contrast is the minimum intensity derivative along
 // the search normal, in gray levels per pixel, so its unit does not depend on the image size.

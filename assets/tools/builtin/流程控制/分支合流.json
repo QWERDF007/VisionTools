@@ -3,9 +3,9 @@
   "name_zh": "分支合流",
   "version": "1.0.0",
   "implementation": {
-    "kind": 3,
+    "kind": "host",
     "binding": "visionrt.select"
   },
-  "node_model": 3,
-  "schema_version": 1
+  "node_model": "select",
+  "schema_version": 2
 }

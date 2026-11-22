@@ -30,6 +30,117 @@
 - ...
 -->
 
+### 2026-11-22 — 语义声明、业务定位与模型训练
+
+**目标**
+- 工具独立定义算法参数；统一声明 v2，交付可被宿主复用的定位、颜色和直边训练。
+
+**当前状态**
+- 27 份声明统一语义名称，Contracts 指向 8eb2603；移除旧格式与旧工具别名。
+- LocateCircle、LocateRowSpacing、LocateStraightEdge 只接收图像、搜索几何、标称区域与对齐；包级登记连接宿主。圆建议同步给出搜索半宽与平滑标准差，正式测量可直接消费。
+- 颜色与直边训练器消费类型化 TrainingSet，业务节点只加载发布模型；旧训练 JSON 路径与重复读取实现已删除。
+- 待父仓提交后的元数据重建及宿主最终候选安装验收；无待决定事项。
+
+**验证证据**
+- 完整 CTest 21 项中 20 通过、infer_trace_initialized 缺少环境而跳过；设置 VISIONTOOLS_TEST_YOLO_ENGINE 指向真实 yolov8n.engine 后该项通过。宿主 build/final-tools-tests.log 与 build/final-tools-gpu-trace.log 保存原始结果。
+- 圆建议参数调整后 test_writable_tools_contract、test_geometry_contract、test_package、test_package_payload、test_package_profile、test_distribution 共 6 项通过，见宿主 build/final-tools-corrections.log。
+- 宿主 workbench_assist_contract 以真实圆图验证正式测量与手工输入结果相同；训练、发布及重开定向验证通过。27 工具包经真实宿主校验器通过。
+
+**下一步**
+- 重建提交身份元数据，输出最终包；宿主任务账本负责安装签收证据。
+
+### 2026-11-22 — 识色声明接线与工具包重打
+
+**目标**
+- Contracts 训练声明同步后，给 `识别颜色.json` 接上训练器与模型产物，并重打可用的工具包。
+
+**当前状态**
+- 已完成：`Contracts` 子模块更新到 `e34eaf8`（TrainingSpec、`field_id`/`parameter` 输入来源、`kTrainingManifestVersion`）。
+- 已完成：`识别颜色.json` 的 `training` 增加 `call`（TrainColorModel，上下文 TrainingSet、字段 1/2）与 `artifacts`（`color-model`，`source_port 2`，目标 init 1），并补 `schema_version` 到 `颜色模型训练.json`。
+- 已完成：`package_tools.py --profile rtx40-build` 重打 26 个工具，宿主校验器 `--package` 校验通过。
+- 未完成：`通过直边确定对齐.json` 的同类接线，随票 10 做。
+
+**验证证据**
+- 宿主 `visionrt_validate_tool` 对两份声明返回 Valid，`--emit-normalized-json` 回写的训练块与源一致。
+- `test_recognition_contract`、`test_package`、`test_module_contract` 通过；VisionRT `color_training_contract` 用本包的真实训练器产出可解码模型。
+
+**下一步**
+- 票 10：直边训练器与声明接线。
+
+### 2026-11-22 — 颜色训练器与版本化颜色模型
+
+**目标**
+- 按 VisionRT 票 09 的工具侧：真实 `TrainColorModel` 从训练集像素与区域建模，`RecognizeColor` 只加载发布模型；训练器与业务工具共用一份模型字节格式。
+
+**当前状态**
+- 已完成：`ColorModel` 改为 `train(vector<Sample>)`，样本是 BGR 像素加 `EncodedRegion`；矩形、圆、多边形复用 `roi::regionMask`，同名标签跨图累计；不再从文件路径读训练。
+- 已完成：模型字节含魔数、版本、YUV 预处理约定、正则参数、类别顺序、均值、逆协方差、对数行列式与像素计数；`encode/decode` 校验长度、有限值、类别上限与尾随字节。
+- 已完成：新增隐藏工具 `TrainColorModel`（inputs 1 训练集、2 标签字段、3 区域字段；output 2 一维 uint8 模型），注册到 recognition 模块并进入 `package_catalog`。
+- 已完成：`RecognizeColor` 新增初始化参数 1 为颜色模型路径（0 仍是训练来源），只 `decode`；路径缺失、无法读取与格式不兼容分别返回错误码 15/13/14，不触发重训。
+- 未完成：`识别颜色.json` 的 `training.call/artifacts` 声明与 VisionRT 工作台发布验收；VisionRT 的 Contracts 训练声明尚未提交到子模块，新字段无法在本仓解析。
+
+**验证证据**
+- `ninja -C build -j 2 test_recognition_contract` 与 `ctest -R '^test_recognition_contract$'` 通过：训练集含四类、矩形、多边形、圆、第二张图的同名标签；模型类别数为 4，`decode` 后重新 `encode` 字节一致；内存模型与文件加载模型对五个工位给出相同标签、float 分数与比例；未知色、批量顺序保持不变；损坏与截断模型分别被拒绝。
+- `ctest -R '^test_package'` 3/3 通过；`test_module_contract`、`test_geometry_contract` 通过。
+- 未验证：VisionRT 工作台调用训练器、发布与重开（待 Contracts 同步与票 14 的示例模型）。
+
+**下一步**
+- Contracts 同步后给 `识别颜色.json` 增加 `training.call`（TrainColorModel，上下文 TrainingSet、字段 1/2）与模型产物目标 init 1；由 VisionRT 票 09 完成 A6，票 14 生成线缆示例模型。
+
+### 2026-11-22 — 训练工具声明字段与画布约束
+
+**目标**
+- 按 VisionRT 的票 07，让训练页从声明读取训练帧端口、记录上限、字段编号与画布矩形预算，而不是由宿主按工具名猜。
+
+**当前状态**
+- 已完成：`识别颜色.json` 的 `training` 增加 `image`（inputs.1）与 `records.fields`：字段 1 颜色名称（String）、字段 2 采样区（ROI，`roi=true`，至少 1 个矩形）。
+- 已完成：`通过直边确定对齐.json` 增加 `image`（inputs.1）与 `records`：`max=1`，字段 1 参考边（ROI，`roi=true`，恰 2 个矩形）。
+- 未完成：`training.call`、`training.parameters` 与 `training.artifacts` 尚未声明，训练器调用归 VisionRT 票 08 与本仓 Train* 工具。
+
+**验证证据**
+- 两个 JSON 通过 VisionRT `tools_package_contract`、`tool_discovery_contract`、`validator_cli_contract` 与 `workbench_training_contract`（真实工具包加载、字段渲染、TrainingSet 交接）；本仓几何与打包测试未受影响。
+- 未验证：安装包内的训练器端到端调用（待票 08/14）。
+
+**下一步**
+- 票 08 声明并接上 `TrainColorModel` / `TrainStraightBorders` 的输入输出；票 09/10/11 补算法与助手。
+
+### 2026-11-21 — 行间距助手追加意图与声明迁移
+
+**目标**
+- 按 VisionRT 的票 06，让行间距一次 Ctrl+单击提交完整矩形组，并发布匹配 `authoring.easy_touch` 的 `PickRowSpacing` 与 `MeasureRowSpacing`。
+
+**当前状态**
+- 已完成：`行间距智能点选.json` 增加 inputs.7；`行间距测量.json` 删除 `interaction`，改 `authoring.version=1`，writes 按 outputs.3/6/7/8 写 inputs.2/6/7/8。
+- 已完成：`assistRowSpacing` 在 append 时保留矩形种子并追加新带；新增 `toCurrentRectangle` 做参考坐标到当前帧的变换；非矩形种子跳过。
+- 已完成：VisionRT 宿主同步收口追加语义（append 只写 ROI，共享参数不覆盖），该改动在宿主仓，不在本仓。
+- 未完成：发布包未重新打包；直边助手（票 10/11）尚未迁移。
+
+**验证证据**
+- `ctest -R '^test_geometry_contract$'` 通过，新增 `assistRowAppend` 覆盖 append 与 replace。
+- VisionRT `workbench_assist_contract` 在真实条带图上通过四个目标写入与追加保留参数；10 个相关合同全通过。
+
+**下一步**
+- 票 10/11 迁移直边助手时复用同一 append 端口与完整组契约。
+
+### 2026-11-21 — 圆助手追加意图与圆测量声明迁移
+
+**目标**
+- 按 VisionRT 的票 05，让圆测量一次 Ctrl+单击提交完整圆组：助手接收追加意图并返回保留组加新圆，产线声明从 `interaction` 迁到 `authoring.easy_touch`。
+
+**当前状态**
+- 已完成：`AssistCircleTool` 新增可选 inputs.7（追加意图）；`assistCircle` 在 append 时跳过种子作为标称几何，改为光标搜索，并把种子按参考坐标保留、按当前坐标预览，新圆追加在末尾。
+- 已完成：`圆智能点选.json` 增加 inputs.7；`圆测量.json` 删除 `interaction`，改 `authoring.version=1`，call 映射 inputs.1/2/3 与 cursor/phase/append，writes 按 outputs.3/7/6 写 inputs.2/5/9。
+- 已完成：`test_package` 的重复字段断言改为接受校验器的实际措辞（Contracts 声明下沉后由“重复成员”变为“对象包含重复字段”）。
+- 未完成：行间距助手（票 06）尚未声明 inputs.7；发布包未重新打包。
+
+**验证证据**
+- `ctest -R '^test_geometry_contract$'` 通过，新增 `assistAppend` 覆盖 append 与 replace 两种语义。
+- `ctest -R '^(test_package|test_package_payload|test_package_profile)$'` 3/3 通过。
+- `cmake --build build --target visiontools_metrology` 通过；产物与两份声明同步到 VisionRT 的 `build/bin/tools-package`（`VISIONRT_TEST_TOOLS_PACKAGE` 实际指向处）与 `build/tools-package` 后，VisionRT 的 `workbench_assist_contract` 在真实工作台与真实圆助手上通过。只同步 `build/tools-package` 时测试仍读旧声明，属于假绿。
+
+**下一步**
+- 票 06 复用同一 append 端口实现行间距追加；票 14 收口时删除旧 `interaction` 与 `training.kind`。
+
 ### 2026-11-20 — 汇总数字协议与工具包交付
 
 **目标**

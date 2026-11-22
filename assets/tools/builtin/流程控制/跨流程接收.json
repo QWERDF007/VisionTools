@@ -3,37 +3,29 @@
   "name_zh": "跨流程接收",
   "version": "1.0.0",
   "implementation": {
-    "kind": 3,
+    "kind": "host",
     "binding": "visionrt.receiver"
   },
   "init_params": [
     {
       "id": 0,
       "name_zh": "源流程ID",
-      "type": {
-        "type": 3
-      }
+      "type": "string"
     },
     {
       "id": 1,
       "name_zh": "源节点序号",
-      "type": {
-        "type": 3
-      }
+      "type": "string"
     },
     {
       "id": 2,
       "name_zh": "源端口ID",
-      "type": {
-        "type": 0
-      }
+      "type": "int"
     },
     {
       "id": 3,
       "name_zh": "超时时间(ms)",
-      "type": {
-        "type": 0
-      },
+      "type": "int",
       "constraints": {
         "min": 0
       }
@@ -45,15 +37,15 @@
       "name_zh": "接收数据",
       "type_from": {
         "flow": {
-          "stage": 0,
+          "stage": "init",
           "id": 0
         },
         "node": {
-          "stage": 0,
+          "stage": "init",
           "id": 1
         },
         "port": {
-          "stage": 0,
+          "stage": "init",
           "id": 2
         }
       }
@@ -61,17 +53,13 @@
     {
       "id": 3,
       "name_zh": "源状态码",
-      "type": {
-        "type": 0
-      }
+      "type": "int"
     },
     {
       "id": 4,
       "name_zh": "源状态消息",
-      "type": {
-        "type": 3
-      }
+      "type": "string"
     }
   ],
-  "schema_version": 1
+  "schema_version": 2
 }

@@ -3,15 +3,13 @@
   "name_zh": "图像裁剪",
   "version": "2.0.0",
   "implementation": {
-    "kind": 0
+    "kind": "cpp"
   },
   "inputs": [
     {
       "id": 1,
       "name_zh": "图像",
-      "type": {
-        "type": 4
-      },
+      "type": "image",
       "display": {
         "visible": true
       }
@@ -19,15 +17,13 @@
     {
       "id": 2,
       "name_zh": "矩形区域",
-      "type": {
-        "type": 6
-      },
+      "type": "roi",
       "ui": {
-        "editor": 9
+        "editor": "rect"
       },
       "relations": {
         "image": {
-          "stage": 1,
+          "stage": "inputs",
           "id": 1
         }
       }
@@ -37,9 +33,7 @@
     {
       "id": 2,
       "name_zh": "裁剪图像",
-      "type": {
-        "type": 4
-      },
+      "type": "image",
       "display": {
         "visible": true
       }
@@ -48,11 +42,11 @@
       "id": 3,
       "name_zh": "原点坐标",
       "type": {
-        "type": 5,
-        "dtype": 4,
+        "type": "array",
+        "dtype": "float64",
         "rank": 2
       }
     }
   ],
-  "schema_version": 1
+  "schema_version": 2
 }

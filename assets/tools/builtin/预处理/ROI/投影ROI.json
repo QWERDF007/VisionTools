@@ -3,15 +3,13 @@
   "name_zh": "投影ROI",
   "version": "1.0.0",
   "implementation": {
-    "kind": 0
+    "kind": "cpp"
   },
   "inputs": [
     {
       "id": 1,
       "name_zh": "图像",
-      "type": {
-        "type": 4
-      },
+      "type": "image",
       "display": {
         "visible": true
       }
@@ -19,9 +17,7 @@
     {
       "id": 2,
       "name_zh": "投影轴",
-      "type": {
-        "type": 3
-      },
+      "type": "string",
       "default": "x",
       "constraints": {
         "options": [
@@ -30,15 +26,13 @@
         ]
       },
       "ui": {
-        "tab": 1
+        "tab": "preprocess"
       }
     },
     {
       "id": 3,
       "name_zh": "极性",
-      "type": {
-        "type": 3
-      },
+      "type": "string",
       "default": "bright",
       "constraints": {
         "options": [
@@ -47,82 +41,72 @@
         ]
       },
       "ui": {
-        "tab": 1
+        "tab": "preprocess"
       }
     },
     {
       "id": 4,
       "name_zh": "二值化阈值",
-      "type": {
-        "type": 0
-      },
+      "type": "int",
       "default": 128,
       "constraints": {
         "min": 0,
         "max": 255
       },
       "ui": {
-        "editor": 1,
-        "tab": 1,
+        "editor": "number",
+        "tab": "preprocess",
         "step": 1
       }
     },
     {
       "id": 5,
       "name_zh": "最小像素数",
-      "type": {
-        "type": 0
-      },
+      "type": "int",
       "default": 1,
       "constraints": {
         "min": 1
       },
       "ui": {
-        "editor": 1,
-        "tab": 1
+        "editor": "number",
+        "tab": "preprocess"
       }
     },
     {
       "id": 6,
       "name_zh": "最小跨度",
-      "type": {
-        "type": 0
-      },
+      "type": "int",
       "default": 1,
       "constraints": {
         "min": 1
       },
       "ui": {
-        "editor": 1,
-        "tab": 1
+        "editor": "number",
+        "tab": "preprocess"
       }
     },
     {
       "id": 7,
       "name_zh": "合并间隙",
-      "type": {
-        "type": 0
-      },
+      "type": "int",
       "constraints": {
         "min": 0
       },
       "ui": {
-        "editor": 1,
-        "tab": 1
+        "editor": "number",
+        "tab": "preprocess"
       }
     },
     {
       "id": 8,
       "name_zh": "外扩边距",
-      "type": {
-        "type": 0
-      },
+      "type": "int",
       "constraints": {
         "min": 0
       },
       "ui": {
-        "editor": 1,
-        "tab": 1
+        "editor": "number",
+        "tab": "preprocess"
       }
     }
   ],
@@ -130,12 +114,10 @@
     {
       "id": 2,
       "name_zh": "输出图像",
-      "type": {
-        "type": 4
-      },
+      "type": "image",
       "relations": {
         "same_geometry_as": {
-          "stage": 1,
+          "stage": "inputs",
           "id": 1
         }
       },
@@ -146,16 +128,14 @@
     {
       "id": 3,
       "name_zh": "ROI批次",
-      "type": {
-        "type": 6
-      },
+      "type": "roi",
       "relations": {
         "image": {
-          "stage": 2,
+          "stage": "outputs",
           "id": 2
         }
       }
     }
   ],
-  "schema_version": 1
+  "schema_version": 2
 }

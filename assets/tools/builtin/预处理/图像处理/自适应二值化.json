@@ -3,15 +3,13 @@
   "name_zh": "自适应二值化",
   "version": "1.0.0",
   "implementation": {
-    "kind": 0
+    "kind": "cpp"
   },
   "inputs": [
     {
       "id": 1,
       "name_zh": "输入图像",
-      "type": {
-        "type": 4
-      },
+      "type": "image",
       "display": {
         "visible": true
       }
@@ -19,28 +17,24 @@
     {
       "id": 2,
       "name_zh": "邻域大小",
-      "type": {
-        "type": 0
-      },
+      "type": "int",
       "default": 3,
       "constraints": {
         "min": 3,
         "max": 999
       },
       "ui": {
-        "editor": 1,
+        "editor": "number",
         "step": 2
       }
     },
     {
       "id": 3,
       "name_zh": "偏移常量",
-      "type": {
-        "type": 1
-      },
+      "type": "float",
       "default": 5,
       "ui": {
-        "editor": 1,
+        "editor": "number",
         "decimals": 3
       }
     }
@@ -49,20 +43,18 @@
     {
       "id": 2,
       "name_zh": "二值图像",
-      "type": {
-        "type": 4
-      },
+      "type": "image",
       "relations": {
         "same_geometry_as": {
-          "stage": 1,
+          "stage": "inputs",
           "id": 1
         }
       },
       "display": {
-        "color_order": 1,
+        "color_order": "gray",
         "visible": true
       }
     }
   ],
-  "schema_version": 1
+  "schema_version": 2
 }

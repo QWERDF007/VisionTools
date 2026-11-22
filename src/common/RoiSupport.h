@@ -19,6 +19,14 @@ using Record = visionrt::EncodedRegion;
 std::vector<std::vector<Record>> groups(const visionrt::PortValue &value, std::size_t imageCount,
                                         const char *portName);
 
+struct CircularSearch
+{
+    cv::Point2d center;
+    int         radius;
+};
+
+CircularSearch circularSearch(const visionrt::PortValue &value, const char *portName);
+
 // True when at least one image carries at least one record.
 bool anyRecord(const std::vector<std::vector<Record>> &records) noexcept;
 

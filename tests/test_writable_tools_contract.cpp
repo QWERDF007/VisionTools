@@ -1,5 +1,6 @@
 #include "TestRegistry.h"
 #include "ToolResultAssertions.h"
+
 #include <visionrt/contracts/Module.h>
 
 #include <array>
@@ -12,14 +13,13 @@ int main()
 try
 {
     using namespace visionrt;
-    static_assert(MODULE_ABI_MAJOR == 10);
     const auto *api = visiontoolsModuleApi();
     assert(api && api->abi_major == MODULE_ABI_MAJOR);
     TestRegistry registry;
     assert(api->register_tools(registry).code == 0);
-    const auto  &factory = registry.factories.at("CropImage");
-    ToolStatus   status;
-    auto        *instance = factory.create(&status);
+    const auto &factory = registry.factories.at("CropImage");
+    ToolStatus  status;
+    auto       *instance = factory.create(&status);
     assert(instance && status.code == 0);
     assert(instance->initialize({}).code == 0);
 
@@ -70,36 +70,75 @@ try
     {
         // T41-02: testview helpers must be strict: at() + std::get(), no default fallbacks
         ToolResult incompleteCode{{{kStatusMessagePort, std::string("ok")}}, "detail"};
-        bool caught = false;
-        try { testview::code(incompleteCode); }
-        catch (const std::out_of_range &) { caught = true; }
+        bool       caught = false;
+        try
+        {
+            testview::code(incompleteCode);
+        }
+        catch (const std::out_of_range &)
+        {
+            caught = true;
+        }
         assert(caught);
 
-        ToolResult wrongTypeCode{{{kStatusCodePort, std::string("bad")}, {kStatusMessagePort, std::string("ok")}}, "detail"};
+        ToolResult wrongTypeCode{
+            {{kStatusCodePort, std::string("bad")}, {kStatusMessagePort, std::string("ok")}},
+            "detail"
+        };
         caught = false;
-        try { testview::code(wrongTypeCode); }
-        catch (const std::bad_variant_access &) { caught = true; }
+        try
+        {
+            testview::code(wrongTypeCode);
+        }
+        catch (const std::bad_variant_access &)
+        {
+            caught = true;
+        }
         assert(caught);
 
         ToolResult incompleteMsg{{{kStatusCodePort, std::int64_t(0)}}, "detail"};
         caught = false;
-        try { testview::message(incompleteMsg); }
-        catch (const std::out_of_range &) { caught = true; }
+        try
+        {
+            testview::message(incompleteMsg);
+        }
+        catch (const std::out_of_range &)
+        {
+            caught = true;
+        }
         assert(caught);
 
-        ToolResult wrongTypeMsg{{{kStatusCodePort, std::int64_t(0)}, {kStatusMessagePort, std::int64_t(123)}}, "detail"};
+        ToolResult wrongTypeMsg{
+            {{kStatusCodePort, std::int64_t(0)}, {kStatusMessagePort, std::int64_t(123)}},
+            "detail"
+        };
         caught = false;
-        try { testview::message(wrongTypeMsg); }
-        catch (const std::bad_variant_access &) { caught = true; }
+        try
+        {
+            testview::message(wrongTypeMsg);
+        }
+        catch (const std::bad_variant_access &)
+        {
+            caught = true;
+        }
         assert(caught);
 
-        ToolResult valid{{{kStatusCodePort, std::int64_t(7)}, {kStatusMessagePort, std::string("fail")}}, "d"};
+        ToolResult valid{
+            {{kStatusCodePort, std::int64_t(7)}, {kStatusMessagePort, std::string("fail")}},
+            "d"
+        };
         const auto st = testview::status(valid);
         assert(st.code == 7);
         assert(st.message == "fail");
         assert(st.detail == "d");
 
-        ToolResult withExtra{{{kStatusCodePort, std::int64_t(0)}, {kStatusMessagePort, std::string("")}, {9, std::int64_t(1)}, {7, std::int64_t(2)}}, ""};
+        ToolResult withExtra{
+            {{kStatusCodePort, std::int64_t(0)},
+             {kStatusMessagePort, std::string("")},
+             {9, std::int64_t(1)},
+             {7, std::int64_t(2)}},
+            ""
+        };
         assert(testview::businessCount(withExtra) == 2);
     }
 

@@ -287,7 +287,7 @@ class TestPythonToolContracts(unittest.TestCase):
 
     def test_builtin_function_uses_its_json_entry_and_returns_native_lists(self):
         declaration = json.loads((ROOT / "assets/tools/builtin/Python/示例/图像尺寸.json").read_text(encoding="utf-8"))
-        self.assertEqual(declaration["implementation"]["kind"], 1)
+        self.assertEqual(declaration["implementation"]["kind"], "python_function")
         entry = declaration["implementation"]
         module = load_module_from_file(ROOT / "python/builtin" / entry["package"] / entry["file"])
         execute = getattr(module, entry["symbol"])

@@ -3,17 +3,15 @@
   "name_zh": "通过直边确定对齐",
   "version": "1.0.0",
   "implementation": {
-    "kind": 0
+    "kind": "cpp"
   },
   "init_params": [
     {
-      "id": 0,
-      "name_zh": "训练数据路径",
-      "type": {
-        "type": 3
-      },
+      "id": 1,
+      "name_zh": "直边模型路径",
+      "type": "string",
       "ui": {
-        "editor": 6
+        "editor": "path"
       }
     }
   ],
@@ -21,9 +19,7 @@
     {
       "id": 1,
       "name_zh": "图像",
-      "type": {
-        "type": 4
-      },
+      "type": "image",
       "display": {
         "visible": true
       }
@@ -31,42 +27,36 @@
     {
       "id": 2,
       "name_zh": "边缘对比度",
-      "type": {
-        "type": 1
-      },
+      "type": "float",
       "default": 30.0,
       "constraints": {
         "min": 0.0,
         "max": 1024.0
       },
       "ui": {
-        "editor": 1,
-        "tab": 2,
+        "editor": "number",
+        "tab": "detection",
         "decimals": 2
       }
     },
     {
       "id": 3,
       "name_zh": "边缘宽度",
-      "type": {
-        "type": 0
-      },
+      "type": "int",
       "default": 3,
       "constraints": {
         "min": 1,
         "max": 63
       },
       "ui": {
-        "editor": 1,
-        "tab": 2
+        "editor": "number",
+        "tab": "detection"
       }
     },
     {
       "id": 4,
       "name_zh": "跃迁方向",
-      "type": {
-        "type": 3
-      },
+      "type": "string",
       "default": "any",
       "constraints": {
         "options": [
@@ -76,24 +66,22 @@
         ]
       },
       "ui": {
-        "editor": 2,
-        "tab": 2
+        "editor": "text",
+        "tab": "detection"
       }
     },
     {
       "id": 5,
       "name_zh": "最低边完整度",
-      "type": {
-        "type": 1
-      },
+      "type": "float",
       "default": 0.4,
       "constraints": {
         "min": 0.0,
         "max": 1.0
       },
       "ui": {
-        "editor": 1,
-        "tab": 2,
+        "editor": "number",
+        "tab": "detection",
         "decimals": 2
       }
     }
@@ -103,20 +91,18 @@
       "id": 2,
       "name_zh": "对齐数据",
       "type": {
-        "type": 5,
-        "dtype": 4,
+        "type": "array",
+        "dtype": "float64",
         "rank": 3
       }
     },
     {
       "id": 3,
       "name_zh": "找到的边",
-      "type": {
-        "type": 6
-      },
+      "type": "roi",
       "relations": {
         "image": {
-          "stage": 1,
+          "stage": "inputs",
           "id": 1
         }
       }
@@ -124,21 +110,136 @@
     {
       "id": 4,
       "name_zh": "搜索区域",
-      "type": {
-        "type": 6
-      },
+      "type": "roi",
       "relations": {
         "image": {
-          "stage": 1,
+          "stage": "inputs",
           "id": 1
         }
       }
     }
   ],
   "training": {
-    "kind": 1,
-    "asset_param": 0,
-    "helper": "PickStraightEdge"
+    "image": {
+      "stage": "inputs",
+      "id": 1
+    },
+    "records": {
+      "max": 1,
+      "fields": [
+        {
+          "id": 1,
+          "name_zh": "参考边",
+          "type": "roi",
+          "roi": true,
+          "regions": {
+            "min": 2,
+            "max": 2
+          }
+        }
+      ]
+    },
+    "call": {
+      "tool": "TrainStraightBorders",
+      "inputs": [
+        {
+          "port": 1,
+          "context": "training_set"
+        },
+        {
+          "port": 2,
+          "field_id": 1
+        },
+        {
+          "port": 3,
+          "parameter": 2
+        },
+        {
+          "port": 4,
+          "parameter": 3
+        },
+        {
+          "port": 5,
+          "parameter": 4
+        },
+        {
+          "port": 6,
+          "parameter": 5
+        }
+      ]
+    },
+    "artifacts": [
+      {
+        "id": "edge-model",
+        "source_port": 2,
+        "format": "visiontools.straight-edge-model",
+        "version": 1,
+        "target": {
+          "stage": "init",
+          "id": 1
+        }
+      }
+    ],
+    "overlay_output": 3,
+    "parameters": [
+      {
+        "id": 2,
+        "name_zh": "边缘对比度",
+        "type": "float",
+        "default": 30.0,
+        "constraints": {
+          "min": 0.0,
+          "max": 1024.0
+        },
+        "ui": {
+          "editor": "number",
+          "decimals": 2
+        }
+      },
+      {
+        "id": 3,
+        "name_zh": "边缘宽度",
+        "type": "int",
+        "default": 3,
+        "constraints": {
+          "min": 1,
+          "max": 63
+        },
+        "ui": {
+          "editor": "number"
+        }
+      },
+      {
+        "id": 4,
+        "name_zh": "跃迁方向",
+        "type": "string",
+        "default": "any",
+        "constraints": {
+          "options": [
+            "any",
+            "dark_to_light",
+            "light_to_dark"
+          ]
+        },
+        "ui": {
+          "editor": "text"
+        }
+      },
+      {
+        "id": 5,
+        "name_zh": "最低边完整度",
+        "type": "float",
+        "default": 0.4,
+        "constraints": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "ui": {
+          "editor": "number",
+          "decimals": 2
+        }
+      }
+    ]
   },
-  "schema_version": 1
+  "schema_version": 2
 }

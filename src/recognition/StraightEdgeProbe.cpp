@@ -67,13 +67,13 @@ Orientation estimateOrientation(const cv::Mat &gray, const cv::Rect &window)
     const double trace = jxx + jyy;
     if (!(trace > 1e-6))
     {
-        result.quality = "光标附近没有明显边缘";
+        result.quality = "搜索中心附近没有明显边缘";
         return result;
     }
     result.coherence = std::sqrt((jxx - jyy) * (jxx - jyy) + 4.0 * jxy * jxy) / trace;
     if (result.coherence < kMinCoherence)
     {
-        result.quality = "光标附近边缘方向不明确";
+        result.quality = "搜索中心附近边缘方向不明确";
         return result;
     }
     // Gradient direction of the dominant structure, then the edge runs across it.
@@ -82,21 +82,70 @@ Orientation estimateOrientation(const cv::Mat &gray, const cv::Rect &window)
     return result;
 }
 
-// The polarity the alignment tool would need for this edge: does intensity rise along the probe's
-// normal, which the locator defines as the direction rotated a quarter turn from the edge.
-std::string polarityAt(const cv::Mat &gray, const cv::Point2d &cursor, double edgeRadians)
+// Estimate the same normal profiles the runtime uses. The first pass measures response width;
+// the second pass recomputes contrast at that width, across every supplied reference region.
+void estimateParameters(const cv::Mat &gray, const std::vector<roi::Record> &regions,
+                        const geometry::Alignment &alignment, EdgeProbeResult &result)
 {
-    const cv::Point2d normal{-std::sin(edgeRadians), std::cos(edgeRadians)};
-    const auto        sample = [&](double offset)
+    std::vector<edge::IntensityProfile> profiles;
+    std::vector<double>                 widths;
+    constexpr int                       samplesPerRegion = 16;
+    constexpr double                    gaussianFwhm     = 2.354820045;
+    for (const auto &region : regions)
     {
-        const int x = clampIndex(cursor.x + normal.x * offset, 0, gray.cols - 1);
-        const int y = clampIndex(cursor.y + normal.y * offset, 0, gray.rows - 1);
-        return static_cast<double>(gray.at<std::uint8_t>(y, x));
-    };
-    const double rise = sample(3.0) - sample(-3.0);
-    if (std::abs(rise) < 1.0)
-        return "any";
-    return rise > 0.0 ? "dark_to_light" : "light_to_dark";
+        const auto        rectangle = visionrt::RegionView(region).rectangle();
+        const double      angle     = rectangle.angle() * kPi / 180.0 + std::atan2(alignment.m[3], alignment.m[0]);
+        const cv::Point2d tangent{std::cos(angle), std::sin(angle)};
+        const cv::Point2d normal{-tangent.y, tangent.x};
+        double            x = 0, y = 0;
+        alignment.apply(rectangle.center().x, rectangle.center().y, x, y);
+        for (int i = 0; i < samplesPerRegion; ++i)
+        {
+            const double offset
+                = (static_cast<double>(i) / (samplesPerRegion - 1) - 0.5) * rectangle.width() * alignment.scale() * 0.8;
+            auto                profile = edge::buildProfile(gray, cv::Point2d{x, y} + tangent * offset, normal,
+                                                             rectangle.height() * alignment.scale() / 2.0, tangent, 0);
+            edge::ProfileConfig config;
+            config.sigma       = 0.5;
+            config.minGradient = 1;
+            if (const auto response = edge::nearestEdge(edge::detectEdges(profile, config)))
+            {
+                const auto gradients = edge::gradientProfile(profile, config.sigma);
+                const auto peak      = static_cast<size_t>(
+                    std::clamp(std::lround((response->offset + profile.halfLength) / profile.step), 0L,
+                                    static_cast<long>(gradients.size() - 1)));
+                size_t       left = peak, right = peak;
+                const double half = std::abs(gradients[peak]) * 0.5;
+                while (left > 0 && std::abs(gradients[left - 1]) >= half) --left;
+                while (right + 1 < gradients.size() && std::abs(gradients[right + 1]) >= half) ++right;
+                widths.push_back((right - left + 1) * profile.step * 2.0 / gaussianFwhm);
+                profiles.push_back(std::move(profile));
+            }
+        }
+    }
+    if (widths.empty())
+        throw visionrt::ContractError("搜索区域没有可用的法向响应");
+    std::sort(widths.begin(), widths.end());
+    result.width = std::clamp(static_cast<int>(std::lround(widths[widths.size() / 2])), 1, 63);
+    std::vector<double> contrasts;
+    bool                positive = false, negative = false;
+    for (const auto &profile : profiles)
+    {
+        edge::ProfileConfig config;
+        config.sigma       = std::max(0.5, result.width / 2.0);
+        config.minGradient = 1;
+        if (const auto response = edge::nearestEdge(edge::detectEdges(profile, config)))
+        {
+            contrasts.push_back(std::abs(response->gradient));
+            positive = positive || response->gradient > 0;
+            negative = negative || response->gradient < 0;
+        }
+    }
+    if (contrasts.empty())
+        throw visionrt::ContractError("平滑后的搜索区域没有有效边缘");
+    std::sort(contrasts.begin(), contrasts.end());
+    result.contrast = std::max(1.0, contrasts[(contrasts.size() - 1) / 10] * 0.5);
+    result.polarity = positive && negative ? "any" : positive ? "dark_to_light" : "light_to_dark";
 }
 
 } // namespace
@@ -109,15 +158,15 @@ EdgeProbeResult probeStraightEdge(const cv::Mat &gray, const EdgeProbeRequest &r
         result.quality = "输入图像为空";
         return result;
     }
-    const int half = std::clamp(request.searchExtent, 16, 512);
-    const int left   = clampIndex(request.cursor.x - half, 0, std::max(0, gray.cols - 1));
-    const int top    = clampIndex(request.cursor.y - half, 0, std::max(0, gray.rows - 1));
-    const int right  = clampIndex(request.cursor.x + half, 0, std::max(0, gray.cols - 1));
-    const int bottom = clampIndex(request.cursor.y + half, 0, std::max(0, gray.rows - 1));
+    const int      half   = std::clamp(request.searchRadius, 16, 512);
+    const int      left   = clampIndex(request.searchCenter.x - half, 0, std::max(0, gray.cols - 1));
+    const int      top    = clampIndex(request.searchCenter.y - half, 0, std::max(0, gray.rows - 1));
+    const int      right  = clampIndex(request.searchCenter.x + half, 0, std::max(0, gray.cols - 1));
+    const int      bottom = clampIndex(request.searchCenter.y + half, 0, std::max(0, gray.rows - 1));
     const cv::Rect window{left, top, right - left + 1, bottom - top + 1};
     if (window.width < 16 || window.height < 16)
     {
-        result.quality = "光标附近没有足够的图像区域";
+        result.quality = "搜索中心附近没有足够的图像区域";
         return result;
     }
 
@@ -131,15 +180,15 @@ EdgeProbeResult probeStraightEdge(const cv::Mat &gray, const EdgeProbeRequest &r
     const cv::Point2d direction{std::cos(orientation.radians), std::sin(orientation.radians)};
     ReferenceSegment  probe;
     probe.name            = "picked";
-    probe.from            = request.cursor - direction * half;
-    probe.to              = request.cursor + direction * half;
-    probe.search.center   = request.cursor;
+    probe.from            = request.searchCenter - direction * half;
+    probe.to              = request.searchCenter + direction * half;
+    probe.search.center   = request.searchCenter;
     probe.search.width    = 2.0 * half;
     probe.search.height   = static_cast<double>(half);
     probe.search.angle    = degrees(orientation.radians);
 
     EdgeSearchOptions options;
-    options.contrast        = 20.0;
+    options.contrast        = 2.0;
     options.width           = 3;
     options.polarity        = edge::EdgePolarity::Any;
     options.minCompleteness = kMinCompleteness;
@@ -156,7 +205,7 @@ EdgeProbeResult probeStraightEdge(const cv::Mat &gray, const EdgeProbeRequest &r
     }
     if (!found)
     {
-        result.quality = "光标附近没有可用的直边";
+        result.quality = "搜索中心附近没有可用的直边";
         return result;
     }
 
@@ -184,7 +233,9 @@ EdgeProbeResult probeStraightEdge(const cv::Mat &gray, const EdgeProbeRequest &r
 
     result.proposal.push_back(roi::rectangle(center.x, center.y, length, kBandHeight, degreesOut));
     result.preview = {roi::rectangle(middle.x, middle.y, length, kBandHeight, degrees(angle))};
-    result.polarity = polarityAt(gray, request.cursor, angle);
+    auto parameterRegions = request.parameterRegions;
+    parameterRegions.insert(parameterRegions.end(), result.proposal.begin(), result.proposal.end());
+    estimateParameters(gray, parameterRegions, request.alignment, result);
     result.quality  = "已沿边缘方向放置搜索框";
     result.valid    = true;
     return result;

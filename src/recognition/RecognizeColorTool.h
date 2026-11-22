@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ColorModel.h"
-#include "TrainingAssets.h"
 
 #include <visionrt/contracts/Tool.h>
 
@@ -11,7 +10,7 @@ namespace ports::recognize_color {
 inline constexpr char TOOL_ID[] = "RecognizeColor";
 
 namespace init {
-inline constexpr visionrt::PortId TRAINING = 0;
+inline constexpr visionrt::PortId MODEL = 1;
 }
 
 namespace in {

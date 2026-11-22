@@ -14,11 +14,10 @@ namespace visiontools::recognition {
 // the alignment tool, so a band picked here behaves exactly like a trained one.
 struct EdgeProbeRequest
 {
-    cv::Point2d              cursor;
-    bool                     learn = false;
-    std::vector<roi::Record> seeds;
+    cv::Point2d              searchCenter;
+    std::vector<roi::Record> parameterRegions;
     geometry::Alignment      alignment;
-    int                      searchExtent = 128;
+    int                      searchRadius = 128;
 };
 
 struct EdgeProbeResult
@@ -28,6 +27,8 @@ struct EdgeProbeResult
     std::vector<roi::Record> proposal; // reference coordinates
     std::string              quality;
     std::string              polarity = "any";
+    double                   contrast = 1.0;
+    int                      width    = 1;
 };
 
 // Estimates the local edge orientation from the structure tensor, then fits the line with the

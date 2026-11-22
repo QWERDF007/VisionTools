@@ -4,8 +4,8 @@ add_library(visiontools_metrology SHARED
     CircleTool.cpp
     RowSpacingKernel.cpp
     RowSpacingTool.cpp
-    AssistSupport.cpp
-    AssistTools.cpp
+    ParameterLocation.cpp
+    LocatorTools.cpp
     MetrologyModule.cpp
 )
 

@@ -1,0 +1,42 @@
+{
+  "name_en": "TrainColorModel",
+  "name_zh": "颜色模型训练",
+  "version": "1.0.0",
+  "implementation": {
+    "kind": "cpp"
+  },
+  "ui": {
+    "visibility": "internal"
+  },
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "训练集",
+      "type": "training_set"
+    },
+    {
+      "id": 2,
+      "name_zh": "标签字段",
+      "type": "int",
+      "default": 1
+    },
+    {
+      "id": 3,
+      "name_zh": "区域字段",
+      "type": "int",
+      "default": 2
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "颜色模型",
+      "type": {
+        "type": "array",
+        "dtype": "uint8",
+        "rank": 1
+      }
+    }
+  ],
+  "schema_version": 2
+}

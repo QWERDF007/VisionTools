@@ -1,6 +1,6 @@
 #pragma once
 
-#include "TrainingAssets.h"
+#include "StraightEdgeModel.h"
 
 #include <visionrt/contracts/Tool.h>
 
@@ -10,7 +10,7 @@ namespace ports::align_straight_borders {
 inline constexpr char TOOL_ID[] = "AlignStraightBorders";
 
 namespace init {
-inline constexpr visionrt::PortId TRAINING = 0;
+inline constexpr visionrt::PortId MODEL = 1;
 }
 
 namespace in {
@@ -38,7 +38,7 @@ public:
     visionrt::ToolStatus release() override;
 
 private:
-    StraightEdgeTraining training_;
+    StraightEdgeModel model_;
 };
 
 } // namespace visiontools::recognition

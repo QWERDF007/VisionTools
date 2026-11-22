@@ -1,21 +1,26 @@
 // Recognition contract: the straight-edge alignment must recover a known reference-to-current pose,
 // and the colour tool must return the trained class per detection circle while rejecting colours it
 // never saw. Fixtures are synthetic so every expectation has an analytic answer.
-#include "recognition/AlignStraightBordersTool.h"
-#include "recognition/PickStraightEdgeTool.h"
-#include "recognition/StraightEdgeProbe.h"
-#include "recognition/RecognizeColorTool.h"
-#include "recognition/errors/RecognitionErrors.h"
-
+#include "ToolResultAssertions.h"
 #include "common/EdgeProfile.h"
 #include "common/GeometryTransform.h"
-#include "ToolResultAssertions.h"
+#include "common/RoiSupport.h"
+#include "recognition/AlignStraightBordersTool.h"
+#include "recognition/ColorModel.h"
+#include "recognition/LocateStraightEdgeTool.h"
+#include "recognition/RecognizeColorTool.h"
+#include "recognition/StraightEdgeProbe.h"
+#include "recognition/TrainColorModel.h"
+#include "recognition/TrainStraightBorders.h"
+#include "recognition/errors/RecognitionErrors.h"
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -40,6 +45,7 @@ using namespace visiontools;
 
 namespace {
 namespace align = recognition::ports::align_straight_borders;
+namespace train = recognition::ports::train_straight_borders;
 namespace color = recognition::ports::recognize_color;
 
 std::filesystem::path fixtureDirectory()
@@ -78,20 +84,63 @@ geometry::Alignment pose(double translationX, double translationY, double angleD
     return alignment;
 }
 
-std::filesystem::path straightEdgeAsset(const std::filesystem::path &directory)
+// The two bands a user draws on the reference picture: the long side follows the edge, the short
+// side is how far across it the locator may look. The trainer turns them into the published model
+// the alignment node loads, so this is the whole training half of the contract.
+ToolResult trainEdges(const cv::Mat &reference, std::array<cv::Vec4d, 2> bands)
 {
-    const auto path = directory / "alignment.json";
-    writeText(path, std::string{"{\n"
-                                "  \"schema_version\": 2,\n"
-                                "  \"kind\": 1,\n"
-                                "  \"reference_image\": \""}
-                        + generic(directory / "reference.png")
-                        + "\",\n"
-                          "  \"segments\": [\n"
-                          "    {\"name\": \"底边\", \"from\": [120, 300], \"to\": [280, 300], \"search\": [200, 300, 160, 40, 0]},\n"
-                          "    {\"name\": \"右边\", \"from\": [300, 120], \"to\": [300, 280], \"search\": [300, 200, 160, 40, 0]}\n"
-                          "  ]\n"
-                          "}\n");
+    TrainingSet set;
+    set.images.emplace(1, trainingFrame(1, reference, ColorOrder::BGR));
+    ROI         regions;
+    RegionGroup group;
+    for (const auto &band : bands) group.push_back(makeRectangle(band[0], band[1], band[2], 40, band[3]));
+    regions.push_back(std::move(group));
+    TrainingRecord record;
+    record.id      = 1;
+    record.imageId = 1;
+    record.fields.emplace(1, DataRef<ROI>(std::move(regions)));
+    set.records.emplace(record.id, std::move(record));
+
+    recognition::TrainStraightBordersTool trainer;
+    REQUIRE(trainer.initialize({}).code == 0, "the edge trainer must initialize");
+    Values inputs;
+    inputs.emplace(train::in::SET, DataRef<TrainingSet>(std::move(set)));
+    inputs.emplace(train::in::REGION_FIELD, std::int64_t{1});
+    inputs.emplace(train::in::CONTRAST, 30.0);
+    inputs.emplace(train::in::EDGE_WIDTH, std::int64_t{3});
+    inputs.emplace(train::in::POLARITY, std::string("any"));
+    inputs.emplace(train::in::MIN_COMPLETENESS, 0.4);
+    return trainer.execute(inputs);
+}
+
+std::filesystem::path straightEdgeModel(const std::filesystem::path &directory,
+                                        std::array<cv::Vec4d, 2>     bands = {
+                                            cv::Vec4d{120, 280, 160,  0},
+                                            cv::Vec4d{220, 180, 160, 90}
+})
+{
+    const auto result = trainEdges(connectorImage(), bands);
+    REQUIRE(testview::status(result).code == 0, testview::status(result).message);
+
+    const auto *model = std::get_if<Array>(&result.outputs.at(train::out::MODEL));
+    REQUIRE(model != nullptr, "the trainer must return the model bytes");
+    const auto bytes = model->elements<std::uint8_t>();
+    REQUIRE(bytes.size() > 16, "the published edge model cannot be empty");
+
+    // The trainer also answers with what it measured, in reference coordinates: the training page
+    // draws those lines and the host never derives an endpoint itself.
+    const auto &found = std::get<DataRef<ROI>>(result.outputs.at(train::out::SEGMENTS)).get();
+    REQUIRE(found.size() == 1 && found.front().size() == 2, "one measured line per drawn band");
+    for (const auto &segment : found.front())
+        REQUIRE(visionrt::RegionView(segment).kind() == visionrt::RoiKind::Segment,
+                "a measured reference edge is a segment");
+
+    std::error_code ignored;
+    std::filesystem::create_directories(directory, ignored);
+    const auto    path = directory / "edge.model";
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    REQUIRE(file.good(), "edge model must be writable");
+    file.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     return path;
 }
 
@@ -108,13 +157,13 @@ Values alignmentInputs(const cv::Mat &image, const std::string &polarity)
 
 void straightEdgeAlignment(const std::filesystem::path &directory)
 {
-    const auto asset = straightEdgeAsset(directory);
+    const auto modelPath = straightEdgeModel(directory);
     const auto reference = connectorImage();
 
     recognition::AlignStraightBordersTool tool;
     Values                                init;
-    init.emplace(align::init::TRAINING, generic(asset));
-    REQUIRE(tool.initialize(init).code == 0, "training asset must load");
+    init.emplace(align::init::MODEL, generic(modelPath));
+    REQUIRE(tool.initialize(init).code == 0, "the published edge model must load");
 
     const auto identity = tool.execute(alignmentInputs(reference, "any"));
     REQUIRE(testview::status(identity).code == 0, testview::status(identity).message);
@@ -131,6 +180,31 @@ void straightEdgeAlignment(const std::filesystem::path &directory)
     REQUIRE(identityError(0, 0) < 1e-3 && identityError(1, 1) < 1e-3, "reference image keeps its axes");
     REQUIRE(identityError(0, 1) < 1e-3 && identityError(1, 0) < 1e-3, "reference image keeps its rotation");
     REQUIRE(std::hypot(matrix[0][2], matrix[1][2]) < 0.75, "reference image keeps its position");
+
+    // A5: moving a search band along its own normal changes where the locator looks, not what it
+    // measures. Both directions must still recover the reference pose instead of following the band.
+    for (const double shift : {-10.0, 10.0})
+    {
+        const auto shifted
+            = straightEdgeModel(directory / (shift < 0 ? "shift-left" : "shift-right"),
+                                {
+                                    cv::Vec4d{        120, 280 + shift, 160,  0},
+                                    cv::Vec4d{220 + shift,         180, 160, 90}
+        });
+        recognition::AlignStraightBordersTool shiftedTool;
+        Values                                shiftedInit;
+        shiftedInit.emplace(align::init::MODEL, generic(shifted));
+        REQUIRE(shiftedTool.initialize(shiftedInit).code == 0, "the shifted-band model must load");
+        const auto posed = shiftedTool.execute(alignmentInputs(reference, "any"));
+        REQUIRE(testview::status(posed).code == 0, testview::status(posed).message);
+        const auto shiftedMatrices
+            = visionrt::nestedOf<NestedVector<double, 3>>(std::get<Array>(posed.outputs.at(align::out::ALIGNMENTS)));
+        const auto &shiftedPose = shiftedMatrices.front();
+        REQUIRE(std::abs(shiftedPose[0][1]) < 1e-3 && std::abs(shiftedPose[1][0]) < 1e-3,
+                "a band offset must not tilt the reference pose");
+        REQUIRE(std::hypot(shiftedPose[0][2] - matrix[0][2], shiftedPose[1][2] - matrix[1][2]) < 0.75,
+                "a band offset must not move the reference pose");
+    }
 
     // The part moves: rotation about the centre plus a shift. The tool must report that pose, with
     // x as column and y as row, and it must not swap the two.
@@ -180,8 +254,8 @@ void straightEdgeProbe()
     const auto gray  = edge::grayscale(image);
 
     recognition::EdgeProbeRequest request;
-    request.cursor       = {200.0, 300.0};
-    request.searchExtent = 96;
+    request.searchCenter = {200.0, 300.0};
+    request.searchRadius = 96;
     const auto bottom    = recognition::probeStraightEdge(gray, request);
     REQUIRE(bottom.valid, bottom.quality.c_str());
     REQUIRE(bottom.proposal.size() == 1, "one band per click");
@@ -191,7 +265,7 @@ void straightEdgeProbe()
     REQUIRE(rectangle.width() >= 96.0, "the band spans the probe window along the edge");
 
     // The same click on the vertical edge must rotate the band, not copy the first answer.
-    request.cursor = {300.0, 200.0};
+    request.searchCenter = {300.0, 200.0};
     const auto right = recognition::probeStraightEdge(gray, request);
     REQUIRE(right.valid, right.quality.c_str());
     const auto vertical = visionrt::RegionView(right.proposal.front()).rectangle();
@@ -199,39 +273,151 @@ void straightEdgeProbe()
             "a vertical edge gives a quarter-turn band");
 
     // Empty space has no structure tensor, so nothing is proposed.
-    request.cursor = {40.0, 40.0};
+    request.searchCenter = {40.0, 40.0};
     const auto empty = recognition::probeStraightEdge(gray, request);
     REQUIRE(!empty.valid && !empty.quality.empty(), "empty space must not invent an edge");
     REQUIRE(empty.proposal.empty(), "an invalid probe carries no proposal");
 }
 
-void colorTraining(const std::filesystem::path &directory, std::filesystem::path &asset,
-                   std::filesystem::path &reference)
+void edgeParameterCalibration()
 {
-    reference = directory / "colors.png";
-    cv::Mat image(400, 400, CV_8UC3, cv::Scalar{128, 128, 128});
+    recognition::EdgeProbeRequest request;
+    request.searchCenter   = {200, 300};
+    request.searchRadius   = 96;
+    const auto reference   = connectorImage();
+    const auto sharp       = edge::grayscale(reference);
+    const auto sharpResult = recognition::probeStraightEdge(sharp, request);
+    REQUIRE(sharpResult.valid, sharpResult.quality.c_str());
+    cv::Mat blurred;
+    cv::GaussianBlur(sharp, blurred, {0, 0}, 3.0);
+    const auto blurredResult = recognition::probeStraightEdge(blurred, request);
+    REQUIRE(blurredResult.valid, blurredResult.quality.c_str());
+    REQUIRE(blurredResult.width > sharpResult.width, "broader edge responses require a larger averaging width");
+    REQUIRE(blurredResult.contrast < sharpResult.contrast,
+            "a blurred step has less contrast at its selected smoothing scale");
+    cv::Mat inverted;
+    cv::bitwise_not(sharp, inverted);
+    const auto reversed = recognition::probeStraightEdge(inverted, request);
+    REQUIRE(reversed.valid && reversed.polarity != sharpResult.polarity,
+            "normal polarity follows the actual intensity transition");
+    request.parameterRegions = sharpResult.proposal;
+    request.parameterRegions.front().back() += 180.0;
+    request.searchCenter = {200, 300};
+    const auto combined  = recognition::probeStraightEdge(sharp, request);
+    REQUIRE(combined.valid && combined.polarity == "any",
+            "opposite normals in the full region set require unrestricted polarity");
+}
+
+std::filesystem::path colorTraining(const std::filesystem::path &directory)
+{
+    cv::Mat                                               reference(400, 400, CV_8UC3, cv::Scalar{128, 128, 128});
     const std::vector<std::pair<std::string, cv::Scalar>> patches{
         {"purple", {128, 0, 128}},
         {"red",    {0, 0, 255}  },
         {"blue",   {255, 0, 0}  },
         {"yellow", {0, 255, 255}},
     };
-    std::string records;
+    TrainingSet      set;
+    TrainingRecordId nextRecord = 1;
     for (std::size_t index = 0; index < patches.size(); ++index)
     {
         const int left = 20 + static_cast<int>(index) * 100;
-        cv::rectangle(image, cv::Rect{left, 20, 60, 60}, patches[index].second, cv::FILLED);
-        if (index != 0)
-            records += ",\n";
-        records += "    {\"id\": \"" + patches[index].first + "-1\", \"label\": \"" + patches[index].first
-                   + "\", \"image\": \"" + generic(reference) + "\", \"regions\": [["
-                   + std::to_string(left + 30) + ", 50, 50, 50, 0]]}";
+        cv::rectangle(reference, cv::Rect{left, 20, 60, 60}, patches[index].second, cv::FILLED);
     }
-    REQUIRE(cv::imwrite(reference.string(), image), "training image must be writable");
-    asset = directory / "colors.json";
-    writeText(asset,
-              "{\n  \"schema_version\": 2,\n  \"kind\": 0,\n  \"records\": [\n" + records
-                  + "\n  ]\n}\n");
+    const std::vector<cv::Point2d> triangle{
+        {220, 300},
+        {280, 300},
+        {250, 350}
+    };
+    cv::fillConvexPoly(reference,
+                       std::vector<cv::Point>{
+                           cv::Point{220, 300},
+                           cv::Point{280, 300},
+                           cv::Point{250, 350}
+    },
+                       cv::Scalar{128, 0, 128}, cv::LINE_8);
+    cv::circle(reference, cv::Point{330, 300}, 25, cv::Scalar{0, 255, 255}, cv::FILLED);
+    cv::Mat second = reference.clone();
+    cv::rectangle(second, cv::Rect{20, 300, 60, 60}, cv::Scalar{128, 0, 128}, cv::FILLED);
+    set.images.emplace(1, trainingFrame(1, reference, ColorOrder::BGR));
+    set.images.emplace(2, trainingFrame(2, second, ColorOrder::BGR));
+    for (std::size_t index = 0; index < patches.size(); ++index)
+    {
+        const int   left = 20 + static_cast<int>(index) * 100;
+        ROI         regions;
+        RegionGroup group;
+        group.push_back(makeRectangle(left, 20, 60, 60, 0));
+        regions.push_back(std::move(group));
+        TrainingRecord record;
+        record.id      = nextRecord++;
+        record.imageId = 1;
+        record.fields.emplace(1, patches[index].first);
+        record.fields.emplace(2, DataRef<ROI>(std::move(regions)));
+        set.records.emplace(record.id, std::move(record));
+    }
+    // A polygon of the same label must contribute to that class, not create a second one.
+    ROI         polygonRegions;
+    RegionGroup polygonGroup;
+    polygonGroup.push_back(makePolygon(triangle));
+    polygonRegions.push_back(std::move(polygonGroup));
+    TrainingRecord polygonRecord;
+    polygonRecord.id      = nextRecord++;
+    polygonRecord.imageId = 1;
+    polygonRecord.fields.emplace(1, std::string("purple"));
+    polygonRecord.fields.emplace(2, DataRef<ROI>(std::move(polygonRegions)));
+    set.records.emplace(polygonRecord.id, std::move(polygonRecord));
+
+    ROI         circleRegions;
+    RegionGroup circleGroup;
+    circleGroup.push_back(makeCircle({330, 300}, 25));
+    circleRegions.push_back(std::move(circleGroup));
+    TrainingRecord circleRecord;
+    circleRecord.id      = nextRecord++;
+    circleRecord.imageId = 1;
+    circleRecord.fields.emplace(1, std::string("yellow"));
+    circleRecord.fields.emplace(2, DataRef<ROI>(std::move(circleRegions)));
+    set.records.emplace(circleRecord.id, std::move(circleRecord));
+
+    // The same label on a second frame contributes to the one class rather than a second model.
+    ROI         secondRegions;
+    RegionGroup secondGroup;
+    secondGroup.push_back(makeRectangle(20, 300, 60, 60, 0));
+    secondRegions.push_back(std::move(secondGroup));
+    TrainingRecord secondRecord;
+    secondRecord.id      = nextRecord++;
+    secondRecord.imageId = 2;
+    secondRecord.fields.emplace(1, std::string("purple"));
+    secondRecord.fields.emplace(2, DataRef<ROI>(std::move(secondRegions)));
+    set.records.emplace(secondRecord.id, std::move(secondRecord));
+
+    recognition::TrainColorModelTool trainer;
+    Values                           inputs;
+    inputs.emplace(recognition::ports::train_color_model::in::SET, DataRef<TrainingSet>(std::move(set)));
+    inputs.emplace(recognition::ports::train_color_model::in::LABEL_FIELD, std::int64_t{1});
+    inputs.emplace(recognition::ports::train_color_model::in::REGION_FIELD, std::int64_t{2});
+    const auto result = trainer.execute(inputs);
+    REQUIRE(testview::status(result).code == 0, testview::status(result).message);
+    const auto model = std::get<Array>(result.outputs.at(recognition::ports::train_color_model::out::MODEL));
+    const auto bytes = model.elements<std::uint8_t>();
+    REQUIRE(!bytes.empty(), "the trainer returned no model bytes");
+    const auto decoded = recognition::ColorModel::decode(bytes);
+    REQUIRE(decoded.classCount() == 4, "records with the same label and different shapes aggregate into one class");
+    const auto again = decoded.encode();
+    REQUIRE(again.size() == bytes.size() && std::equal(again.begin(), again.end(), bytes.begin()),
+            "the model byte format round-trips without changing a class");
+
+    const auto    path = directory / "color.model";
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    REQUIRE(file.good(), "colour model must be writable");
+    file.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    file.close();
+
+    const auto    truncated = directory / "color_truncated.model";
+    std::ofstream cut(truncated, std::ios::binary | std::ios::trunc);
+    REQUIRE(cut.good(), "truncated colour model must be writable");
+    cut.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size() / 2));
+    cut.close();
+    return path;
 }
 
 Values colorInputs(const cv::Mat &image, const std::vector<cv::Point2d> &centers, double radius)
@@ -253,13 +439,11 @@ Values colorInputs(const cv::Mat &image, const std::vector<cv::Point2d> &centers
 
 void colorRecognition(const std::filesystem::path &directory)
 {
-    std::filesystem::path asset;
-    std::filesystem::path reference;
-    colorTraining(directory, asset, reference);
+    const auto modelPath = colorTraining(directory);
 
     recognition::RecognizeColorTool tool;
     Values                           init;
-    init.emplace(color::init::TRAINING, generic(asset));
+    init.emplace(color::init::MODEL, generic(modelPath));
     const auto trained = tool.initialize(init);
     REQUIRE(trained.code == 0, trained.message);
 
@@ -281,6 +465,27 @@ void colorRecognition(const std::filesystem::path &directory)
     const auto ratios = visionrt::nestedOf<NestedVector<float, 2>>(
         std::get<Array>(result.outputs.at(color::out::RATIOS)));
     REQUIRE(ratios.front().size() == 5 && ratios.front().front() > 0.9, "a pure patch is classified");
+    const auto scores
+        = visionrt::nestedOf<NestedVector<float, 2>>(std::get<Array>(result.outputs.at(color::out::SCORES)));
+
+    // The bytes written by the trainer and the model the tool loaded must answer identically to
+    // the model decoded in memory, including the float scores and ratios the line exposes.
+    {
+        std::ifstream file(modelPath, std::ios::binary);
+        REQUIRE(file.good(), "the published colour model must be readable");
+        const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+        const auto                      inMemory = recognition::ColorModel::decode(bytes);
+        const recognition::ChromaImage  chroma(image);
+        for (std::size_t index = 0; index < centers.size(); ++index)
+        {
+            const cv::Mat mask
+                = roi::regionMask({makeCircle(centers[index], 15.0)}, image.size(), geometry::Alignment::identity());
+            const auto answer = inMemory.classify(chroma, mask, 0.05, 0.5);
+            REQUIRE(answer.label == colors.front()[index], "the reloaded model changes the label");
+            REQUIRE(std::abs(answer.score - scores.front()[index]) < 1e-6, "the reloaded model changes the score");
+            REQUIRE(std::abs(answer.ratio - ratios.front()[index]) < 1e-6, "the reloaded model changes the ratio");
+        }
+    }
 
     const auto centersX = visionrt::nestedOf<NestedVector<float, 2>>(
         std::get<Array>(result.outputs.at(color::out::CENTER_X)));
@@ -321,27 +526,182 @@ void colorRecognition(const std::filesystem::path &directory)
 
 void assetValidation(const std::filesystem::path &directory)
 {
-    const auto brokenAlignment = directory / "broken_alignment.json";
-    writeText(brokenAlignment,
-              "{\n  \"schema_version\": 2,\n  \"kind\": 1,\n"
-              "  \"reference_image\": \"none.png\",\n"
-              "  \"segments\": [{\"name\": \"one\", \"from\": [0, 0], \"to\": [10, 0], \"search\": [5, 0, 10, 10, 0]}]\n}\n");
+    // A model that cannot be read back is rejected by its own code, never retrained from a band.
+    const auto corruptModel = directory / "corrupt_edge.model";
+    writeText(corruptModel, "not an edge model");
     recognition::AlignStraightBordersTool tool;
     Values                                init;
-    init.emplace(align::init::TRAINING, generic(brokenAlignment));
+    init.emplace(align::init::MODEL, generic(corruptModel));
     const auto status = tool.initialize(init);
-    REQUIRE(status.code == static_cast<std::int64_t>(recognition::RecognitionError::ReferenceSegmentMissing),
-            "one reference edge is not enough");
+    REQUIRE(status.code == static_cast<std::int64_t>(recognition::RecognitionError::StraightEdgeModelIncompatible),
+            "a damaged edge model is rejected");
 
-    const auto brokenColor = directory / "broken_color.json";
-    writeText(brokenColor,
-              "{\n  \"schema_version\": 2,\n  \"kind\": 0,\n  \"records\": []\n}\n");
+    Values missing;
+    missing.emplace(align::init::MODEL, std::string{});
+    REQUIRE(tool.initialize(missing).code
+                == static_cast<std::int64_t>(recognition::RecognitionError::StraightEdgeModelPathMissing),
+            "an unconfigured model path has its own diagnosis");
+
+    // A model of one reference must not claim a match on a picture that has no such edge.
+    const auto trained = straightEdgeModel(directory);
+    Values     good;
+    good.emplace(align::init::MODEL, generic(trained));
+    REQUIRE(tool.initialize(good).code == 0, "the trained model must load");
+    const auto blank = tool.execute(alignmentInputs(cv::Mat(400, 400, CV_8UC3, cv::Scalar{0, 0, 0}), "any"));
+    REQUIRE(testview::status(blank).code == static_cast<std::int64_t>(recognition::RecognitionError::EdgeNotFound),
+            "a missing edge is reported instead of an invented pose");
+    REQUIRE(testview::status(blank).message.find("第 1 条参考边") != std::string::npos,
+            "the failure names the region that found no edge");
+
+    // Two parallel bands can be found but never fix a pose; training refuses them instead of
+    {
+        cv::Mat                      oblique(400, 400, CV_8UC3, cv::Scalar{0, 0, 0});
+        const std::vector<cv::Point> triangle{
+            {100,  60},
+            {300, 300},
+            { 40, 300}
+        };
+        cv::fillConvexPoly(oblique, triangle, cv::Scalar{255, 255, 255});
+        const double angle  = std::atan2(240.0, 200.0) * 180.0 / 3.14159265358979323846;
+        const auto   fitted = trainEdges(oblique, {
+                                                    cv::Vec4d{ 80, 280, 160,     0},
+                                                    cv::Vec4d{130, 160, 140, angle}
+        });
+        REQUIRE(testview::status(fitted).code == 0, "two non-right-angle edges must train a valid pose model");
+        const auto model = std::get<Array>(fitted.outputs.at(train::out::MODEL)).elements<std::uint8_t>();
+        const auto path  = directory / "oblique.model";
+        {
+            std::ofstream file(path, std::ios::binary);
+            file.write(reinterpret_cast<const char *>(model.data()), model.size());
+        }
+        recognition::AlignStraightBordersTool obliqueTool;
+        REQUIRE(obliqueTool
+                        .initialize({
+                            {align::init::MODEL, generic(path)}
+        })
+                        .code
+                    == 0,
+                "the non-right-angle model must load");
+        const auto identity = obliqueTool.execute(alignmentInputs(oblique, "any"));
+        REQUIRE(testview::status(identity).code == 0,
+                "non-right-angle reference edges must locate their reference image");
+        const auto matrix = std::get<Array>(identity.outputs.at(align::out::ALIGNMENTS)).elements<double>();
+        REQUIRE(std::hypot(matrix[2], matrix[5]) <= 0.75
+                    && std::abs(std::atan2(matrix[3], matrix[0])) <= 0.05 * 3.14159265358979323846 / 180.0,
+                "the non-right-angle reference pose must remain identity");
+    }
+
+    // Two parallel bands can be found but never fix a pose; training refuses them instead of
+    // publishing a model that would silently rotate by an arbitrary angle.
+    {
+        const auto parallel
+            = trainEdges(connectorImage(), {
+                                               cv::Vec4d{120, 280, 160, 0},
+                                               cv::Vec4d{120,  80, 160, 0}
+        });
+        REQUIRE(testview::status(parallel).code
+                    == static_cast<std::int64_t>(recognition::RecognitionError::ReferenceSegmentsParallel),
+                "two parallel edges are refused at training time");
+    }
+    // A band over background finds no edge at all, and the message names which one.
+    {
+        const auto missingEdge
+            = trainEdges(connectorImage(), {
+                                               cv::Vec4d{120, 280, 160,  0},
+                                               cv::Vec4d{220, 380, 160, 90}
+        });
+        REQUIRE(testview::status(missingEdge).code
+                    == static_cast<std::int64_t>(recognition::RecognitionError::EdgeNotFound),
+                "a band without an edge is refused");
+        REQUIRE(testview::status(missingEdge).message.find("第 2 条参考边") != std::string::npos,
+                "the refusal names the band that found nothing");
+    }
+    // One band is not a pair: the declaration already caps the field, and the trainer repeats the
+    // rule so a hand-written asset cannot slip through.
+    {
+        TrainingSet set;
+        set.images.emplace(1, trainingFrame(1, connectorImage(), ColorOrder::BGR));
+        ROI         regions;
+        RegionGroup group;
+        group.push_back(makeRectangle(120, 280, 160, 40, 0));
+        regions.push_back(std::move(group));
+        TrainingRecord record;
+        record.id      = 1;
+        record.imageId = 1;
+        record.fields.emplace(1, DataRef<ROI>(std::move(regions)));
+        set.records.emplace(record.id, std::move(record));
+
+        recognition::TrainStraightBordersTool trainer;
+        trainer.initialize({});
+        Values inputs;
+        inputs.emplace(train::in::SET, DataRef<TrainingSet>(std::move(set)));
+        inputs.emplace(train::in::REGION_FIELD, std::int64_t{1});
+        inputs.emplace(train::in::CONTRAST, 30.0);
+        inputs.emplace(train::in::EDGE_WIDTH, std::int64_t{3});
+        inputs.emplace(train::in::POLARITY, std::string("any"));
+        inputs.emplace(train::in::MIN_COMPLETENESS, 0.4);
+        const auto single = trainer.execute(inputs);
+        REQUIRE(testview::status(single).code
+                    == static_cast<std::int64_t>(recognition::RecognitionError::StraightEdgeRegionsInvalid),
+                "one band cannot produce a pose");
+    }
+
+    recognition::TrainColorModelTool trainer;
+    Values                           empty;
+    TrainingSet                      noRecords;
+    empty.emplace(recognition::ports::train_color_model::in::SET, DataRef<TrainingSet>(std::move(noRecords)));
+    empty.emplace(recognition::ports::train_color_model::in::LABEL_FIELD, std::int64_t{1});
+    empty.emplace(recognition::ports::train_color_model::in::REGION_FIELD, std::int64_t{2});
+    const auto emptyResult = trainer.execute(empty);
+    REQUIRE(testview::status(emptyResult).code
+                == static_cast<std::int64_t>(recognition::RecognitionError::ColorSamplesMissing),
+            "an empty training set is rejected");
+
+    TrainingSet unsupported;
+    unsupported.images.emplace(1, trainingFrame(1, cv::Mat(80, 80, CV_16UC3, cv::Scalar{1, 2, 3}), ColorOrder::BGR));
+    ROI         unsupportedRegions;
+    RegionGroup unsupportedGroup;
+    unsupportedGroup.push_back(makeRectangle(10, 10, 40, 40, 0));
+    unsupportedRegions.push_back(std::move(unsupportedGroup));
+    TrainingRecord unsupportedRecord;
+    unsupportedRecord.id      = 1;
+    unsupportedRecord.imageId = 1;
+    unsupportedRecord.fields.emplace(1, std::string("wide"));
+    unsupportedRecord.fields.emplace(2, DataRef<ROI>(std::move(unsupportedRegions)));
+    unsupported.records.emplace(1, std::move(unsupportedRecord));
+    Values wide;
+    wide.emplace(recognition::ports::train_color_model::in::SET, DataRef<TrainingSet>(std::move(unsupported)));
+    wide.emplace(recognition::ports::train_color_model::in::LABEL_FIELD, std::int64_t{1});
+    wide.emplace(recognition::ports::train_color_model::in::REGION_FIELD, std::int64_t{2});
+    const auto wideResult = trainer.execute(wide);
+    REQUIRE(testview::status(wideResult).code
+                == static_cast<std::int64_t>(recognition::RecognitionError::UnsupportedColorImage),
+            "training accepts only 8-bit three-channel frames");
+
+    const auto brokenColor = directory / "broken_color.model";
+    writeText(brokenColor, "not a colour model");
     recognition::RecognizeColorTool colorTool;
     Values                           colorInit;
-    colorInit.emplace(color::init::TRAINING, generic(brokenColor));
+    colorInit.emplace(color::init::MODEL, generic(brokenColor));
     const auto colorStatus = colorTool.initialize(colorInit);
-    REQUIRE(colorStatus.code == static_cast<std::int64_t>(recognition::RecognitionError::ColorSamplesMissing),
-            "an empty training set is rejected");
+    REQUIRE(colorStatus.code == static_cast<std::int64_t>(recognition::RecognitionError::ColorModelIncompatible),
+            "a corrupt model is rejected instead of retrained");
+
+    Values truncatedInit;
+    truncatedInit.emplace(color::init::MODEL, generic(directory / "color_truncated.model"));
+    const auto truncatedStatus = colorTool.initialize(truncatedInit);
+    REQUIRE(truncatedStatus.code == static_cast<std::int64_t>(recognition::RecognitionError::ColorModelIncompatible),
+            "a truncated model is rejected by its length check");
+
+    Values missingInit;
+    missingInit.emplace(color::init::MODEL, generic(directory / "absent.model"));
+    const auto missingStatus = colorTool.initialize(missingInit);
+    REQUIRE(missingStatus.code == static_cast<std::int64_t>(recognition::RecognitionError::ColorModelUnreadable),
+            "a missing model reports its own path problem");
+
+    const auto noPath = colorTool.initialize(Values{});
+    REQUIRE(noPath.code == static_cast<std::int64_t>(recognition::RecognitionError::ColorModelPathMissing),
+            "an unconfigured model port is named instead of silently training");
 }
 } // namespace
 
@@ -351,6 +711,7 @@ int main()
     straightEdgeAlignment(directory);
     colorRecognition(directory);
     straightEdgeProbe();
+    edgeParameterCalibration();
     assetValidation(directory);
     std::cout << "[Recognition Contract] Straight-edge pose and U/V colour classification verified.\n";
     return 0;

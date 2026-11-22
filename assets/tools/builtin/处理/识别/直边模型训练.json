@@ -1,0 +1,65 @@
+{
+  "name_en": "TrainStraightBorders",
+  "name_zh": "直边模型训练",
+  "version": "1.0.0",
+  "implementation": {
+    "kind": "cpp"
+  },
+  "ui": {
+    "visibility": "internal"
+  },
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "训练集",
+      "type": "training_set"
+    },
+    {
+      "id": 2,
+      "name_zh": "区域字段",
+      "type": "int",
+      "default": 1
+    },
+    {
+      "id": 3,
+      "name_zh": "边缘对比度",
+      "type": "float",
+      "default": 30.0
+    },
+    {
+      "id": 4,
+      "name_zh": "边缘宽度",
+      "type": "int",
+      "default": 3
+    },
+    {
+      "id": 5,
+      "name_zh": "跃迁方向",
+      "type": "string",
+      "default": "any"
+    },
+    {
+      "id": 6,
+      "name_zh": "最低边完整度",
+      "type": "float",
+      "default": 0.4
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "直边模型",
+      "type": {
+        "type": "array",
+        "dtype": "uint8",
+        "rank": 1
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "实测参考边",
+      "type": "roi"
+    }
+  ],
+  "schema_version": 2
+}

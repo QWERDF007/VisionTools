@@ -3,7 +3,7 @@
   "name_zh": "计算图像均值",
   "version": "1.0.0",
   "implementation": {
-    "kind": 2,
+    "kind": "python_class",
     "package": "examples/image_mean",
     "file": "mean.py",
     "symbol": "ToolInstance"
@@ -12,9 +12,7 @@
     {
       "id": 1,
       "name_zh": "输入图像",
-      "type": {
-        "type": 4
-      },
+      "type": "image",
       "display": {
         "visible": true
       }
@@ -25,11 +23,11 @@
       "id": 2,
       "name_zh": "图像均值",
       "type": {
-        "type": 5,
-        "dtype": 4,
+        "type": "array",
+        "dtype": "float64",
         "rank": 1
       }
     }
   ],
-  "schema_version": 1
+  "schema_version": 2
 }

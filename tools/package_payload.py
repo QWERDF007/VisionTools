@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from protocol_enums import ToolKind, SDK_SOURCE
+from protocol_enums import declared_kind, ToolKind, SDK_SOURCE
 
 import json
 import os
@@ -164,7 +164,7 @@ class ToolPayload:
 
     @property
     def is_python(self) -> bool:
-        return self.implementation.get("kind") in (ToolKind.PythonFunction, ToolKind.PythonClass)
+        return declared_kind(self.implementation) in (ToolKind.PythonFunction, ToolKind.PythonClass)
 
     @property
     def python_package(self) -> tuple[Path, Path]:

@@ -9,7 +9,7 @@ deletes a previous usable package.
 
 from __future__ import annotations
 
-from protocol_enums import ToolKind
+from protocol_enums import declared_kind, ToolKind
 
 import argparse
 from dataclasses import dataclass
@@ -181,7 +181,7 @@ def _load_build(build_dir: Path, config: str, project_root: Path, validator: Pat
     identities = set()
     payloads: dict[str, ToolPayload] = {}
     for entry in catalog["tools"]:
-        if not isinstance(entry, dict) or set(entry) - {"definition", "module"} or "definition" not in entry:
+        if not isinstance(entry, dict) or set(entry) - {"definition", "module", "processing_locator", "training_locator"} or "definition" not in entry:
             raise PackagingError("发行目录表工具条目只允许 definition 与 module")
         payload = ToolPayload.read(project_root, entry["definition"])
         source, declaration = payload.source, payload.document
@@ -190,7 +190,7 @@ def _load_build(build_dir: Path, config: str, project_root: Path, validator: Pat
             raise PackagingError(f"工具声明 name_en 为空或重复：{source}")
         identities.add(tool_id)
         module = entry.get("module")
-        kind = declaration.get("implementation", {}).get("kind")
+        kind = declared_kind(declaration.get("implementation", {}))
         if kind == ToolKind.Cpp:
             if module not in known_modules:
                 raise PackagingError(f"C++ 工具缺少有效模块归属：{tool_id}")

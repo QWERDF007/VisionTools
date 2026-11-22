@@ -1,16 +1,17 @@
 #include "ColorModel.h"
 
+#include "ModelBytes.h"
+#include "common/GeometryTransform.h"
 #include "common/RoiSupport.h"
 #include "common/errors/ToolError.h"
-
 #include "errors/RecognitionErrors.h"
 
-#include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
-#include <fstream>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <string>
@@ -23,6 +24,9 @@ namespace {
 constexpr double kCovarianceRidge = 4.0;
 // A class below this many pixels has no usable statistics at all.
 constexpr std::size_t kMinClassPixels = 64;
+// The file is data, not code: a corrupt header must fail before any large allocation.
+constexpr std::uint32_t kMaxClasses    = 256;
+constexpr std::uint16_t kMaxLabelBytes = 1024;
 
 struct Accumulator
 {
@@ -34,35 +38,45 @@ struct Accumulator
     double      vv     = 0;
 };
 
-std::string utf8(const std::filesystem::path &path)
+[[noreturn]] void corrupt(const std::string &detail)
 {
-    const auto text = path.u8string();
-    return {reinterpret_cast<const char *>(text.data()), text.size()};
+    fail(RecognitionError::ColorModelIncompatible, "颜色模型", detail);
 }
 
-// cv::imread takes a narrow path; reading the bytes first keeps Unicode directories working.
-cv::Mat loadColorImage(const std::filesystem::path &path)
+using modelbytes::putDouble;
+using modelbytes::putU16;
+using modelbytes::putU32;
+using modelbytes::putU64;
+using Reader = modelbytes::Reader;
+
+void accumulate(const cv::Mat &yuv, const cv::Mat &mask, Accumulator &accumulator)
 {
-    std::ifstream file(path, std::ios::binary);
-    if (!file)
-        fail(RecognitionError::AssetUnreadable, utf8(path), "训练图不存在或无法打开");
-    const std::vector<char> bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
-    if (bytes.empty())
-        fail(RecognitionError::AssetUnreadable, utf8(path), "训练图为空");
-    const cv::Mat image = cv::imdecode(bytes, cv::IMREAD_COLOR);
-    if (image.empty())
-        fail(RecognitionError::AssetUnreadable, utf8(path), "训练图无法解码");
-    return image;
+    for (int row = 0; row < yuv.rows; ++row)
+    {
+        const auto *pixels = yuv.ptr<cv::Vec3b>(row);
+        const auto *valid  = mask.ptr<std::uint8_t>(row);
+        for (int column = 0; column < yuv.cols; ++column)
+        {
+            if (valid[column] == 0)
+                continue;
+            const double u = pixels[column][1];
+            const double v = pixels[column][2];
+            accumulator.pixels += 1;
+            accumulator.u += u;
+            accumulator.v += v;
+            accumulator.uu += u * u;
+            accumulator.uv += u * v;
+            accumulator.vv += v * v;
+        }
+    }
 }
 
-cv::Mat regionMask(const ColorRegion &region, cv::Size size)
-{
-    const auto record = visionrt::makeRectangle(region.center.x - region.width / 2.0,
-                                                region.center.y - region.height / 2.0,
-                                                region.width, region.height, region.angle);
-    return roi::regionMask({record}, size, geometry::Alignment::identity());
-}
-
+constexpr std::uint8_t  kMagic[4]      = {'V', 'T', 'C', 'M'};
+constexpr std::uint16_t kFormatVersion = 1;
+// 0 = OpenCV YUV 4:4:4, channels 1 and 2 are U and V. The value is part of the model so a future
+// preprocessing change cannot be read with today's convention.
+constexpr std::uint8_t  kChromaSpaceYuv = 0;
+constexpr std::uint8_t  kChromaChannels = 2;
 } // namespace
 
 ChromaImage::ChromaImage(const cv::Mat &bgr)
@@ -72,46 +86,20 @@ ChromaImage::ChromaImage(const cv::Mat &bgr)
     cv::cvtColor(bgr, planes_, cv::COLOR_BGR2YUV);
 }
 
-ColorModel ColorModel::train(const ColorTraining &training)
+ColorModel ColorModel::train(const std::vector<Sample> &samples)
 {
     std::map<std::string, Accumulator> accumulators;
-    std::map<std::filesystem::path, cv::Mat>     chromaImages;
-
-    for (const auto &sample : training.samples)
+    for (const auto &sample : samples)
     {
-        const auto &key    = sample.image;
-        auto        cached = chromaImages.find(key);
-        if (cached == chromaImages.end())
-        {
-            // Each training image is decoded and converted once even when several records share it.
-            auto inserted = chromaImages.emplace(key, ChromaImage(loadColorImage(sample.image)).planes());
-            cached        = inserted.first;
-        }
-        const cv::Mat &yuv = cached->second;
-
-        auto &accumulator = accumulators[sample.label];
-        for (const auto &region : sample.regions)
-        {
-            const cv::Mat mask = regionMask(region, yuv.size());
-            for (int row = 0; row < yuv.rows; ++row)
-            {
-                const auto *pixels = yuv.ptr<cv::Vec3b>(row);
-                const auto *valid  = mask.ptr<std::uint8_t>(row);
-                for (int column = 0; column < yuv.cols; ++column)
-                {
-                    if (valid[column] == 0)
-                        continue;
-                    const double u = pixels[column][1];
-                    const double v = pixels[column][2];
-                    accumulator.pixels += 1;
-                    accumulator.u += u;
-                    accumulator.v += v;
-                    accumulator.uu += u * u;
-                    accumulator.uv += u * v;
-                    accumulator.vv += v * v;
-                }
-            }
-        }
+        if (sample.label.empty())
+            fail(RecognitionError::ColorClassMissing, "颜色样本");
+        if (sample.regions.empty())
+            fail(RecognitionError::ColorSamplesMissing, sample.label);
+        if (sample.pixels.type() != CV_8UC3)
+            fail(RecognitionError::UnsupportedColorImage, sample.label);
+        const ChromaImage chroma(sample.pixels);
+        const cv::Mat mask = roi::regionMask(sample.regions, chroma.planes().size(), geometry::Alignment::identity());
+        accumulate(chroma.planes(), mask, accumulators[sample.label]);
     }
 
     ColorModel model;
@@ -136,6 +124,95 @@ ColorModel ColorModel::train(const ColorTraining &training)
     }
     if (model.classes_.empty())
         fail(RecognitionError::ColorSamplesMissing, "训练数据");
+    return model;
+}
+
+std::vector<std::uint8_t> ColorModel::encode() const
+{
+    if (classes_.empty())
+        fail(RecognitionError::ColorSamplesMissing, "颜色模型");
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(28 + classes_.size() * 72);
+    bytes.insert(bytes.end(), std::begin(kMagic), std::end(kMagic));
+    putU16(bytes, kFormatVersion);
+    bytes.push_back(kChromaSpaceYuv);
+    bytes.push_back(kChromaChannels);
+    putU16(bytes, 0);
+    putDouble(bytes, kCovarianceRidge);
+    putU32(bytes, static_cast<std::uint32_t>(classes_.size()));
+    for (const auto &color : classes_)
+    {
+        if (color.label.size() > kMaxLabelBytes)
+            fail(RecognitionError::ColorClassMissing, color.label, "类别名过长");
+        putU16(bytes, static_cast<std::uint16_t>(color.label.size()));
+        bytes.insert(bytes.end(), color.label.begin(), color.label.end());
+        putDouble(bytes, color.mean[0]);
+        putDouble(bytes, color.mean[1]);
+        putDouble(bytes, color.inverse(0, 0));
+        putDouble(bytes, color.inverse(0, 1));
+        putDouble(bytes, color.inverse(1, 0));
+        putDouble(bytes, color.inverse(1, 1));
+        putDouble(bytes, color.logDeterminant);
+        putU64(bytes, static_cast<std::uint64_t>(color.pixels));
+    }
+    return bytes;
+}
+
+ColorModel ColorModel::decode(std::span<const std::uint8_t> bytes)
+{
+    try
+    {
+        return read(bytes);
+    }
+    catch (const modelbytes::Corrupt &error)
+    {
+        corrupt(error.detail);
+    }
+}
+
+ColorModel ColorModel::read(std::span<const std::uint8_t> bytes)
+{
+    Reader      reader{bytes};
+    const auto *magic = reader.take(sizeof(kMagic));
+    if (!std::equal(std::begin(kMagic), std::end(kMagic), magic))
+        corrupt("文件标识不正确");
+    if (reader.u16() != kFormatVersion)
+        corrupt("版本不受支持");
+    const auto space    = reader.take(1)[0];
+    const auto channels = reader.take(1)[0];
+    if (space != kChromaSpaceYuv || channels != kChromaChannels)
+        corrupt("色彩预处理约定不受支持");
+    if (reader.u16() != 0)
+        corrupt("保留字段必须为零");
+    const double ridge = reader.f64();
+    if (!std::isfinite(ridge) || !(ridge > 0))
+        corrupt("正则参数不合法");
+    const auto count = reader.u32();
+    if (count == 0 || count > kMaxClasses)
+        corrupt("类别数量不合法");
+
+    ColorModel model;
+    model.classes_.reserve(count);
+    for (std::uint32_t index = 0; index < count; ++index)
+    {
+        const auto labelBytes = reader.u16();
+        if (labelBytes == 0 || labelBytes > kMaxLabelBytes)
+            corrupt("类别名长度不合法");
+        const auto *label = reader.take(labelBytes);
+        ColorClass  color;
+        color.label          = std::string(reinterpret_cast<const char *>(label), labelBytes);
+        color.mean           = {reader.f64(), reader.f64()};
+        color.inverse        = cv::Matx22d{reader.f64(), reader.f64(), reader.f64(), reader.f64()};
+        color.logDeterminant = reader.f64();
+        color.pixels         = static_cast<std::size_t>(reader.u64());
+        if (!std::isfinite(color.mean[0]) || !std::isfinite(color.mean[1]) || !std::isfinite(color.inverse(0, 0))
+            || !std::isfinite(color.inverse(0, 1)) || !std::isfinite(color.inverse(1, 0))
+            || !std::isfinite(color.inverse(1, 1)) || !std::isfinite(color.logDeterminant) || color.pixels == 0)
+            corrupt("类别统计量不合法");
+        model.classes_.push_back(std::move(color));
+    }
+    if (reader.remaining() != 0)
+        corrupt("文件长度与类别数量不符");
     return model;
 }
 

@@ -1,5 +1,5 @@
-#include "AssistTools.h"
 #include "CircleTool.h"
+#include "LocatorTools.h"
 #include "RowSpacingTool.h"
 
 #include <visionrt/contracts/FunctionTool.h>
@@ -12,9 +12,9 @@ visionrt::ToolStatus VT_CALL registerTools(visionrt::IToolRegistry &registry) no
         return s;
     if (auto s = visionrt::registerClass<RowSpacingTool>(registry, ports::measure_row_spacing::TOOL_ID); !s)
         return s;
-    if (auto s = visionrt::registerClass<AssistCircleTool>(registry, ports::assist::CIRCLE_ID); !s)
+    if (auto s = visionrt::registerClass<LocateCircleTool>(registry, ports::locate::CIRCLE_ID); !s)
         return s;
-    if (auto s = visionrt::registerClass<AssistRowSpacingTool>(registry, ports::assist::ROW_ID); !s)
+    if (auto s = visionrt::registerClass<LocateRowSpacingTool>(registry, ports::locate::ROW_ID); !s)
         return s;
     return {};
 }
