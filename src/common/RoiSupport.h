@@ -43,6 +43,6 @@ Record circle(double centerX, double centerY, double radius);
 // Rectangle fields keep the contract's meaning: unrotated left/top corner plus size and angle.
 Record rectangle(double centerX, double centerY, double width, double height, double angleDegrees);
 Record segmentValue(double x1, double y1, double x2, double y2);
-Record pointSet(std::vector<cv::Point2d> values);
+Record point(std::vector<cv::Point2d> values);
 
 } // namespace visiontools::roi

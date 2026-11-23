@@ -207,9 +207,9 @@ Record segmentValue(double x1, double y1, double x2, double y2)
     return visionrt::makeSegment({x1, y1}, {x2, y2});
 }
 
-Record pointSet(std::vector<cv::Point2d> values)
+Record point(std::vector<cv::Point2d> values)
 {
-    return visionrt::makePointSet(values);
+    return visionrt::makePoint(values);
 }
 
 } // namespace visiontools::roi

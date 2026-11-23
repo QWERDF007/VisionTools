@@ -201,7 +201,7 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
                 if (!measurement.valid)
                     continue;
                 circles.push_back(roi::circle(measurement.centerX, measurement.centerY, measurement.radius));
-                usedEdges.push_back(roi::pointSet(measurement.edges));
+                usedEdges.push_back(roi::point(measurement.edges));
                 findings[image].measurements.push_back(measurement);
                 findings[image].sources.push_back(index);
             }

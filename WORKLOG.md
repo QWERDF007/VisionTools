@@ -30,6 +30,23 @@
 - ...
 -->
 
+### 2026-11-23 — 点几何接口统一
+
+**目标**
+- 适配 Contracts 统一点类型，圆测量边缘点使用相同业务几何。
+
+**当前状态**
+- RoiSupport 与 CircleTool 使用 Point 坐标列表，删除 PointSet 调用；Contracts 与宿主工作树同源，四个模块已重建为 ABI 12。
+- 27 工具包已安装到 F:/Projects/VisionRT/build/bin/tools-package；尚未提交共享 SDK 与父仓改动。
+
+**验证证据**
+- 几何、识别、共享可写图像三项通过，见 build/geometry-data-tests.xml。
+- package_tools.py --profile rtx40-build --allow-dirty 使用真实宿主校验器与安装消费者成功，见 build/geometry-data-package.log。
+- 宿主随包示例通过，见 F:/Projects/VisionRT/build/evidence/geometry-data-integration-tests.xml；实际线缆界面截图见同目录 geometry-data.png。
+
+**下一步**
+- 后续提交先发布共享 Contracts 提交，再对齐两父仓引用；源码入口见 docs/README.md。
+
 ### 2026-11-23 — 直边训练复用业务参数
 
 **目标**
