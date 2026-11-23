@@ -33,15 +33,15 @@
         "parameters": [
           {
             "output": 6,
-            "parameter": 4
+            "input": 4
           },
           {
             "output": 7,
-            "parameter": 2
+            "input": 2
           },
           {
             "output": 8,
-            "parameter": 3
+            "input": 3
           }
         ]
       }

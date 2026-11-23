@@ -152,19 +152,31 @@
         },
         {
           "port": 3,
-          "parameter": 2
+          "source": {
+            "stage": "inputs",
+            "id": 2
+          }
         },
         {
           "port": 4,
-          "parameter": 3
+          "source": {
+            "stage": "inputs",
+            "id": 3
+          }
         },
         {
           "port": 5,
-          "parameter": 4
+          "source": {
+            "stage": "inputs",
+            "id": 4
+          }
         },
         {
           "port": 6,
-          "parameter": 5
+          "source": {
+            "stage": "inputs",
+            "id": 5
+          }
         }
       ]
     },
@@ -180,66 +192,7 @@
         }
       }
     ],
-    "overlay_output": 3,
-    "parameters": [
-      {
-        "id": 2,
-        "name_zh": "边缘对比度",
-        "type": "float",
-        "default": 30.0,
-        "constraints": {
-          "min": 0.0,
-          "max": 1024.0
-        },
-        "ui": {
-          "editor": "number",
-          "decimals": 2
-        }
-      },
-      {
-        "id": 3,
-        "name_zh": "边缘宽度",
-        "type": "int",
-        "default": 3,
-        "constraints": {
-          "min": 1,
-          "max": 63
-        },
-        "ui": {
-          "editor": "number"
-        }
-      },
-      {
-        "id": 4,
-        "name_zh": "跃迁方向",
-        "type": "string",
-        "default": "any",
-        "constraints": {
-          "options": [
-            "any",
-            "dark_to_light",
-            "light_to_dark"
-          ]
-        },
-        "ui": {
-          "editor": "text"
-        }
-      },
-      {
-        "id": 5,
-        "name_zh": "最低边完整度",
-        "type": "float",
-        "default": 0.4,
-        "constraints": {
-          "min": 0.0,
-          "max": 1.0
-        },
-        "ui": {
-          "editor": "number",
-          "decimals": 2
-        }
-      }
-    ]
+    "overlay_output": 3
   },
   "schema_version": 2
 }
