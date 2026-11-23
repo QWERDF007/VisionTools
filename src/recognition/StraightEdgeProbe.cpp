@@ -1,7 +1,6 @@
 #include "StraightEdgeProbe.h"
 
 #include "StraightEdgeLocator.h"
-
 #include "common/EdgeProfile.h"
 
 #include <opencv2/imgproc.hpp>
@@ -18,8 +17,8 @@ constexpr double kPi = 3.14159265358979323846;
 
 // A picked band is a proposal, not a measurement: it only has to sit on the edge the user pointed
 // at, and the search range is a usable default the user can drag afterwards.
-constexpr double kBandHeight     = 48.0;
-constexpr double kMinCoherence   = 0.2;
+constexpr double kBandHeight      = 48.0;
+constexpr double kMinCoherence    = 0.2;
 constexpr double kMinCompleteness = 0.2;
 
 double degrees(double radians)
@@ -36,9 +35,9 @@ int clampIndex(double value, int low, int high)
 // gradient rotated by a right angle, which is what the tensor's dominant eigenvector gives.
 struct Orientation
 {
-    bool   valid = false;
-    double radians = 0;
-    double coherence = 0;
+    bool        valid     = false;
+    double      radians   = 0;
+    double      coherence = 0;
     std::string quality;
 };
 
@@ -177,15 +176,8 @@ EdgeProbeResult probeStraightEdge(const cv::Mat &gray, const EdgeProbeRequest &r
         return result;
     }
 
-    const cv::Point2d direction{std::cos(orientation.radians), std::sin(orientation.radians)};
-    ReferenceSegment  probe;
-    probe.name            = "picked";
-    probe.from            = request.searchCenter - direction * half;
-    probe.to              = request.searchCenter + direction * half;
-    probe.search.center   = request.searchCenter;
-    probe.search.width    = 2.0 * half;
-    probe.search.height   = static_cast<double>(half);
-    probe.search.angle    = degrees(orientation.radians);
+    const SearchRectangle probe{request.searchCenter, 2.0 * half, static_cast<double>(half),
+                                degrees(orientation.radians)};
 
     EdgeSearchOptions options;
     options.contrast        = 2.0;
@@ -220,7 +212,7 @@ EdgeProbeResult probeStraightEdge(const cv::Mat &gray, const EdgeProbeRequest &r
 
     // The proposal is expressed in reference coordinates; the preview is the same band mapped into
     // the picture the user is looking at. A training reference has no alignment, so they coincide.
-    cv::Point2d center = middle;
+    cv::Point2d center     = middle;
     double      degreesOut = degrees(angle);
     if (const auto inverse = request.alignment.inverse())
     {
@@ -232,12 +224,12 @@ EdgeProbeResult probeStraightEdge(const cv::Mat &gray, const EdgeProbeRequest &r
     }
 
     result.proposal.push_back(roi::rectangle(center.x, center.y, length, kBandHeight, degreesOut));
-    result.preview = {roi::rectangle(middle.x, middle.y, length, kBandHeight, degrees(angle))};
+    result.preview        = {roi::rectangle(middle.x, middle.y, length, kBandHeight, degrees(angle))};
     auto parameterRegions = request.parameterRegions;
     parameterRegions.insert(parameterRegions.end(), result.proposal.begin(), result.proposal.end());
     estimateParameters(gray, parameterRegions, request.alignment, result);
-    result.quality  = "已沿边缘方向放置搜索框";
-    result.valid    = true;
+    result.quality = "已沿边缘方向放置搜索框";
+    result.valid   = true;
     return result;
 }
 

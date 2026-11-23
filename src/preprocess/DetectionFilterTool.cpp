@@ -15,7 +15,6 @@ namespace {
 
 namespace p = ports::detection_filter;
 
-
 } // namespace
 
 visionrt::ToolStatus DetectionFilterTool::initialize(const visionrt::Values &parameters)
@@ -27,12 +26,10 @@ visionrt::ToolStatus DetectionFilterTool::initialize(const visionrt::Values &par
     return {};
 }
 
-
 namespace {
 visionrt::Values missingOutputs()
 {
-    return missingPorts({p::out::IMAGES, p::out::ROIS, p::out::SCORES, p::out::CLASSES, p::out::CLASS_NAMES,
-                         p::out::COUNTS});
+    return missingPorts({p::out::ROIS, p::out::SCORES, p::out::CLASSES, p::out::CLASS_NAMES, p::out::COUNTS});
 }
 } // namespace
 
@@ -77,10 +74,12 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
                                     readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
     if (!std::isfinite(minimumScore) || minimumScore < 0.0 || minimumScore > 1.0)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       parameterName("FilterDetections", "inputs", p::in::MIN_SCORE) + " 必须在 [0, 1] 内，实际值：" + std::to_string(minimumScore));
+                       parameterName("FilterDetections", "inputs", p::in::MIN_SCORE) + " 必须在 [0, 1] 内，实际值："
+                           + std::to_string(minimumScore));
     if (!std::isfinite(minimumArea) || minimumArea < 0.0)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       parameterName("FilterDetections", "inputs", p::in::MIN_AREA) + " 必须为非负有限数值，实际值：" + std::to_string(minimumArea));
+                       parameterName("FilterDetections", "inputs", p::in::MIN_AREA) + " 必须为非负有限数值，实际值："
+                           + std::to_string(minimumArea));
 
     const auto &rois      = roisRef.get();
     const auto &scores    = scoresRef;
@@ -91,12 +90,11 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
     if (rois.size() != batchSize || rowCount(scores) != batchSize || rowCount(classes) != batchSize
         || rowCount(names) != batchSize)
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
-                       "检测批次长度不一致：images=" + std::to_string(batchSize) + "，rois=" + std::to_string(rois.size())
-                           + "，scores=" + std::to_string(rowCount(scores)) + "，classes=" + std::to_string(rowCount(classes))
-                           + "，class_names=" + std::to_string(rowCount(names)));
+                       "检测批次长度不一致：images=" + std::to_string(batchSize) + "，rois="
+                           + std::to_string(rois.size()) + "，scores=" + std::to_string(rowCount(scores)) + "，classes="
+                           + std::to_string(rowCount(classes)) + "，class_names=" + std::to_string(rowCount(names)));
     try
     {
-
         visionrt::ROI                           filteredRois;
         visionrt::NestedVector<float, 2>        filteredScores;
         visionrt::NestedVector<std::int64_t, 2> filteredClasses;
@@ -133,9 +131,8 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
             for (std::size_t detection = 0; detection < imageRois.size(); ++detection)
             {
                 if (!std::isfinite(imageScores[detection]) || imageClasses[detection] < 0)
-                    fail(CommonToolError::InputOutOfRange,
-                         "批次索引 " + std::to_string(batch) + " 的检测索引 " + std::to_string(detection)
-                             + " 的得分或类别无效");
+                    fail(CommonToolError::InputOutOfRange, "批次索引 " + std::to_string(batch) + " 的检测索引 "
+                                                               + std::to_string(detection) + " 的得分或类别无效");
                 visionrt::RectangleView rectangle;
                 try
                 {
@@ -143,9 +140,8 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
                 }
                 catch (const visionrt::ContractError &)
                 {
-                    fail(CommonToolError::InputTypeMismatch,
-                         "批次索引 " + std::to_string(batch) + " 的检测索引 " + std::to_string(detection)
-                             + " 的 ROI 必须是矩形");
+                    fail(CommonToolError::InputTypeMismatch, "批次索引 " + std::to_string(batch) + " 的检测索引 "
+                                                                 + std::to_string(detection) + " 的 ROI 必须是矩形");
                 }
                 const double area = rectangle.width() * rectangle.height();
                 const bool   classAllowed
@@ -163,7 +159,7 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
         }
 
         visionrt::Values outputs;
-        outputs.emplace(p::out::IMAGES, images);
+
         outputs.emplace(p::out::ROIS, visionrt::DataRef<visionrt::ROI>(std::move(filteredRois)));
         outputs.emplace(p::out::SCORES, visionrt::Array::fromNested(std::move(filteredScores)));
         outputs.emplace(p::out::CLASSES, visionrt::Array::fromNested(std::move(filteredClasses)));

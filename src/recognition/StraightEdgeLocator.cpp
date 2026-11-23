@@ -1,7 +1,6 @@
 #include "StraightEdgeLocator.h"
 
 #include "common/errors/ToolError.h"
-
 #include "errors/RecognitionErrors.h"
 
 #include <opencv2/imgproc.hpp>
@@ -26,11 +25,11 @@ double cross(cv::Point2d left, cv::Point2d right)
 }
 
 // Intersection of two infinite lines through `origin` along `direction`.
-std::optional<cv::Point2d> intersect(cv::Point2d firstOrigin, cv::Point2d firstDirection,
-                                     cv::Point2d secondOrigin, cv::Point2d secondDirection)
+std::optional<cv::Point2d> intersect(cv::Point2d firstOrigin, cv::Point2d firstDirection, cv::Point2d secondOrigin,
+                                     cv::Point2d secondDirection)
 {
     const double denominator = cross(firstDirection, secondDirection);
-    if (std::abs(denominator) < 1e-6)
+    if (std::abs(denominator) < kMinEdgeAngleSine)
         return std::nullopt;
     const cv::Point2d delta = secondOrigin - firstOrigin;
     const double      along = cross(delta, secondDirection) / denominator;
@@ -45,10 +44,8 @@ double angleBetween(cv::Point2d from, cv::Point2d to)
 
 double wrapAngle(double angle)
 {
-    while (angle > kPi)
-        angle -= 2.0 * kPi;
-    while (angle < -kPi)
-        angle += 2.0 * kPi;
+    while (angle > kPi) angle -= 2.0 * kPi;
+    while (angle < -kPi) angle += 2.0 * kPi;
     return angle;
 }
 
@@ -58,31 +55,37 @@ cv::Point2d projectOnto(cv::Point2d point, cv::Point2d origin, cv::Point2d direc
 }
 } // namespace
 
-std::optional<LocatedSegment> locateSegment(const cv::Mat &gray, const ReferenceSegment &reference,
+SearchRectangle searchRectangle(const visionrt::EncodedRegion &record, std::size_t index)
+{
+    const auto view = visionrt::RegionView(record);
+    if (view.kind() != visionrt::RoiKind::Rectangle)
+        fail(RecognitionError::StraightEdgeRegionsInvalid, "第 " + std::to_string(index + 1) + " 个搜索区域",
+             "必须是旋转矩形");
+    const auto rectangle = view.rectangle();
+    if (!(rectangle.width() > 1.0) || !(rectangle.height() > 0.0))
+        fail(RecognitionError::StraightEdgeRegionsInvalid, "搜索矩形", "宽度必须大于 1，高度必须大于 0");
+    return {rectangle.center(), std::max(rectangle.width(), rectangle.height()),
+            std::min(rectangle.width(), rectangle.height()),
+            rectangle.angle() + (rectangle.height() > rectangle.width() ? 90.0 : 0.0)};
+}
+
+std::optional<LocatedSegment> locateSegment(const cv::Mat &gray, const SearchRectangle &band,
                                             const EdgeSearchOptions &options)
 {
     if (gray.empty() || gray.type() != CV_8UC1)
         fail(RecognitionError::UnsupportedColorImage, "直边定位的输入必须是单通道 8 位灰度图");
-    const cv::Point2d direction = normalized(reference.to - reference.from);
-    const double      length    = cv::norm(reference.to - reference.from);
+    const double      radians = band.angle * kPi / 180.0;
+    const cv::Point2d direction{std::cos(radians), std::sin(radians)};
+    const double      length = band.width;
+    const auto        from   = band.center - direction * (length / 2.0);
     if (!(length > 1.0))
-        fail(RecognitionError::AssetFormatInvalid, reference.name, "参考边长度不足 1 像素");
+        fail(RecognitionError::StraightEdgeRegionsInvalid, "搜索矩形", "宽度不足 1 像素");
 
-    const cv::Point2d normal{-direction.y, direction.x};
-    // The trained band may sit off the nominal segment: its height is the search range across the
-    // edge, its width bounds how much of the segment is sampled along the edge.
-    const cv::Point2d toBandCenter = reference.search.center - reference.from;
-    const double      bandOffset   = toBandCenter.dot(normal);
-    const double      searchHalf   = std::max(0.5, reference.search.height / 2.0);
-    const double      averageHalf  = std::max(0.0, (static_cast<double>(std::max(1, options.width)) - 1.0) / 2.0);
-    const double      sigma        = std::max(0.5, static_cast<double>(std::max(1, options.width)) / 2.0);
-    const double      bandCenter   = toBandCenter.dot(direction);
-    const double      bandStart    = std::clamp(bandCenter - reference.search.width / 2.0, 0.0, length);
-    const double      bandEnd      = std::clamp(bandCenter + reference.search.width / 2.0, 0.0, length);
-    if (!(bandEnd - bandStart >= 1.0))
-        fail(RecognitionError::AssetFormatInvalid, reference.name, "搜索框没有覆盖参考边的有效长度");
-
-    const int samples = std::clamp(static_cast<int>(std::lround(bandEnd - bandStart)), 8, 4096);
+    const cv::Point2d   normal{-direction.y, direction.x};
+    const double        searchHalf  = std::max(0.5, band.height / 2.0);
+    const double        averageHalf = std::max(0.0, (static_cast<double>(options.width) - 1.0) / 2.0);
+    const double        sigma       = std::max(0.5, static_cast<double>(options.width) / 2.0);
+    const int           samples     = std::clamp(static_cast<int>(std::lround(length)), 8, 4096);
     edge::ProfileConfig config;
     config.searchHalfWidth = searchHalf;
     config.averageWidth    = averageHalf;
@@ -94,9 +97,8 @@ std::optional<LocatedSegment> locateSegment(const cv::Mat &gray, const Reference
     points.reserve(static_cast<std::size_t>(samples));
     for (int index = 0; index < samples; ++index)
     {
-        const double u = bandStart + (bandEnd - bandStart) * static_cast<double>(index)
-                                          / static_cast<double>(samples - 1);
-        const cv::Point2d center = reference.from + direction * u + normal * bandOffset;
+        const double      u       = length * static_cast<double>(index) / static_cast<double>(samples - 1);
+        const cv::Point2d center  = from + direction * u;
         const auto        profile = edge::buildProfile(gray, center, normal, searchHalf, direction, averageHalf);
         if (const auto candidate = edge::nearestEdge(edge::detectEdges(profile, config)))
             points.push_back(center + normal * candidate->offset);
@@ -106,13 +108,13 @@ std::optional<LocatedSegment> locateSegment(const cv::Mat &gray, const Reference
 
     cv::Vec4f line;
     cv::fitLine(points, line, cv::DIST_HUBER, 0, 0.01, 0.01);
-    // fitLine does not fix the direction sign. The trained direction is the reference, so the
+    // fitLine does not fix the direction sign. The search band fixes the direction, so the
     // reported segment always runs from `from` towards `to` and the pose never comes out reversed.
     cv::Point2d lineDirection{line[0], line[1]};
     if (lineDirection.dot(direction) < 0.0)
         lineDirection = -lineDirection;
     const cv::Point2d lineOrigin{line[2], line[3]};
-    std::size_t inliers = 0;
+    std::size_t       inliers = 0;
     for (const auto &point : points)
         if (std::abs(cross(point - lineOrigin, lineDirection)) <= 1.5)
             ++inliers;
@@ -122,24 +124,24 @@ std::optional<LocatedSegment> locateSegment(const cv::Mat &gray, const Reference
 
     // Endpoints stay on the fitted line over the sampled extent, so the transform uses the measured
     // pose rather than a noisy outermost sample.
-    return LocatedSegment{projectOnto(reference.from + direction * bandStart, lineOrigin, lineDirection),
-                          projectOnto(reference.from + direction * bandEnd, lineOrigin, lineDirection), completeness};
+    return LocatedSegment{projectOnto(from, lineOrigin, lineDirection),
+                          projectOnto(from + direction * length, lineOrigin, lineDirection), completeness};
 }
 
 std::optional<geometry::Alignment> rigidTransform(const ReferenceSegment &firstReference,
-                                                  const LocatedSegment  &firstFound,
+                                                  const LocatedSegment   &firstFound,
                                                   const ReferenceSegment &secondReference,
-                                                  const LocatedSegment  &secondFound)
+                                                  const LocatedSegment   &secondFound)
 {
     const cv::Point2d firstReferenceDirection  = normalized(firstReference.to - firstReference.from);
     const cv::Point2d secondReferenceDirection = normalized(secondReference.to - secondReference.from);
     const cv::Point2d firstFoundDirection      = normalized(firstFound.end - firstFound.start);
     const cv::Point2d secondFoundDirection     = normalized(secondFound.end - secondFound.start);
 
-    const auto referenceIntersection = intersect(firstReference.from, firstReferenceDirection,
-                                                 secondReference.from, secondReferenceDirection);
-    const auto foundIntersection = intersect(firstFound.start, firstFoundDirection,
-                                             secondFound.start, secondFoundDirection);
+    const auto referenceIntersection
+        = intersect(firstReference.from, firstReferenceDirection, secondReference.from, secondReferenceDirection);
+    const auto foundIntersection
+        = intersect(firstFound.start, firstFoundDirection, secondFound.start, secondFoundDirection);
     if (!referenceIntersection || !foundIntersection)
         return std::nullopt;
 

@@ -2,6 +2,7 @@
 
 - [公共值、状态与注册接口](../3rdparty/VisionRTContracts/docs/README.md)
 - [几何契约](../3rdparty/VisionRTContracts/include/visionrt/contracts/ROI.h)、[工具几何适配](../src/common/RoiSupport.h)、[圆测量输出](../src/metrology/CircleTool.cpp)、[几何验证](../tests/test_geometry_contract.cpp)
+- [ROI 创建工具](../src/preprocess/CreateRoiTool.h)、[几何声明](../assets/tools/builtin/预处理/ROI)、[模块验证](../tests/test_module_contract.cpp)、[安装消费](../tests/test_installation_consumer.cpp)
 - [CPU 注册](../src/preprocess/PreprocessModule.cpp)、[识别注册](../src/recognition/RecognitionModule.cpp)、[推理注册](../src/infer/InferModule.cpp)、[函数与类实例注册](../3rdparty/VisionRTContracts/include/visionrt/contracts/FunctionTool.h)
 - [公共枚举源定义](../3rdparty/VisionRTContracts/include/visionrt/contracts/ProtocolEnums.h)、[声明枚举名称](../3rdparty/VisionRTContracts/include/visionrt/contracts/DeclarationNames.def)、[枚举导出](../3rdparty/VisionRTContracts/tools/export_enums.py)、[打包侧枚举与 SDK 生成](../tools/protocol_enums.py)
 - [作者声明](../assets/tools)、[发行目录表](../tools/package_catalog.json)

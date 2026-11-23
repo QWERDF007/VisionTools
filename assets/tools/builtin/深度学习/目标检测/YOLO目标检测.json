@@ -1,7 +1,7 @@
 {
   "name_en": "DetectObjectsYolo",
   "name_zh": "YOLO目标检测",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -147,28 +147,13 @@
   ],
   "outputs": [
     {
-      "id": 2,
-      "name_zh": "输出图像",
-      "type": "image",
-      "relations": {
-        "same_geometry_as": {
-          "stage": "inputs",
-          "id": 1
-        }
-      },
-      "display": {
-        "color_order": "bgr",
-        "visible": true
-      }
-    },
-    {
       "id": 3,
       "name_zh": "目标ROI",
       "type": "roi",
       "relations": {
         "image": {
-          "stage": "outputs",
-          "id": 2
+          "stage": "inputs",
+          "id": 1
         }
       }
     },

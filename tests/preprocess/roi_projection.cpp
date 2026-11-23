@@ -1,6 +1,6 @@
-#include "src/preprocess/RoiProjectionTool.h"
 #include "../ToolResultAssertions.h"
 #include "TestSupport.h"
+#include "src/preprocess/RoiProjectionTool.h"
 
 using namespace visionrt;
 using namespace visiontools::preprocess;
@@ -102,8 +102,9 @@ void testRoiProjectionTool()
         inputs.emplace(projection_ports::in::IMAGES, DataRef<Image>(Image{}));
         auto res = tool.execute(inputs);
         requireSuccess(res, "Empty batch must succeed");
-        REQUIRE(std::get<DataRef<Image>>(res.outputs[projection_ports::out::IMAGES]).get().empty(), "Empty images must stay empty");
-        REQUIRE(std::get<DataRef<ROI>>(res.outputs[projection_ports::out::ROIS]).get().empty(), "Empty rois must stay empty");
+        REQUIRE(!res.outputs.contains(2), "Projection must not publish unchanged pixels");
+        REQUIRE(std::get<DataRef<ROI>>(res.outputs[projection_ports::out::ROIS]).get().empty(),
+                "Empty rois must stay empty");
     }
 
     std::cout << "[PASS] testRoiProjectionTool passed." << std::endl;

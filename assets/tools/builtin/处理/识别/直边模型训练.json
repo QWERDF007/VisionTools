@@ -1,7 +1,7 @@
 {
   "name_en": "TrainStraightBorders",
   "name_zh": "直边模型训练",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -15,10 +15,9 @@
       "type": "training_set"
     },
     {
-      "id": 2,
-      "name_zh": "区域字段",
-      "type": "int",
-      "default": 1
+      "type": "roi",
+      "name_zh": "搜索区域",
+      "id": 2
     },
     {
       "id": 3,

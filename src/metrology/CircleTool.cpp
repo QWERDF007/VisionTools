@@ -1,15 +1,14 @@
 #include "CircleTool.h"
 
 #include "CircleMeasureKernel.h"
-
 #include "common/GeometryTransform.h"
-#include "common/ToolOutputs.h"
-#include "common/UpstreamStatus.h"
 #include "common/ImageSupport.h"
 #include "common/InputValues.h"
 #include "common/RoiSupport.h"
-#include "errors/MetrologyErrors.h"
+#include "common/ToolOutputs.h"
+#include "common/UpstreamStatus.h"
 #include "common/errors/ToolError.h"
+#include "errors/MetrologyErrors.h"
 
 #include <algorithm>
 #include <string>
@@ -19,14 +18,15 @@ namespace visiontools::metrology {
 
 using edge::EdgePolarity;
 using edge::grayscale;
+
 namespace {
 namespace p = ports::measure_circle;
 
 visionrt::Values missingOutputs()
 {
-    return missingPorts({p::out::IMAGES, p::out::VALID, p::out::REASONS, p::out::VALID_COUNT,
-                         p::out::SOURCE_ROI_INDICES, p::out::CIRCLES, p::out::CENTERS, p::out::RADIUS_PX,
-                         p::out::RADIUS, p::out::RMS, p::out::COMPLETENESS, p::out::USED_EDGES, p::out::UNIT});
+    return missingPorts({p::out::VALID, p::out::REASONS, p::out::VALID_COUNT, p::out::SOURCE_ROI_INDICES,
+                         p::out::CIRCLES, p::out::CENTERS, p::out::RADIUS_PX, p::out::RADIUS, p::out::RMS,
+                         p::out::COMPLETENESS, p::out::USED_EDGES, p::out::UNIT});
 }
 
 EdgePolarity parsePolarity(const std::string &value)
@@ -37,8 +37,7 @@ EdgePolarity parsePolarity(const std::string &value)
         return EdgePolarity::DarkToLight;
     if (value == "light_to_dark")
         return EdgePolarity::LightToDark;
-    fail(CommonToolError::InputOutOfRange,
-         "polarity 只接受 any/dark_to_light/light_to_dark，实际值：" + value);
+    fail(CommonToolError::InputOutOfRange, "polarity 只接受 any/dark_to_light/light_to_dark，实际值：" + value);
 }
 
 // One place for "this parameter is usable": the declaration also carries the range, but a direct
@@ -46,9 +45,9 @@ EdgePolarity parsePolarity(const std::string &value)
 void inRange(double value, double minimum, double maximum, visionrt::PortId id)
 {
     if (!std::isfinite(value) || value < minimum || value > maximum)
-        fail(CommonToolError::InputOutOfRange,
-             parameterName(p::TOOL_ID, "inputs", id) + " 必须在 [" + std::to_string(minimum) + ", " + std::to_string(maximum)
-                 + "] 内，实际值：" + std::to_string(value));
+        fail(CommonToolError::InputOutOfRange, parameterName(p::TOOL_ID, "inputs", id) + " 必须在 ["
+                                                   + std::to_string(minimum) + ", " + std::to_string(maximum)
+                                                   + "] 内，实际值：" + std::to_string(value));
 }
 
 template<class T>
@@ -82,23 +81,23 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
     // An unselected upstream branch is not an error: no algorithm runs and nothing is written.
     if (const auto upstream = upstreamStatus(inputs); upstream != 0)
         return skippedByUpstream(upstream, missingOutputs());
-    Readings   readings(inputs, "MeasureCircle");
-    const auto imagesRef = readings.image(p::in::IMAGES);
+    Readings      readings(inputs, "MeasureCircle");
+    const auto    imagesRef = readings.image(p::in::IMAGES);
     CircleOptions options;
-    options.calipers        = readings.integer(p::in::NUM_CALIPERS);
-    options.searchHalfWidth = readings.real(p::in::SEARCH_HALF_WIDTH);
-    options.averageWidth    = readings.real(p::in::AVERAGE_WIDTH);
-    options.sigma           = readings.real(p::in::SIGMA);
-    options.minGradient     = readings.real(p::in::MIN_GRADIENT);
-    const auto polarityName = readings.text(p::in::POLARITY);
-    options.minPoints       = readings.integer(p::in::MIN_POINTS);
-    options.minCompleteness = readings.real(p::in::MIN_COMPLETENESS);
-    options.minCoverageDeg  = readings.real(p::in::MIN_COVERAGE_DEG);
-    options.radiusMin       = readings.real(p::in::RADIUS_MIN);
-    options.radiusMax       = readings.real(p::in::RADIUS_MAX);
-    options.maxRms          = readings.real(p::in::MAX_RMS);
-    const auto unitsPerPixel = readings.real(p::in::UNITS_PER_PIXEL);
-    const auto unit          = readings.text(p::in::UNIT);
+    options.calipers          = readings.integer(p::in::NUM_CALIPERS);
+    options.searchHalfWidth   = readings.real(p::in::SEARCH_HALF_WIDTH);
+    options.averageWidth      = readings.real(p::in::AVERAGE_WIDTH);
+    options.sigma             = readings.real(p::in::SIGMA);
+    options.minGradient       = readings.real(p::in::MIN_GRADIENT);
+    const auto polarityName   = readings.text(p::in::POLARITY);
+    options.minPoints         = readings.integer(p::in::MIN_POINTS);
+    options.minCompleteness   = readings.real(p::in::MIN_COMPLETENESS);
+    options.minCoverageDeg    = readings.real(p::in::MIN_COVERAGE_DEG);
+    options.radiusMin         = readings.real(p::in::RADIUS_MIN);
+    options.radiusMax         = readings.real(p::in::RADIUS_MAX);
+    options.maxRms            = readings.real(p::in::MAX_RMS);
+    const auto unitsPerPixel  = readings.real(p::in::UNITS_PER_PIXEL);
+    const auto unit           = readings.text(p::in::UNIT);
     const auto alignmentValue = readings.find(p::in::ALIGNMENT);
     const auto roiValue       = readings.find(p::in::ROIS);
     if (readings.failed())
@@ -132,7 +131,8 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
         if (sampleCount * std::max(1.0, options.averageWidth) > 8.0e6)
             fail(CommonToolError::InputOutOfRange, "卡尺采样预算超限，请减小搜索宽度或平均宽度");
         if (!alignmentValue || !roiValue)
-            fail(CommonToolError::InputMissing, parameterName(p::TOOL_ID, "inputs", !alignmentValue ? p::in::ALIGNMENT : p::in::ROIS));
+            fail(CommonToolError::InputMissing,
+                 parameterName(p::TOOL_ID, "inputs", !alignmentValue ? p::in::ALIGNMENT : p::in::ROIS));
 
         const auto alignments = geometry::alignmentsFromValue(*alignmentValue, images.size());
         const auto records    = roi::groups(*roiValue, images.size(), "rois");
@@ -144,6 +144,7 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
             std::vector<CircleMeasurement> measurements;
             std::vector<std::size_t>       sources;
         };
+
         std::vector<Findings>                   findings(images.size());
         visionrt::NestedVector<bool, 2>         valid;
         visionrt::NestedVector<std::string, 2>  reasons;
@@ -169,7 +170,7 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
             std::vector<roi::Record> usedEdges;
             for (std::size_t index = 0; index < records[image].size(); ++index)
             {
-                const auto &record = records[image][index];
+                const auto          &record = records[image][index];
                 visionrt::CircleView circle;
                 try
                 {
@@ -182,8 +183,8 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
                 }
                 if (!(circle.radius() > 0.0))
                     fail(MetrologyError::RoiKindMismatch, "第 " + std::to_string(index + 1) + " 个圆 ROI 半径必须为正");
-                const auto   center = circle.center();
-                double       centerX = 0, centerY = 0;
+                const auto center  = circle.center();
+                double     centerX = 0, centerY = 0;
                 matrix.apply(center.x, center.y, centerX, centerY);
                 const double radius = circle.radius() * scale;
                 if (!(radius > options.searchHalfWidth))
@@ -227,9 +228,7 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
         }
 
         visionrt::Values outputs;
-        outputs.emplace(p::out::IMAGES,
-                        visionrt::DataRef<visionrt::Image>(
-                            visionrt::Image(images), {imagesRef.owner()}));
+
         outputs.emplace(p::out::VALID, array2(std::move(valid)));
         outputs.emplace(p::out::REASONS, array2(std::move(reasons)));
         outputs.emplace(p::out::VALID_COUNT, array1(std::move(validCounts)));

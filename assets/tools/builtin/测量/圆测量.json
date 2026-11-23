@@ -1,7 +1,7 @@
 {
   "name_en": "MeasureCircle",
   "name_zh": "测量圆",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -216,7 +216,7 @@
       "type": "float",
       "default": 1.0,
       "constraints": {
-        "min": 1e-09
+        "min": 1E-09
       },
       "ui": {
         "editor": "number",
@@ -234,15 +234,6 @@
     }
   ],
   "outputs": [
-    {
-      "id": 2,
-      "name_zh": "显示图像",
-      "type": "image",
-      "display": {
-        "color_order": "bgr",
-        "visible": true
-      }
-    },
     {
       "id": 3,
       "name_zh": "逐ROI有效性",
@@ -285,8 +276,8 @@
       "type": "roi",
       "relations": {
         "image": {
-          "stage": "outputs",
-          "id": 2
+          "stage": "inputs",
+          "id": 1
         }
       }
     },
@@ -341,8 +332,8 @@
       "type": "roi",
       "relations": {
         "image": {
-          "stage": "outputs",
-          "id": 2
+          "stage": "inputs",
+          "id": 1
         }
       }
     },

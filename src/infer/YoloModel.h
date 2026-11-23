@@ -40,32 +40,31 @@ inline constexpr char TOOL_ID[] = "DetectObjectsYolo";
 
 namespace init {
 inline constexpr visionrt::PortId ENGINE_OUTPUT_PATH = 3;
-inline constexpr visionrt::PortId GPU_INDEX = 6;
-inline constexpr visionrt::PortId INPUT_HEIGHT = 8;
-inline constexpr visionrt::PortId INPUT_WIDTH = 7;
-inline constexpr visionrt::PortId LABELS_PATH = 4;
-inline constexpr visionrt::PortId LOAD_MODE = 1;
-inline constexpr visionrt::PortId MODEL_NAME = 0;
-inline constexpr visionrt::PortId MODEL_PATH = 2;
-inline constexpr visionrt::PortId NUM_CLASSES = 9;
-inline constexpr visionrt::PortId PRECISION = 5;
-}
+inline constexpr visionrt::PortId GPU_INDEX          = 6;
+inline constexpr visionrt::PortId INPUT_HEIGHT       = 8;
+inline constexpr visionrt::PortId INPUT_WIDTH        = 7;
+inline constexpr visionrt::PortId LABELS_PATH        = 4;
+inline constexpr visionrt::PortId LOAD_MODE          = 1;
+inline constexpr visionrt::PortId MODEL_NAME         = 0;
+inline constexpr visionrt::PortId MODEL_PATH         = 2;
+inline constexpr visionrt::PortId NUM_CLASSES        = 9;
+inline constexpr visionrt::PortId PRECISION          = 5;
+} // namespace init
 
 namespace in {
 inline constexpr visionrt::PortId CONF_THRESHOLD = 2;
-inline constexpr visionrt::PortId IMAGES = 1;
+inline constexpr visionrt::PortId IMAGES         = 1;
 inline constexpr visionrt::PortId MAX_DETECTIONS = 4;
-inline constexpr visionrt::PortId NMS_THRESHOLD = 3;
-}
+inline constexpr visionrt::PortId NMS_THRESHOLD  = 3;
+} // namespace in
 
 namespace out {
 inline constexpr visionrt::PortId CLASS_NAMES = 6;
-inline constexpr visionrt::PortId CLASSES = 5;
-inline constexpr visionrt::PortId IMAGES = 2;
-inline constexpr visionrt::PortId ROIS = 3;
-inline constexpr visionrt::PortId SCORES = 4;
-}
-}
+inline constexpr visionrt::PortId CLASSES     = 5;
+inline constexpr visionrt::PortId ROIS        = 3;
+inline constexpr visionrt::PortId SCORES      = 4;
+} // namespace out
+} // namespace ports::yolo
 
 class YoloTool final : public IToolInstance
 {

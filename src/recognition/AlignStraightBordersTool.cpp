@@ -24,7 +24,7 @@ namespace p = ports::align_straight_borders;
 
 visionrt::Values missingOutputs()
 {
-    return missingPorts({p::out::ALIGNMENTS, p::out::FOUND_SEGMENTS, p::out::SEARCH_REGIONS});
+    return missingPorts({p::out::ALIGNMENTS, p::out::FOUND_SEGMENTS});
 }
 
 edge::EdgePolarity parsePolarity(const std::string &value)
@@ -75,8 +75,9 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
         return failure(missingOutputs(), RecognitionError::StraightEdgeModelPathMissing, "直边模型未加载");
     const auto &trained = model_.segments();
 
-    Readings    readings(inputs, p::TOOL_ID);
-    const auto  imagesRef     = readings.image(p::in::IMAGES);
+    Readings          readings(inputs, p::TOOL_ID);
+    const auto        imagesRef  = readings.image(p::in::IMAGES);
+    const auto        regionsRef = readings.roi(p::in::SEARCH_REGIONS);
     EdgeSearchOptions options;
     options.contrast        = readings.real(p::in::CONTRAST);
     const auto edgeWidth    = readings.integer(p::in::EDGE_WIDTH);
@@ -97,13 +98,14 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
             fail(CommonToolError::InputOutOfRange, "最低边完整度", "必须在 [0, 1] 内");
         options.polarity = parsePolarity(polarityName);
 
-        const auto &images = imagesRef.get();
-        std::vector<geometry::Alignment> alignments;
+        const auto &images  = imagesRef.get();
+        const auto  regions = roi::groups(regionsRef, images.size(), "搜索区域");
+        if (regions.empty())
+            fail(RecognitionError::StraightEdgeRegionsInvalid, "搜索区域", "需要两个有顺序的旋转矩形");
+        std::vector<geometry::Alignment>      alignments;
         std::vector<std::vector<roi::Record>> foundSegments;
-        std::vector<std::vector<roi::Record>> searchRegions;
         alignments.reserve(images.size());
         foundSegments.reserve(images.size());
-        searchRegions.reserve(images.size());
 
         for (std::size_t index = 0; index < images.size(); ++index)
         {
@@ -112,8 +114,10 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
                 fail(CommonToolError::UnsupportedImage, "第 " + std::to_string(index + 1) + " 张图不是 8 位图像");
             const cv::Mat gray = edge::grayscale(images[index]);
 
-            const auto first  = locateSegment(gray, trained[0], options);
-            const auto second = locateSegment(gray, trained[1], options);
+            if (regions[index].size() != 2)
+                fail(RecognitionError::StraightEdgeRegionsInvalid, "搜索区域", "每张图需要恰好两个旋转矩形");
+            const auto first  = locateSegment(gray, searchRectangle(regions[index][0], 0), options);
+            const auto second = locateSegment(gray, searchRectangle(regions[index][1], 1), options);
             if (!first)
                 fail(RecognitionError::EdgeNotFound, trained[0].name, "第 " + std::to_string(index + 1) + " 张图");
             if (!second)
@@ -121,26 +125,19 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
 
             const auto alignment = rigidTransform(trained[0], *first, trained[1], *second);
             if (!alignment)
-                fail(RecognitionError::ReferenceSegmentsParallel, "训练数据");
+                fail(RecognitionError::ReferenceSegmentsParallel, "第 " + std::to_string(index + 1) + " 张图",
+                     "参考边或当前找到的两条边近似平行");
 
             alignments.push_back(*alignment);
             std::vector<roi::Record> segments;
             segments.push_back(roi::segmentValue(first->start.x, first->start.y, first->end.x, first->end.y));
             segments.push_back(roi::segmentValue(second->start.x, second->start.y, second->end.x, second->end.y));
             foundSegments.push_back(std::move(segments));
-
-            std::vector<roi::Record> regions;
-            for (const auto &segment : trained)
-                regions.push_back(roi::rectangle(segment.search.center.x, segment.search.center.y,
-                                                 segment.search.width, segment.search.height,
-                                                 segment.search.angle));
-            searchRegions.push_back(std::move(regions));
         }
 
         visionrt::Values outputs;
         outputs.emplace(p::out::ALIGNMENTS, geometry::alignmentArray(alignments));
         outputs.emplace(p::out::FOUND_SEGMENTS, roi::roiValue(std::move(foundSegments)));
-        outputs.emplace(p::out::SEARCH_REGIONS, roi::roiValue(std::move(searchRegions)));
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &)

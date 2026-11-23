@@ -1,12 +1,10 @@
 #include "YoloModel.h"
 
 #include "InferProtocol.h"
-
 #include "common/InputValues.h"
 #include "common/ProductPaths.h"
 #include "common/UpstreamStatus.h"
 #include "common/errors/ToolError.h"
-
 #include "errors/YoloErrors.h"
 
 #include <inferrt/model/Buffers.hpp>
@@ -26,11 +24,11 @@ namespace visionrt::infer {
 // This module keeps its historical visionrt::infer namespace; the shared tool error vocabulary
 // lives in visiontools, so the names it uses are bound once instead of at every call site.
 using visiontools::CommonToolError;
+using visiontools::fail;
+using visiontools::status;
 using visiontools::ToolFailure;
 using visiontools::common::ProductDirectoryError;
 using visiontools::common::resolveResourcePath;
-using visiontools::fail;
-using visiontools::status;
 
 namespace {
 namespace yolo_ports = ports::yolo;
@@ -52,8 +50,8 @@ int integer(const Values &values, PortId id, int minimum)
 {
     const auto value = requiredParameter<std::int64_t>(values, id);
     if (value < minimum || value > std::numeric_limits<int>::max())
-        fail(CommonToolError::InputOutOfRange,
-             visiontools::parameterName(yolo_ports::TOOL_ID, "init_params", id) + " 的值 " + std::to_string(value) + " 超出整数范围");
+        fail(CommonToolError::InputOutOfRange, visiontools::parameterName(yolo_ports::TOOL_ID, "init_params", id)
+                                                   + " 的值 " + std::to_string(value) + " 超出整数范围");
     return static_cast<int>(value);
 }
 
@@ -120,7 +118,7 @@ std::vector<std::string> labels(const Values &values, int count)
     const auto               path = text(values, yolo_ports::init::LABELS_PATH);
     if (!path.empty())
     {
-        const auto resolved = resolvedPath(path, YoloError::LabelFileInvalid);
+        const auto    resolved = resolvedPath(path, YoloError::LabelFileInvalid);
         std::ifstream file(resolved, std::ios::binary);
         if (!file)
             fail(YoloError::LabelFileInvalid, utf8Path(resolved), "无法打开文件");
@@ -228,9 +226,13 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         if (modelName != "yolov8n")
             fail(YoloError::ModelUnsupported, "仅支持原生 yolov8n，实际模型：" + modelName);
         if (mode != "engine" && mode != "build_wts")
-            fail(CommonToolError::InputOutOfRange, visiontools::parameterName(yolo_ports::TOOL_ID, "init_params", yolo_ports::init::LOAD_MODE) + " 只接受 engine/build_wts，实际值：" + mode);
+            fail(CommonToolError::InputOutOfRange,
+                 visiontools::parameterName(yolo_ports::TOOL_ID, "init_params", yolo_ports::init::LOAD_MODE)
+                     + " 只接受 engine/build_wts，实际值：" + mode);
         if (precision != "fp32" && precision != "fp16")
-            fail(CommonToolError::InputOutOfRange, visiontools::parameterName(yolo_ports::TOOL_ID, "init_params", yolo_ports::init::PRECISION) + " 只接受 fp32/fp16，实际值：" + precision);
+            fail(CommonToolError::InputOutOfRange,
+                 visiontools::parameterName(yolo_ports::TOOL_ID, "init_params", yolo_ports::init::PRECISION)
+                     + " 只接受 fp32/fp16，实际值：" + precision);
         if (modelPath.empty())
             throw ToolFailure{static_cast<std::int64_t>(CommonToolError::PathEmpty), "模型路径为空", {}};
         state->device  = integer(parameters, yolo_ports::init::GPU_INDEX, 0);
@@ -238,17 +240,23 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         state->height  = integer(parameters, yolo_ports::init::INPUT_HEIGHT, 32);
         state->classes = integer(parameters, yolo_ports::init::NUM_CLASSES, 1);
         if (state->width % 32 || state->height % 32 || state->classes > std::numeric_limits<int>::max() - 4)
-            fail(CommonToolError::InputOutOfRange, "原生 yolov8n 输入尺寸必须为 32 的倍数；num_classes 必须满足 4+C 的整数范围");
-        state->names      = labels(parameters, state->classes);
-        const auto resolved = resolvedPath(modelPath, YoloError::ModelLoadFailed);
+            fail(CommonToolError::InputOutOfRange,
+                 "原生 yolov8n 输入尺寸必须为 32 的倍数；num_classes 必须满足 4+C 的整数范围");
+        state->names             = labels(parameters, state->classes);
+        const auto      resolved = resolvedPath(modelPath, YoloError::ModelLoadFailed);
         std::error_code fileError;
-        const auto fileState = std::filesystem::status(resolved, fileError);
+        const auto      fileState = std::filesystem::status(resolved, fileError);
         if (fileError && fileError != std::errc::no_such_file_or_directory && fileError != std::errc::not_a_directory)
-            throw ToolFailure{static_cast<std::int64_t>(CommonToolError::FileReadFailed), "无法读取模型文件：" + utf8Path(resolved), fileError.message()};
+            throw ToolFailure{static_cast<std::int64_t>(CommonToolError::FileReadFailed),
+                              "无法读取模型文件：" + utf8Path(resolved), fileError.message()};
         if (!std::filesystem::exists(fileState))
-            throw ToolFailure{static_cast<std::int64_t>(CommonToolError::FileNotFound), "模型文件不存在：" + utf8Path(resolved), {}};
+            throw ToolFailure{static_cast<std::int64_t>(CommonToolError::FileNotFound),
+                              "模型文件不存在：" + utf8Path(resolved),
+                              {}};
         if (!std::filesystem::is_regular_file(fileState))
-            throw ToolFailure{static_cast<std::int64_t>(CommonToolError::InputTypeMismatch), "模型路径必须指向文件：" + utf8Path(resolved), {}};
+            throw ToolFailure{static_cast<std::int64_t>(CommonToolError::InputTypeMismatch),
+                              "模型路径必须指向文件：" + utf8Path(resolved),
+                              {}};
         int  deviceCount  = 0;
         auto deviceStatus = cudaGetDeviceCount(&deviceCount);
         if (deviceStatus != cudaSuccess)
@@ -286,7 +294,10 @@ ToolStatus YoloTool::initialize(const Values &parameters)
         if (mode == "build_wts" && !outputPath.empty())
         {
             const auto output = resolvedPath(outputPath, YoloError::EngineOutputFailed);
-            try { state->model->save(utf8Path(output)); }
+            try
+            {
+                state->model->save(utf8Path(output));
+            }
             catch (const std::exception &error)
             {
                 fail(YoloError::EngineOutputFailed, utf8Path(output), error.what());
@@ -376,11 +387,13 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             fail(CommonToolError::InputMissing, "图像");
         const auto *imagesPtr = std::get_if<DataRef<Image>>(&found->second);
         if (!imagesPtr)
-            fail(CommonToolError::InputTypeMismatch, visiontools::parameterName(yolo_ports::TOOL_ID, "inputs", yolo_ports::in::IMAGES) + " 必须是图像");
+            fail(CommonToolError::InputTypeMismatch,
+                 visiontools::parameterName(yolo_ports::TOOL_ID, "inputs", yolo_ports::in::IMAGES) + " 必须是图像");
         const auto               &images = *imagesPtr;
-        const DetectionParameters parameters{requiredParameter<double>(inputs, yolo_ports::in::CONF_THRESHOLD, "inputs"),
-                                             requiredParameter<double>(inputs, yolo_ports::in::NMS_THRESHOLD, "inputs"),
-                                             requiredParameter<std::int64_t>(inputs, yolo_ports::in::MAX_DETECTIONS, "inputs")};
+        const DetectionParameters parameters{
+            requiredParameter<double>(inputs, yolo_ports::in::CONF_THRESHOLD, "inputs"),
+            requiredParameter<double>(inputs, yolo_ports::in::NMS_THRESHOLD, "inputs"),
+            requiredParameter<std::int64_t>(inputs, yolo_ports::in::MAX_DETECTIONS, "inputs")};
         validateParameters(parameters);
         for (const auto &image : images.get())
         {
@@ -450,7 +463,7 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             const auto detections = postprocess(heads, geometry, parameters, trace ? &trace->candidates : nullptr);
             if (trace)
                 trace->detections = detections;
-            visionrt::RegionGroup imageRois;
+            visionrt::RegionGroup     imageRois;
             std::vector<float>        imageScores;
             std::vector<std::int64_t> imageClasses;
             std::vector<std::string>  imageNames;
@@ -474,12 +487,14 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
             classes.push_back(std::move(imageClasses));
             names.push_back(std::move(imageNames));
         }
-        return toolResult({{yolo_ports::out::IMAGES, images},
-                           {yolo_ports::out::ROIS, DataRef<ROI>(std::move(rois))},
-                           {yolo_ports::out::SCORES, Array::fromNested(std::move(scores))},
-                           {yolo_ports::out::CLASSES, Array::fromNested(std::move(classes))},
-                           {yolo_ports::out::CLASS_NAMES, Array::fromNested(std::move(names))}},
-                          executionSuccess());
+        return toolResult(
+            {
+                {       yolo_ports::out::ROIS,         DataRef<ROI>(std::move(rois))},
+                {     yolo_ports::out::SCORES,  Array::fromNested(std::move(scores))},
+                {    yolo_ports::out::CLASSES, Array::fromNested(std::move(classes))},
+                {yolo_ports::out::CLASS_NAMES,   Array::fromNested(std::move(names))}
+        },
+            executionSuccess());
     }
     catch (const visiontools::ToolFailure &error)
     {

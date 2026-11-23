@@ -28,16 +28,15 @@
 #include <string>
 #include <vector>
 
-#define REQUIRE(cond, message)                                                                                  \
-    do                                                                                                          \
-    {                                                                                                           \
-        if (!(cond))                                                                                            \
-        {                                                                                                       \
-            std::cerr << "Assertion failed: " << #cond << " (" << message << ") at line " << __LINE__           \
-                      << std::endl;                                                                             \
-            std::exit(1);                                                                                       \
-        }                                                                                                       \
-    }                                                                                                           \
+#define REQUIRE(cond, message)                                                                                      \
+    do                                                                                                              \
+    {                                                                                                               \
+        if (!(cond))                                                                                                \
+        {                                                                                                           \
+            std::cerr << "Assertion failed: " << #cond << " (" << message << ") at line " << __LINE__ << std::endl; \
+            std::exit(1);                                                                                           \
+        }                                                                                                           \
+    }                                                                                                               \
     while (0)
 
 using namespace visionrt;
@@ -104,8 +103,8 @@ ToolResult trainEdges(const cv::Mat &reference, std::array<cv::Vec4d, 2> bands)
     recognition::TrainStraightBordersTool trainer;
     REQUIRE(trainer.initialize({}).code == 0, "the edge trainer must initialize");
     Values inputs;
-    inputs.emplace(train::in::SET, DataRef<TrainingSet>(std::move(set)));
-    inputs.emplace(train::in::REGION_FIELD, std::int64_t{1});
+    inputs.emplace(train::in::SET, DataRef<TrainingSet>(set));
+    inputs.emplace(train::in::SEARCH_REGIONS, std::get<DataRef<ROI>>(set.records.at(1).fields.at(1)));
     inputs.emplace(train::in::CONTRAST, 30.0);
     inputs.emplace(train::in::EDGE_WIDTH, std::int64_t{3});
     inputs.emplace(train::in::POLARITY, std::string("any"));
@@ -152,6 +151,9 @@ Values alignmentInputs(const cv::Mat &image, const std::string &polarity)
     inputs.emplace(align::in::EDGE_WIDTH, std::int64_t{3});
     inputs.emplace(align::in::POLARITY, polarity);
     inputs.emplace(align::in::MIN_COMPLETENESS, 0.4);
+    inputs.emplace(6, DataRef<ROI>(ROI{
+                          {makeRectangle(120, 280, 160, 40), makeRectangle(220, 180, 160, 40, 90)}
+    }));
     return inputs;
 }
 
@@ -167,19 +169,28 @@ void straightEdgeAlignment(const std::filesystem::path &directory)
 
     const auto identity = tool.execute(alignmentInputs(reference, "any"));
     REQUIRE(testview::status(identity).code == 0, testview::status(identity).message);
-    const auto identityMatrices = visionrt::nestedOf<NestedVector<double, 3>>(
-        std::get<Array>(identity.outputs.at(align::out::ALIGNMENTS)));
-    REQUIRE(identityMatrices.size() == 1 && identityMatrices.front().size() == 3,
-            "one 3x3 matrix per image");
+    const auto identityMatrices
+        = visionrt::nestedOf<NestedVector<double, 3>>(std::get<Array>(identity.outputs.at(align::out::ALIGNMENTS)));
+    REQUIRE(identityMatrices.size() == 1 && identityMatrices.front().size() == 3, "one 3x3 matrix per image");
     const auto &matrix = identityMatrices.front();
     // A filled rectangle covers whole pixels, so its intensity step sits half a pixel inside the
     // geometric border; the pose must reproduce the image up to that quantisation.
-    const auto identityError = [&](int row, int column) {
+    const auto  identityError = [&](int row, int column)
+    {
         return std::abs(matrix[row][column] - (row == column ? 1.0 : 0.0));
     };
     REQUIRE(identityError(0, 0) < 1e-3 && identityError(1, 1) < 1e-3, "reference image keeps its axes");
     REQUIRE(identityError(0, 1) < 1e-3 && identityError(1, 0) < 1e-3, "reference image keeps its rotation");
     REQUIRE(std::hypot(matrix[0][2], matrix[1][2]) < 0.75, "reference image keeps its position");
+
+    auto offTarget = alignmentInputs(reference, "any");
+    offTarget[6]   = DataRef<ROI>(ROI{
+          {makeRectangle(5, 5, 40, 10), makeRectangle(5, 5, 40, 10, 90)}
+    });
+    REQUIRE(testview::status(tool.execute(offTarget)).code != 0,
+            "runtime search regions must take effect without retraining");
+    REQUIRE(testview::status(tool.execute(alignmentInputs(reference, "any"))).code == 0,
+            "editing search regions must leave the trained reference intact");
 
     // A5: moving a search band along its own normal changes where the locator looks, not what it
     // measures. Both directions must still recover the reference pose instead of following the band.
@@ -212,15 +223,14 @@ void straightEdgeAlignment(const std::filesystem::path &directory)
     cv::Mat    moved;
     cv::Mat    transform(2, 3, CV_64F);
     for (int row = 0; row < 2; ++row)
-        for (int column = 0; column < 3; ++column)
-            transform.at<double>(row, column) = expected.m[row * 3 + column];
+        for (int column = 0; column < 3; ++column) transform.at<double>(row, column) = expected.m[row * 3 + column];
     cv::warpAffine(reference, moved, transform, reference.size(), cv::INTER_LINEAR, cv::BORDER_CONSTANT,
                    cv::Scalar{0, 0, 0});
 
     const auto result = tool.execute(alignmentInputs(moved, "any"));
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
-    const auto matrices = visionrt::nestedOf<NestedVector<double, 3>>(
-        std::get<Array>(result.outputs.at(align::out::ALIGNMENTS)));
+    const auto matrices
+        = visionrt::nestedOf<NestedVector<double, 3>>(std::get<Array>(result.outputs.at(align::out::ALIGNMENTS)));
     REQUIRE(matrices.size() == 1, "one matrix for one image");
     std::array<double, 9> flat{};
     for (int row = 0; row < 3; ++row)
@@ -229,7 +239,11 @@ void straightEdgeAlignment(const std::filesystem::path &directory)
     const geometry::Alignment recovered = *geometry::Alignment::fromRows(flat);
     REQUIRE(recovered.isSimilarity(), "a straight-edge pose is a similarity");
 
-    for (const cv::Point2d probe : {cv::Point2d{200, 300}, cv::Point2d{300, 200}, cv::Point2d{150, 250}})
+    for (const cv::Point2d probe : {
+             cv::Point2d{200, 300},
+             cv::Point2d{300, 200},
+             cv::Point2d{150, 250}
+    })
     {
         double expectedX = 0, expectedY = 0, actualX = 0, actualY = 0;
         expected.apply(probe.x, probe.y, expectedX, expectedY);
@@ -243,7 +257,25 @@ void straightEdgeAlignment(const std::filesystem::path &directory)
     const auto mismatch = tool.execute(alignmentInputs(moved, "light_to_dark"));
     REQUIRE(testview::status(mismatch).code == static_cast<std::int64_t>(recognition::RecognitionError::EdgeNotFound),
             "a polarity that fits one edge must not fabricate the other");
-    REQUIRE(testview::businessCount(mismatch) == 3, "a failed alignment still publishes every port as Missing");
+    REQUIRE(testview::businessCount(mismatch) == 2, "a failed alignment still publishes every port as Missing");
+    const recognition::ReferenceSegment firstReference{
+        "first",
+        {   0, 0},
+        {1000, 0}
+    };
+    const recognition::ReferenceSegment secondReference{
+        "second",
+        {0,    0},
+        {0, 1000}
+    };
+    REQUIRE(!recognition::rigidTransform(firstReference,
+                                         {
+                                             {   0, 0},
+                                             {1000, 0},
+                                             1
+    },
+                                         secondReference, {{0, 5}, {1000, 5.1}, 1}),
+            "nearly parallel measured edges cannot determine a rigid pose");
 }
 
 void straightEdgeProbe()
@@ -266,7 +298,7 @@ void straightEdgeProbe()
 
     // The same click on the vertical edge must rotate the band, not copy the first answer.
     request.searchCenter = {300.0, 200.0};
-    const auto right = recognition::probeStraightEdge(gray, request);
+    const auto right     = recognition::probeStraightEdge(gray, request);
     REQUIRE(right.valid, right.quality.c_str());
     const auto vertical = visionrt::RegionView(right.proposal.front()).rectangle();
     REQUIRE(std::abs(std::abs(std::remainder(vertical.angle(), 180.0)) - 90.0) < 2.0,
@@ -274,7 +306,7 @@ void straightEdgeProbe()
 
     // Empty space has no structure tensor, so nothing is proposed.
     request.searchCenter = {40.0, 40.0};
-    const auto empty = recognition::probeStraightEdge(gray, request);
+    const auto empty     = recognition::probeStraightEdge(gray, request);
     REQUIRE(!empty.valid && !empty.quality.empty(), "empty space must not invent an edge");
     REQUIRE(empty.proposal.empty(), "an invalid probe carries no proposal");
 }
@@ -313,8 +345,8 @@ std::filesystem::path colorTraining(const std::filesystem::path &directory)
     cv::Mat                                               reference(400, 400, CV_8UC3, cv::Scalar{128, 128, 128});
     const std::vector<std::pair<std::string, cv::Scalar>> patches{
         {"purple", {128, 0, 128}},
-        {"red",    {0, 0, 255}  },
-        {"blue",   {255, 0, 0}  },
+        {   "red",   {0, 0, 255}},
+        {  "blue",   {255, 0, 0}},
         {"yellow", {0, 255, 255}},
     };
     TrainingSet      set;
@@ -422,10 +454,9 @@ std::filesystem::path colorTraining(const std::filesystem::path &directory)
 
 Values colorInputs(const cv::Mat &image, const std::vector<cv::Point2d> &centers, double radius)
 {
-    ROI regions;
+    ROI         regions;
     RegionGroup group;
-    for (const auto &center : centers)
-        group.push_back(makeCircle(center, radius));
+    for (const auto &center : centers) group.push_back(makeCircle(center, radius));
     regions.push_back(std::move(group));
 
     Values inputs;
@@ -442,28 +473,40 @@ void colorRecognition(const std::filesystem::path &directory)
     const auto modelPath = colorTraining(directory);
 
     recognition::RecognizeColorTool tool;
-    Values                           init;
+    Values                          init;
     init.emplace(color::init::MODEL, generic(modelPath));
     const auto trained = tool.initialize(init);
     REQUIRE(trained.code == 0, trained.message);
 
-    const std::vector<cv::Point2d> centers{{50, 200}, {120, 200}, {190, 200}, {260, 200}, {330, 200}};
-    const std::vector<cv::Scalar>  order{{128, 0, 128}, {0, 0, 255}, {255, 0, 0}, {0, 255, 255}, {128, 0, 128}};
-    cv::Mat                        image(400, 400, CV_8UC3, cv::Scalar{128, 128, 128});
+    const std::vector<cv::Point2d> centers{
+        { 50, 200},
+        {120, 200},
+        {190, 200},
+        {260, 200},
+        {330, 200}
+    };
+    const std::vector<cv::Scalar> order{
+        {128,   0, 128},
+        {  0,   0, 255},
+        {255,   0,   0},
+        {  0, 255, 255},
+        {128,   0, 128}
+    };
+    cv::Mat image(400, 400, CV_8UC3, cv::Scalar{128, 128, 128});
     for (std::size_t index = 0; index < centers.size(); ++index)
         cv::circle(image, centers[index], 15, order[index], cv::FILLED);
 
     const auto result = tool.execute(colorInputs(image, centers, 15.0));
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
-    const auto colors = visionrt::nestedOf<NestedVector<std::string, 2>>(
-        std::get<Array>(result.outputs.at(color::out::COLORS)));
+    const auto colors
+        = visionrt::nestedOf<NestedVector<std::string, 2>>(std::get<Array>(result.outputs.at(color::out::COLORS)));
     REQUIRE(colors.size() == 1 && colors.front().size() == 5, "one colour per circle");
     const std::vector<std::string> expected{"purple", "red", "blue", "yellow", "purple"};
     for (std::size_t index = 0; index < expected.size(); ++index)
         REQUIRE(colors.front()[index] == expected[index], "position " + std::to_string(index) + " colour");
 
-    const auto ratios = visionrt::nestedOf<NestedVector<float, 2>>(
-        std::get<Array>(result.outputs.at(color::out::RATIOS)));
+    const auto ratios
+        = visionrt::nestedOf<NestedVector<float, 2>>(std::get<Array>(result.outputs.at(color::out::RATIOS)));
     REQUIRE(ratios.front().size() == 5 && ratios.front().front() > 0.9, "a pure patch is classified");
     const auto scores
         = visionrt::nestedOf<NestedVector<float, 2>>(std::get<Array>(result.outputs.at(color::out::SCORES)));
@@ -487,8 +530,8 @@ void colorRecognition(const std::filesystem::path &directory)
         }
     }
 
-    const auto centersX = visionrt::nestedOf<NestedVector<float, 2>>(
-        std::get<Array>(result.outputs.at(color::out::CENTER_X)));
+    const auto centersX
+        = visionrt::nestedOf<NestedVector<float, 2>>(std::get<Array>(result.outputs.at(color::out::CENTER_X)));
     REQUIRE(std::abs(centersX.front()[0] - 50.0f) < 1e-3, "centre X follows the alignment input");
 
     // An untrained colour must be reported as unknown rather than as its nearest class.
@@ -498,8 +541,8 @@ void colorRecognition(const std::filesystem::path &directory)
     cv::circle(unknownImage, centers.back(), 15, cv::Scalar{0, 255, 0}, cv::FILLED);
     const auto unknown = tool.execute(colorInputs(unknownImage, centers, 15.0));
     REQUIRE(testview::status(unknown).code == 0, testview::status(unknown).message);
-    const auto unknownColors = visionrt::nestedOf<NestedVector<std::string, 2>>(
-        std::get<Array>(unknown.outputs.at(color::out::COLORS)));
+    const auto unknownColors
+        = visionrt::nestedOf<NestedVector<std::string, 2>>(std::get<Array>(unknown.outputs.at(color::out::COLORS)));
     REQUIRE(unknownColors.front().back() == "unknown", "an untrained colour is not forced into a class");
 
     // A batch keeps the per-image hierarchy: the second image is shifted by one circle and its
@@ -509,15 +552,14 @@ void colorRecognition(const std::filesystem::path &directory)
         cv::circle(shifted, centers[index], 15, order[(index + 1) % order.size()], cv::FILLED);
     Values batch;
     batch.emplace(color::in::IMAGES, DataRef<Image>(Image{image, shifted}));
-    batch.emplace(color::in::ALIGNMENT,
-                  geometry::alignmentArray(geometry::Alignment::identity()));
+    batch.emplace(color::in::ALIGNMENT, geometry::alignmentArray(geometry::Alignment::identity()));
     batch.emplace(color::in::REGIONS, colorInputs(image, centers, 15.0).at(color::in::REGIONS));
     batch.emplace(color::in::MIN_SCORE, 0.05);
     batch.emplace(color::in::MIN_RATIO, 0.5);
     const auto batchResult = tool.execute(batch);
     REQUIRE(testview::status(batchResult).code == 0, testview::status(batchResult).message);
-    const auto batchColors = visionrt::nestedOf<NestedVector<std::string, 2>>(
-        std::get<Array>(batchResult.outputs.at(color::out::COLORS)));
+    const auto batchColors
+        = visionrt::nestedOf<NestedVector<std::string, 2>>(std::get<Array>(batchResult.outputs.at(color::out::COLORS)));
     REQUIRE(batchColors.size() == 2, "one colour list per image");
     for (std::size_t index = 0; index < expected.size(); ++index)
         REQUIRE(batchColors[1][index] == expected[(index + 1) % expected.size()],
@@ -582,7 +624,11 @@ void assetValidation(const std::filesystem::path &directory)
                         .code
                     == 0,
                 "the non-right-angle model must load");
-        const auto identity = obliqueTool.execute(alignmentInputs(oblique, "any"));
+        auto search         = alignmentInputs(oblique, "any");
+        search[6]           = DataRef<ROI>(ROI{
+                      {makeRectangle(80, 280, 160, 40), makeRectangle(130, 160, 140, 40, angle)}
+        });
+        const auto identity = obliqueTool.execute(search);
         REQUIRE(testview::status(identity).code == 0,
                 "non-right-angle reference edges must locate their reference image");
         const auto matrix = std::get<Array>(identity.outputs.at(align::out::ALIGNMENTS)).elements<double>();
@@ -634,8 +680,8 @@ void assetValidation(const std::filesystem::path &directory)
         recognition::TrainStraightBordersTool trainer;
         trainer.initialize({});
         Values inputs;
-        inputs.emplace(train::in::SET, DataRef<TrainingSet>(std::move(set)));
-        inputs.emplace(train::in::REGION_FIELD, std::int64_t{1});
+        inputs.emplace(train::in::SET, DataRef<TrainingSet>(set));
+        inputs.emplace(train::in::SEARCH_REGIONS, std::get<DataRef<ROI>>(set.records.at(1).fields.at(1)));
         inputs.emplace(train::in::CONTRAST, 30.0);
         inputs.emplace(train::in::EDGE_WIDTH, std::int64_t{3});
         inputs.emplace(train::in::POLARITY, std::string("any"));
@@ -681,7 +727,7 @@ void assetValidation(const std::filesystem::path &directory)
     const auto brokenColor = directory / "broken_color.model";
     writeText(brokenColor, "not a colour model");
     recognition::RecognizeColorTool colorTool;
-    Values                           colorInit;
+    Values                          colorInit;
     colorInit.emplace(color::init::MODEL, generic(brokenColor));
     const auto colorStatus = colorTool.initialize(colorInit);
     REQUIRE(colorStatus.code == static_cast<std::int64_t>(recognition::RecognitionError::ColorModelIncompatible),

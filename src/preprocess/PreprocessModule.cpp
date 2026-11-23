@@ -1,11 +1,12 @@
 #include "AdaptiveBinaryTool.h"
 #include "BrightnessTool.h"
+#include "CreateRoiTool.h"
 #include "DetectionFilterTool.h"
 #include "ImageCropTool.h"
 #include "ImagePreprocessTool.h"
 #include "ReadImageTool.h"
-#include "RotateImageTool.h"
 #include "RoiProjectionTool.h"
+#include "RotateImageTool.h"
 
 #include <visionrt/contracts/FunctionTool.h>
 #include <visionrt/contracts/Module.h>
@@ -28,9 +29,11 @@ visionrt::ToolStatus VT_CALL registerTools(visionrt::IToolRegistry &registry) no
     if (auto s = visionrt::registerClass<RotateImageTool>(registry, ports::image_rotate::TOOL_ID); !s)
         return s;
     // 无状态工具走函数入口：同一 IToolInstance 调度，实例不保留任何业务状态。
+    if (auto status = registerRoiCreators(registry); !status)
+        return status;
     return visionrt::registerFunction<&brightnessTool>(registry, ports::image_brightness::TOOL_ID);
 }
-}}
+}} // namespace visiontools::preprocess
 
 extern "C" VT_EXPORT const visionrt::ModuleApi *VT_CALL visiontoolsModuleApi() noexcept
 {

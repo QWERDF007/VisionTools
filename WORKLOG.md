@@ -30,6 +30,25 @@
 - ...
 -->
 
+### 2026-11-23 — ROI 创建、直边搜索输入与输出归属
+
+**目标**
+- 交付五个 ROI 创建工具，直边搜索区域与参考模型分离，移除六处原图透传。
+
+**当前状态**
+- 创建点、线、旋转矩形、圆和多边形通过真实模块注册与执行；无需图像即可输出结构化几何。
+- 直边运行读取 inputs.6，训练调用读取同一 ROI；模型 v2 只保存实测参考边。训练和运行共用近似平行的判据。
+- 颜色识别、圆测量、行间距测量、投影 ROI、缺陷过滤和 YOLO 删除原图输出，结果关联输入图像。受影响声明版本与宿主随包工程同步为 2.0.0。
+- 32 工具包安装在 F:/Projects/VisionRT/build/bin/tools-package；当前提交固定共享 Contracts 引用，工具与宿主验证证据见下文。
+
+**验证证据**
+- test_recognition_contract、test_module_contract、test_preprocess_contract、test_geometry_contract 四项通过，见 F:/Projects/VisionRT/build/evidence/roi-tools-final.xml；运行搜索框和近似平行判据均先经失败用例复现。
+- 真实宿主校验器接受完整包；安装消费者实际执行全部 13 个 CPU 工具，见宿主 build/roi-tools-package.log。
+- 宿主 15 项定向测试全部通过，含线缆五工位、训练发布与已有 GPU 引擎推理，见宿主 build/evidence/roi-final.xml。
+
+**下一步**
+- 运行宿主 build/bin/VisionRT.exe 验收；两份 Contracts 已统一，依赖身份以父仓 gitlink 为准；实现索引见 docs/README.md。
+
 ### 2026-11-23 — 点几何接口统一
 
 **目标**

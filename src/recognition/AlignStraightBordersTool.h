@@ -19,13 +19,13 @@ inline constexpr visionrt::PortId CONTRAST         = 2;
 inline constexpr visionrt::PortId EDGE_WIDTH       = 3;
 inline constexpr visionrt::PortId POLARITY         = 4;
 inline constexpr visionrt::PortId MIN_COMPLETENESS = 5;
-}
+inline constexpr visionrt::PortId SEARCH_REGIONS   = 6;
+} // namespace in
 
 namespace out {
 inline constexpr visionrt::PortId ALIGNMENTS     = 2;
 inline constexpr visionrt::PortId FOUND_SEGMENTS = 3;
-inline constexpr visionrt::PortId SEARCH_REGIONS = 4;
-}
+} // namespace out
 } // namespace ports::align_straight_borders
 
 // Locates the two trained reference edges in every image and publishes the reference-to-current

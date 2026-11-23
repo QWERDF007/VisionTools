@@ -1,9 +1,10 @@
-#include <opencv2/core.hpp>
+#include "TestRegistry.h"
 #include "ToolResultAssertions.h"
+
+#include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <visionrt/contracts/Module.h>
-#include "TestRegistry.h"
 #include <visionrt/contracts/Tool.h>
 
 #include <cassert>
@@ -53,7 +54,6 @@ inline void freeSharedLib(LibHandle h)
     dlclose(h);
 }
 #endif
-
 
 #define REQUIRE_STRUCTURE(cond, msg)                                                                        \
     do                                                                                                      \
@@ -119,7 +119,7 @@ int main(int argc, char **argv)
         return 1;
     }
     std::filesystem::path target(wargv[1]);
-    const auto executable = std::filesystem::absolute(std::filesystem::path(wargv[0]));
+    const auto            executable = std::filesystem::absolute(std::filesystem::path(wargv[0]));
     LocalFree(wargv);
 #else
     if (argc < 2)
@@ -129,7 +129,7 @@ int main(int argc, char **argv)
         return 1;
     }
     std::filesystem::path target(argv[1]);
-    const auto executable = std::filesystem::absolute(std::filesystem::path(argv[0]));
+    const auto            executable = std::filesystem::absolute(std::filesystem::path(argv[0]));
 #endif
     if (!std::filesystem::exists(target))
     {
@@ -145,7 +145,7 @@ int main(int argc, char **argv)
     const auto handle = loadSharedLib(dllPath);
     REQUIRE_LOADING(handle != nullptr, "Module library must load");
     using ModuleApiFn = const visionrt::ModuleApi *(VT_CALL *)() noexcept;
-    const auto apiFn = reinterpret_cast<ModuleApiFn>(getProcAddr(handle, "visiontoolsModuleApi"));
+    const auto apiFn  = reinterpret_cast<ModuleApiFn>(getProcAddr(handle, "visiontoolsModuleApi"));
     REQUIRE_ABI(apiFn != nullptr, "Module entry must be exported");
     const auto *api = apiFn();
     REQUIRE_ABI(api && api->abi_major == visionrt::MODULE_ABI_MAJOR, "ABI major must match");
@@ -153,19 +153,28 @@ int main(int argc, char **argv)
                 "ABI3 registration callback must be present");
     TestRegistry registry;
     REQUIRE_ABI(api->register_tools(registry).code == 0, "Module registration must succeed");
-    const std::set<std::string> expectedTools{
-        "AdaptiveThreshold", "CropImage", "FilterDetections",
-        "ProjectRoi", "PreprocessImage", "ReadImage",
-        "RotateImage", "AdjustBrightness"};
+    const std::set<std::string> expectedTools{"AdaptiveThreshold",
+                                              "CropImage",
+                                              "FilterDetections",
+                                              "ProjectRoi",
+                                              "PreprocessImage",
+                                              "ReadImage",
+                                              "RotateImage",
+                                              "AdjustBrightness",
+                                              "CreatePoint",
+                                              "CreateLine",
+                                              "CreateRotatedRectangle",
+                                              "CreateCircle",
+                                              "CreatePolygon"};
     REQUIRE_ABI(registry.factories.size() == expectedTools.size(), "All CPU factories must be present");
     for (const auto &id : expectedTools)
         REQUIRE_ABI(registry.factories.contains(id), "CPU factory must use its stable ID");
-    visionrt::ToolStatus status;
+    visionrt::ToolStatus  status;
     std::set<std::string> actualExecutedTools;
     // 4. Test tool: adaptive_binary
-    cv::Mat                snapshotImage;
+    cv::Mat               snapshotImage;
     {
-        const char *reg = "AdaptiveThreshold";
+        const char              *reg  = "AdaptiveThreshold";
         visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE(inst != nullptr, "Create adaptive_binary must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize adaptive_binary must succeed");
@@ -210,14 +219,14 @@ int main(int argc, char **argv)
 
     // 5. Test tool: crop
     {
-        const char *reg = "CropImage";
+        const char              *reg  = "CropImage";
         visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE(inst != nullptr, "Create crop must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize crop must succeed");
 
-        cv::Mat              colorImg(64, 64, CV_8UC3, cv::Scalar(10, 20, 30));
-        cv::Mat              inImg = (colorImg).clone();
-        visionrt::Values     inputs;
+        cv::Mat          colorImg(64, 64, CV_8UC3, cv::Scalar(10, 20, 30));
+        cv::Mat          inImg = (colorImg).clone();
+        visionrt::Values inputs;
         inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{inImg}));
         auto roi = std::vector<double>{2, 10.0, 10.0, 20.0, 20.0, 0.0};
         inputs.emplace(2, visionrt::DataRef<visionrt::ROI>(visionrt::ROI{{roi}}));
@@ -242,7 +251,7 @@ int main(int argc, char **argv)
 
     // 6. Test tool: detection_filter
     {
-        const char *reg = "FilterDetections";
+        const char              *reg  = "FilterDetections";
         visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE(inst != nullptr, "Create detection.filter must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize detection.filter must succeed");
@@ -257,7 +266,7 @@ int main(int argc, char **argv)
         visionrt::Values inputs;
         inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
         inputs.emplace(2, visionrt::DataRef<visionrt::ROI>(visionrt::ROI{
-                                   {roi, roi}
+                              {roi, roi}
         }));
         inputs.emplace(3, visionrt::Array::fromNested(std::vector<std::vector<float>>{scores}));
         inputs.emplace(4, visionrt::Array::fromNested(std::vector<std::vector<std::int64_t>>{classes}));
@@ -288,7 +297,7 @@ int main(int argc, char **argv)
 
     // 7. Test tool: roi_projection
     {
-        const char *reg = "ProjectRoi";
+        const char              *reg  = "ProjectRoi";
         visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE(inst != nullptr, "Create roi.projection must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize roi.projection must succeed");
@@ -320,7 +329,7 @@ int main(int argc, char **argv)
 
     // 8. Test tool: image.preprocess
     {
-        const char *reg = "PreprocessImage";
+        const char              *reg  = "PreprocessImage";
         visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE(inst != nullptr, "Create image.preprocess must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize image.preprocess must succeed");
@@ -346,15 +355,15 @@ int main(int argc, char **argv)
 
     // 9. Test tool: image.read
     {
-        const char *reg = "ReadImage";
+        const char              *reg  = "ReadImage";
         visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE(inst != nullptr, "Create image.read must return valid instance");
         REQUIRE(inst->initialize({}).code == 0, "Initialize image.read must succeed");
 
-        const auto tempPath = executable.parent_path() / u8"test_consumer_中文.png";
-        const auto encodedPath = tempPath.filename().generic_u8string();
-        const std::string utf8Path(reinterpret_cast<const char *>(encodedPath.data()), encodedPath.size());
-        cv::Mat     sample(24, 24, CV_8UC3, cv::Scalar(10, 20, 30));
+        const auto                 tempPath    = executable.parent_path() / u8"test_consumer_中文.png";
+        const auto                 encodedPath = tempPath.filename().generic_u8string();
+        const std::string          utf8Path(reinterpret_cast<const char *>(encodedPath.data()), encodedPath.size());
+        cv::Mat                    sample(24, 24, CV_8UC3, cv::Scalar(10, 20, 30));
         std::vector<unsigned char> encoded;
         REQUIRE(cv::imencode(".png", sample, encoded), "Image fixture must encode");
         {
@@ -376,8 +385,7 @@ int main(int argc, char **argv)
 
         REQUIRE(testview::status(res).code == 0, "Image read execution must succeed");
         REQUIRE(testview::status(res).message == "运行成功", "Image read success message must be shared");
-        const auto paths = visionrt::nestedOf<std::vector<std::string>>(
-            std::get<visionrt::Array>(res.outputs.at(3)));
+        const auto paths = visionrt::nestedOf<std::vector<std::string>>(std::get<visionrt::Array>(res.outputs.at(3)));
         REQUIRE(paths[0].ends_with(utf8Path), "Image path must preserve Unicode UTF-8");
         const auto *batch = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs[2]);
         REQUIRE(batch && batch->get().size() == 1, "Must read 1 image");
@@ -393,7 +401,7 @@ int main(int argc, char **argv)
     std::cout << "  DLL path: " << std::filesystem::absolute(dllPath).string() << std::endl;
     // 9. Test tool: rotate
     {
-        const char *reg = "RotateImage";
+        const char              *reg  = "RotateImage";
         visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE_ABI(inst != nullptr, "Create rotate must return valid instance");
         REQUIRE_ABI(inst->initialize({}).code == 0, "Initialize rotate must succeed");
@@ -415,7 +423,7 @@ int main(int argc, char **argv)
     }
     // 10. Test tool: brightness
     {
-        const char *reg = "AdjustBrightness";
+        const char              *reg  = "AdjustBrightness";
         visionrt::IToolInstance *inst = registry.factories.at(reg).create(&status);
         REQUIRE_ABI(inst != nullptr, "Create brightness must return valid instance");
         REQUIRE_ABI(inst->initialize({}).code == 0, "Initialize brightness must succeed");
@@ -434,6 +442,29 @@ int main(int argc, char **argv)
         REQUIRE_ABI(inst->release().code == 0, "Release brightness must succeed");
         registry.factories.at(reg).destroy(inst);
         actualExecutedTools.insert(reg);
+    }
+    const std::vector<std::pair<std::string, visionrt::EncodedRegion>> geometryTools{
+        {"CreatePoint", visionrt::makePoint(1.25, 2.5)},
+        {"CreateLine", visionrt::makeSegment({1, 2}, {3, 4})},
+        {"CreateRotatedRectangle", visionrt::makeRectangle(10, 20, 30, 40, 15)},
+        {"CreateCircle", visionrt::makeCircle({10, 20}, 8)},
+        {"CreatePolygon", visionrt::makePolygon(std::vector<cv::Point2d>{{0, 0}, {20, 0}, {0, 10}})}
+    };
+    for (const auto &[id, region] : geometryTools)
+    {
+        const auto &factory  = registry.factories.at(id);
+        auto       *instance = factory.create(&status);
+        REQUIRE(instance && instance->initialize({}).code == 0, "ROI creator must initialize");
+        const visionrt::ROI value{{region}};
+        const auto          result = instance->execute({
+            {1, visionrt::DataRef<visionrt::ROI>(value)}
+        });
+        REQUIRE(testview::status(result).code == 0, "ROI creator must execute without an image");
+        REQUIRE(std::get<visionrt::DataRef<visionrt::ROI>>(result.outputs.at(2)).get() == value,
+                "ROI creator must preserve coordinates");
+        instance->release();
+        factory.destroy(instance);
+        actualExecutedTools.insert(id);
     }
     std::cout << "  Expected tools count: " << expectedTools.size() << std::endl;
     std::cout << "  Actual executed tools count: " << actualExecutedTools.size() << std::endl;

@@ -1,7 +1,8 @@
-#include <visionrt/contracts/Module.h>
-#include <visionrt/contracts/FunctionTool.h>
-#include "ToolResultAssertions.h"
 #include "TestRegistry.h"
+#include "ToolResultAssertions.h"
+
+#include <visionrt/contracts/FunctionTool.h>
+#include <visionrt/contracts/Module.h>
 #include <visionrt/contracts/Tool.h>
 
 #include <algorithm>
@@ -9,9 +10,9 @@
 #include <chrono>
 #include <future>
 #include <iostream>
+#include <set>
 #include <thread>
 #include <vector>
-#include <set>
 
 #ifdef _WIN32
 #    ifndef NOMINMAX
@@ -57,9 +58,21 @@ struct ThrowingClassTool final : public visionrt::IToolInstance
     {
         throw std::runtime_error("故意构造抛错");
     }
-    visionrt::ToolStatus initialize(const visionrt::Values &) override { return {}; }
-    visionrt::ToolResult execute(const visionrt::Values &) override { return {}; }
-    visionrt::ToolStatus release() override { return {}; }
+
+    visionrt::ToolStatus initialize(const visionrt::Values &) override
+    {
+        return {};
+    }
+
+    visionrt::ToolResult execute(const visionrt::Values &) override
+    {
+        return {};
+    }
+
+    visionrt::ToolStatus release() override
+    {
+        return {};
+    }
 };
 } // namespace
 
@@ -74,28 +87,71 @@ int main()
     REQUIRE(api->register_tools != nullptr, "register_tools must be present");
     TestRegistry registry;
     REQUIRE(api->register_tools(registry).code == 0, "Registration must succeed");
-    const std::set<std::string> expected{
-        "ReadImage", "ProjectRoi", "CropImage",
-        "PreprocessImage", "FilterDetections", "AdaptiveThreshold",
-        "RotateImage", "AdjustBrightness"};
+    const std::set<std::string> expected{"ReadImage",
+                                         "ProjectRoi",
+                                         "CropImage",
+                                         "PreprocessImage",
+                                         "FilterDetections",
+                                         "AdaptiveThreshold",
+                                         "RotateImage",
+                                         "AdjustBrightness",
+                                         "CreatePoint",
+                                         "CreateLine",
+                                         "CreateRotatedRectangle",
+                                         "CreateCircle",
+                                         "CreatePolygon"};
     REQUIRE(registry.factories.size() == expected.size(), "Every declared CPU factory must be registered");
-    for (const auto &id : expected)
-        REQUIRE(registry.factories.contains(id), "Every stable ID must be registered");
+    for (const auto &id : expected) REQUIRE(registry.factories.contains(id), "Every stable ID must be registered");
+    const std::vector<visionrt::EncodedRegion> geometries{
+        visionrt::makePoint(std::vector<cv::Point2d>{{1.25, 2.5}, {4, 8}}
+        ), visionrt::makeSegment({1, 2},
+        {7, 9}
+        ),
+        visionrt::makeRectangle(10, 20, 30, 40, 15), visionrt::makeCircle({4, 8},
+        12),
+        visionrt::makePolygon(std::vector<cv::Point2d>{{0, 0}, {20, 0}, {0, 10}}
+        )
+    };
+    const std::vector<std::string> creators{"CreatePoint", "CreateLine", "CreateRotatedRectangle", "CreateCircle",
+                                            "CreatePolygon"};
+    for (std::size_t i = 0; i < creators.size(); ++i)
+    {
+        const auto &creator  = registry.factories.at(creators[i]);
+        auto       *instance = creator.create(nullptr);
+        REQUIRE(instance && instance->initialize({}).code == 0, "ROI creator must initialize without an image");
+        const visionrt::ROI geometry{{geometries[i]}};
+        const auto          result = instance->execute({
+            {1, visionrt::DataRef<visionrt::ROI>(geometry)}
+        });
+        REQUIRE(testview::status(result).code == 0, "ROI creator must accept typed geometry without pixels");
+        REQUIRE(std::get<visionrt::DataRef<visionrt::ROI>>(result.outputs.at(2)).get() == geometry,
+                "ROI creator must preserve all double coordinates");
+        const auto wrong = instance->execute({
+            {1, visionrt::DataRef<visionrt::ROI>(visionrt::ROI{{geometries[(i + 1) % geometries.size()]}})}
+        });
+        REQUIRE(testview::status(wrong).code != 0 && visionrt::isMissing(wrong.outputs.at(2)),
+                "wrong shape must fail without a fabricated ROI");
+        instance->release();
+        creator.destroy(instance);
+    }
     REQUIRE(!registry.factories.contains("AdaptiveBinaryTool"), "Legacy class-name alias must not be registered");
+
     struct RejectingRegistry final : visionrt::IToolRegistry
     {
         int calls = 0;
+
         visionrt::ToolStatus add(const visionrt::ToolFactoryDescriptor &) noexcept override
         {
             ++calls;
             return {17, "注册已拒绝"};
         }
     } rejected;
+
     REQUIRE(api->register_tools(rejected).code == 17 && rejected.calls == 1,
             "Registration must stop and preserve the first rejected add");
-    const auto &factory = registry.factories.at("AdaptiveThreshold");
+    const auto          &factory = registry.factories.at("AdaptiveThreshold");
     visionrt::ToolStatus status;
-    auto *uninitialized = factory.create(nullptr);
+    auto                *uninitialized = factory.create(nullptr);
     REQUIRE(uninitialized != nullptr, "A null status sink must be supported");
     REQUIRE(uninitialized->release().code == 0, "An uninitialized instance must release safely");
     REQUIRE(uninitialized->release().code == 0, "Release must be idempotent");
@@ -104,11 +160,13 @@ int main()
     // T42-05: Constructor exception through public registerClass yields kContractViolationStatus
     {
         TestRegistry throwRegistry;
-        REQUIRE(visionrt::registerClass<ThrowingClassTool>(throwRegistry, "test.throwing").code == 0, "Registration must succeed");
-        const auto &throwFactory = throwRegistry.factories.at("test.throwing");
+        REQUIRE(visionrt::registerClass<ThrowingClassTool>(throwRegistry, "test.throwing").code == 0,
+                "Registration must succeed");
+        const auto          &throwFactory = throwRegistry.factories.at("test.throwing");
         visionrt::ToolStatus throwStatus;
         REQUIRE(throwFactory.create(&throwStatus) == nullptr, "Throwing constructor must return nullptr");
-        REQUIRE(throwStatus.code == visionrt::kContractViolationStatus, "Constructor failure must yield kContractViolationStatus");
+        REQUIRE(throwStatus.code == visionrt::kContractViolationStatus,
+                "Constructor failure must yield kContractViolationStatus");
         throwFactory.destroy(nullptr);
     }
     // 5. Lifecycle and Snapshot persistence across execute/release/destroy (VS-05 / NS-05)

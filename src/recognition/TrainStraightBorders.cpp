@@ -52,29 +52,6 @@ edge::EdgePolarity parsePolarity(const std::string &value)
     fail(CommonToolError::InputOutOfRange, "跃迁方向", "只能是 any、dark_to_light 或 light_to_dark");
 }
 
-// The drawn band is [kind, left, top, width, height, angle]; the locator works with the centre and
-// the long side, so the conversion happens once here for every rectangle.
-SearchRectangle toBand(const visionrt::EncodedRegion &record, std::size_t index)
-{
-    const auto view = visionrt::RegionView(record);
-    if (view.kind() != visionrt::RoiKind::Rectangle)
-        fail(RecognitionError::StraightEdgeRegionsInvalid, "第 " + std::to_string(index + 1) + " 条参考边",
-             "必须是搜索矩形");
-    const auto rectangle = view.rectangle();
-    if (!(rectangle.width() > 1.0) || !(rectangle.height() > 0.0))
-        fail(RecognitionError::StraightEdgeRegionsInvalid, "第 " + std::to_string(index + 1) + " 条参考边",
-             "矩形的宽度或高度不合法");
-    SearchRectangle band;
-    band.width  = std::max(rectangle.width(), rectangle.height());
-    band.height = std::min(rectangle.width(), rectangle.height());
-    band.angle  = rectangle.angle();
-    // A band drawn taller than it is wide still names the same edge; the long side defines the
-    // direction, so a quarter turn keeps the rectangle in its place.
-    if (rectangle.height() > rectangle.width())
-        band.angle += 90.0;
-    band.center = {rectangle.left() + rectangle.width() / 2.0, rectangle.top() + rectangle.height() / 2.0};
-    return band;
-}
 } // namespace
 
 visionrt::ToolStatus TrainStraightBordersTool::initialize(const visionrt::Values &)
@@ -89,9 +66,9 @@ visionrt::ToolResult TrainStraightBordersTool::execute(const visionrt::Values &i
         = setEntry == inputs.end() ? nullptr : std::get_if<visionrt::DataRef<visionrt::TrainingSet>>(&setEntry->second);
     if (!set)
         return failure(missingOutputs(), CommonToolError::InputTypeMismatch, "训练集");
-    const auto *regionValue = integerOf(inputs, p::in::REGION_FIELD);
-    if (!regionValue)
-        return failure(missingOutputs(), CommonToolError::InputTypeMismatch, "区域字段");
+    const auto  regionsEntry = inputs.find(p::in::SEARCH_REGIONS);
+    const auto *rois
+        = regionsEntry == inputs.end() ? nullptr : std::get_if<visionrt::DataRef<visionrt::ROI>>(&regionsEntry->second);
     const auto *contrast     = realOf(inputs, p::in::CONTRAST);
     const auto *edgeWidth    = integerOf(inputs, p::in::EDGE_WIDTH);
     const auto *polarity     = textOf(inputs, p::in::POLARITY);
@@ -123,10 +100,6 @@ visionrt::ToolResult TrainStraightBordersTool::execute(const visionrt::Values &i
                  "一次只能从一张参考图画两条边，实际 " + std::to_string(training.records.size()) + " 条记录");
         const auto &record = training.records.begin()->second;
 
-        const auto  regions = record.fields.find(static_cast<FieldId>(*regionValue));
-        const auto *rois    = regions == record.fields.end()
-                                ? nullptr
-                                : std::get_if<visionrt::DataRef<visionrt::ROI>>(&regions->second);
         if (!rois || rois->get().size() != 1 || rois->get().front().size() != 2)
             fail(RecognitionError::StraightEdgeRegionsInvalid, "参考边", "一张参考图上只能有两条搜索矩形");
 
@@ -138,7 +111,7 @@ visionrt::ToolResult TrainStraightBordersTool::execute(const visionrt::Values &i
         std::vector<SearchRectangle> bands;
         bands.reserve(2);
         for (std::size_t index = 0; index < rois->get().front().size(); ++index)
-            bands.push_back(toBand(rois->get().front()[index], index));
+            bands.push_back(searchRectangle(rois->get().front()[index], index));
 
         const auto model = StraightEdgeModel::train(gray, bands, options);
         const auto bytes = model.encode();

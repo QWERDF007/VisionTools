@@ -1,7 +1,7 @@
 {
   "name_en": "RecognizeColor",
   "name_zh": "识别颜色",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -88,27 +88,13 @@
   ],
   "outputs": [
     {
-      "id": 2,
-      "name_zh": "显示图像",
-      "type": "image",
-      "relations": {
-        "same_geometry_as": {
-          "stage": "inputs",
-          "id": 1
-        }
-      },
-      "display": {
-        "visible": true
-      }
-    },
-    {
       "id": 3,
       "name_zh": "检测区域",
       "type": "roi",
       "relations": {
         "image": {
-          "stage": "outputs",
-          "id": 2
+          "stage": "inputs",
+          "id": 1
         }
       }
     },

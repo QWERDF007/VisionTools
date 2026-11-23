@@ -22,8 +22,8 @@ namespace p = ports::recognize_color;
 
 visionrt::Values missingOutputs()
 {
-    return missingPorts({p::out::IMAGES, p::out::REGIONS, p::out::COLORS, p::out::SCORES,
-                         p::out::RATIOS, p::out::CENTER_X, p::out::CENTER_Y});
+    return missingPorts(
+        {p::out::REGIONS, p::out::COLORS, p::out::SCORES, p::out::RATIOS, p::out::CENTER_X, p::out::CENTER_Y});
 }
 
 struct DetectionCircle
@@ -36,14 +36,15 @@ struct DetectionCircle
 // how a single trained reference frame serves a whole batch; a per-image group is also accepted.
 std::vector<DetectionCircle> circlesFor(const visionrt::ROI &groups, std::size_t image)
 {
-    const auto &records = groups.size() == 1 ? groups.front() : groups[image];
+    const auto                  &records = groups.size() == 1 ? groups.front() : groups[image];
     std::vector<DetectionCircle> circles;
     circles.reserve(records.size());
     for (const auto &record : records)
     {
         const visionrt::RegionView view(record);
         if (view.kind() != visionrt::RoiKind::Circle)
-            fail(RecognitionError::DetectionRegionNotCircle, "检测区域第 " + std::to_string(circles.size() + 1) + " 项");
+            fail(RecognitionError::DetectionRegionNotCircle,
+                 "检测区域第 " + std::to_string(circles.size() + 1) + " 项");
         const auto circle = view.circle();
         if (!(circle.radius() > 0.0))
             fail(CommonToolError::InputOutOfRange, "检测区域", "圆半径必须为正数");
@@ -124,9 +125,9 @@ visionrt::ToolResult RecognizeColorTool::execute(const visionrt::Values &inputs)
 
         const auto alignments = geometry::alignmentsFromValue(*alignment, images.size());
 
-        visionrt::NestedVector<std::string, 2>  colors;
-        visionrt::NestedVector<float, 2>        scores, ratios, centersX, centersY;
-        std::vector<std::vector<roi::Record>>   currentCircles;
+        visionrt::NestedVector<std::string, 2> colors;
+        visionrt::NestedVector<float, 2>       scores, ratios, centersX, centersY;
+        std::vector<std::vector<roi::Record>>  currentCircles;
         colors.reserve(images.size());
         scores.reserve(images.size());
         ratios.reserve(images.size());
@@ -141,9 +142,9 @@ visionrt::ToolResult RecognizeColorTool::execute(const visionrt::Values &inputs)
             if (image.type() != CV_8UC3)
                 fail(RecognitionError::UnsupportedColorImage, "第 " + std::to_string(index + 1) + " 张图");
 
-            const ChromaImage chroma{image};
-            const auto       &alignmentForImage = alignments[index];
-            const auto  circles           = circlesFor(regions.get(), index);
+            const ChromaImage        chroma{image};
+            const auto              &alignmentForImage = alignments[index];
+            const auto               circles           = circlesFor(regions.get(), index);
             std::vector<std::string> imageColors;
             std::vector<float>       imageScores, imageRatios, imageX, imageY;
             std::vector<roi::Record> imageCircles;
@@ -181,7 +182,7 @@ visionrt::ToolResult RecognizeColorTool::execute(const visionrt::Values &inputs)
         }
 
         visionrt::Values outputs;
-        outputs.emplace(p::out::IMAGES, visionrt::DataRef<visionrt::Image>(visionrt::Image(images), {imagesRef.owner()}));
+
         outputs.emplace(p::out::REGIONS, roi::roiValue(std::move(currentCircles)));
         outputs.emplace(p::out::COLORS, visionrt::Array::fromNested(std::move(colors)));
         outputs.emplace(p::out::SCORES, visionrt::Array::fromNested(std::move(scores)));

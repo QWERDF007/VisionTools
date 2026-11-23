@@ -20,7 +20,7 @@
       "training_locator": {
         "algorithm": "LocateStraightEdge",
         "image_source": 1,
-        "region_target": 1,
+        "region_target": 6,
         "frame_input": 1,
         "search_input": 2,
         "search_radius": 128,
@@ -192,6 +192,26 @@
     },
     {
       "definition": "assets/tools/custom/Python/示例/调用计数器.json"
+    },
+    {
+      "definition": "assets/tools/builtin/预处理/ROI/创建点.json",
+      "module": "visiontools_preprocess"
+    },
+    {
+      "definition": "assets/tools/builtin/预处理/ROI/创建线.json",
+      "module": "visiontools_preprocess"
+    },
+    {
+      "definition": "assets/tools/builtin/预处理/ROI/创建旋转矩形.json",
+      "module": "visiontools_preprocess"
+    },
+    {
+      "definition": "assets/tools/builtin/预处理/ROI/创建圆.json",
+      "module": "visiontools_preprocess"
+    },
+    {
+      "definition": "assets/tools/builtin/预处理/ROI/创建多边形.json",
+      "module": "visiontools_preprocess"
     }
   ]
 }

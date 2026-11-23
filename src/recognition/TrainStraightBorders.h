@@ -9,7 +9,7 @@ inline constexpr char TOOL_ID[] = "TrainStraightBorders";
 
 namespace in {
 inline constexpr visionrt::PortId SET              = 1;
-inline constexpr visionrt::PortId REGION_FIELD     = 2;
+inline constexpr visionrt::PortId SEARCH_REGIONS   = 2;
 inline constexpr visionrt::PortId CONTRAST         = 3;
 inline constexpr visionrt::PortId EDGE_WIDTH       = 4;
 inline constexpr visionrt::PortId POLARITY         = 5;

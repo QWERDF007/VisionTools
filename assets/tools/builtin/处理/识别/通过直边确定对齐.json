@@ -1,7 +1,7 @@
 {
   "name_en": "AlignStraightBorders",
   "name_zh": "通过直边确定对齐",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -84,6 +84,18 @@
         "tab": "detection",
         "decimals": 2
       }
+    },
+    {
+      "type": "roi",
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        }
+      },
+      "name_zh": "搜索区域",
+      "id": 6,
+      "default": []
     }
   ],
   "outputs": [
@@ -106,17 +118,6 @@
           "id": 1
         }
       }
-    },
-    {
-      "id": 4,
-      "name_zh": "搜索区域",
-      "type": "roi",
-      "relations": {
-        "image": {
-          "stage": "inputs",
-          "id": 1
-        }
-      }
     }
   ],
   "training": {
@@ -126,18 +127,7 @@
     },
     "records": {
       "max": 1,
-      "fields": [
-        {
-          "id": 1,
-          "name_zh": "参考边",
-          "type": "roi",
-          "roi": true,
-          "regions": {
-            "min": 2,
-            "max": 2
-          }
-        }
-      ]
+      "fields": []
     },
     "call": {
       "tool": "TrainStraightBorders",
@@ -147,8 +137,11 @@
           "context": "training_set"
         },
         {
-          "port": 2,
-          "field_id": 1
+          "source": {
+            "stage": "inputs",
+            "id": 6
+          },
+          "port": 2
         },
         {
           "port": 3,
@@ -185,14 +178,15 @@
         "id": "edge-model",
         "source_port": 2,
         "format": "visiontools.straight-edge-model",
-        "version": 1,
+        "version": 2,
         "target": {
           "stage": "init",
           "id": 1
         }
       }
     ],
-    "overlay_output": 3
+    "overlay_output": 3,
+    "region_input": 6
   },
   "schema_version": 2
 }
