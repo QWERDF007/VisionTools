@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import shutil
 import unittest
@@ -8,13 +9,14 @@ from package_support import PackageFixture, package
 
 
 class TestPackagePayload(PackageFixture):
-    def test_sdk_error_catalog_is_shipped_as_a_resource(self):
-        catalog = self.project / "python/author_sdk/visiontools_sdk/errors.json"
-        catalog.write_text('[{"code":1008,"message":"路径为空"}]', encoding="utf-8")
+    def test_native_sdk_artifact_is_shipped_verbatim(self):
+        sdk = Path(os.environ["VISIONTOOLS_AUTHOR_SDK"])
         archive = self.publish()
         with zipfile.ZipFile(archive) as bundle:
-            shipped = bundle.read("python/custom/examples/math/visiontools_sdk/errors.json")
-            self.assertEqual(json.loads(shipped)[0]["code"], 1008)
+            base = "python/custom/examples/math/visiontools_sdk/"
+            for name in ("__init__.py", "enums.py"):
+                self.assertEqual(bundle.read(base + name), (sdk / name).read_bytes())
+            self.assertNotIn(base + "errors.json", bundle.namelist())
 
     def test_package_can_select_the_origin_root(self):
         self.document["implementation"]["package"] = "."

@@ -1,32 +1,8 @@
-set(_error_source "${PROJECT_SOURCE_DIR}/python/author_sdk/visiontools_sdk/errors.json")
-file(READ "${_error_source}" _errors)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_error_source}")
 set(_header "#pragma once
 #include <string>
 #include <string_view>
-#include <cstdint>
 #include <visionrt/contracts/Tool.h>
 namespace visiontools {
-enum class CommonToolError : std::int64_t {
-")
-string(JSON _count LENGTH "${_errors}")
-math(EXPR _last "${_count} - 1")
-foreach(_i RANGE 0 ${_last})
- string(JSON _name GET "${_errors}" ${_i} name)
- string(JSON _code GET "${_errors}" ${_i} code)
- string(APPEND _header "${_name} = ${_code},
-")
-endforeach()
-string(APPEND _header "};
-inline std::string_view commonErrorMessage(std::int64_t code) noexcept { switch(code) {
-")
-foreach(_i RANGE 0 ${_last})
- string(JSON _code GET "${_errors}" ${_i} code)
- string(JSON _message GET "${_errors}" ${_i} message)
- string(APPEND _header "case ${_code}: return \"${_message}\";
-")
-endforeach()
-string(APPEND _header "} return \"工具执行失败\"; }
 ")
 file(GLOB_RECURSE _definitions CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/assets/tools/*.json")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_definitions})

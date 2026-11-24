@@ -1,9 +1,8 @@
 """VisionTools author SDK: typed parameter helpers for Python tools.
 
-This directory is the single source of the SDK. A tool imports it as ``visiontools_sdk`` next to
-its own module (``from .visiontools_sdk import ...``). Packaging copies this directory and adds
-``enums.py`` generated from VisionRTContracts. Examples keep no SDK copies; tests use the same
-generated SDK layout.
+A tool imports this SDK next to its own module (``from .visiontools_sdk import ...``).
+The native build assembles this module and the generated ``enums.py``; packaging and tests use
+that same SDK artifact. Examples keep no SDK copies.
 
 The SDK mirrors the C++ ``visionrt/contracts/Parameters.h`` interface: an
 ``InputReader``/``OutputWriter`` pair owns the dict keys, and the tool keeps every
@@ -28,12 +27,7 @@ protocol: a functional tool returns them directly, and a class tool uses
 
 from abc import ABC, abstractmethod
 from enum import IntEnum
-import json as _json
-from pathlib import Path as _Path
-
-_COMMON_ERRORS = _json.loads((_Path(__file__).parent / "errors.json").read_text(encoding="utf-8"))
-CommonError = IntEnum("CommonError", {item["python"]: item["code"] for item in _COMMON_ERRORS})
-COMMON_MESSAGES = {item["code"]: item["message"] for item in _COMMON_ERRORS}
+from .enums import CommonError, COMMON_MESSAGES
 
 
 # NumPy carries rectangular numeric arrays. The host refuses an interpreter without it, so a

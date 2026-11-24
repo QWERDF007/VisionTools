@@ -7,6 +7,7 @@ the code that ships inside the tools ZIP.
 from __future__ import annotations
 
 import sys
+import os
 import unittest
 from pathlib import Path
 
@@ -15,7 +16,7 @@ PACKAGE_ROOT = ROOT / "python" / "builtin"
 sys.path.insert(0, str(PACKAGE_ROOT))
 
 import logic
-logic.__path__.append(str(ROOT / "build/python"))
+logic.__path__.append(str(Path(os.environ["VISIONTOOLS_AUTHOR_SDK"]).parent))
 
 from logic.branch.tool import BranchTool  # noqa: E402
 from logic.common.engine import EngineError, Program

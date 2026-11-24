@@ -2,6 +2,10 @@ include_directories(
     "${CMAKE_SOURCE_DIR}"
 )
 
+visiontools_add_test(test_common_errors_contract
+    SOURCES test_common_errors_contract.cpp
+    LIBRARIES visiontools_common)
+
 visiontools_add_test(test_writable_tools_contract
     SOURCES test_writable_tools_contract.cpp
     LIBRARIES visiontools_preprocess VisionRT::Contracts ${OpenCV_LIBS}
@@ -117,13 +121,21 @@ if(VISIONTOOLS_BUILD_INFER AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_infer_co
     endif()
 endif()
 
-if(VISIONTOOLS_BUILD_PYTHON)
+if(VISIONTOOLS_BUILD_PYTHON_TESTS)
+    set(_tools_test_python "${VISIONTOOLS_TEST_PYTHON_EXECUTABLE}")
+    if(NOT _tools_test_python)
+        if(WIN32)
+            set(_tools_test_python python)
+        else()
+            set(_tools_test_python python3)
+        endif()
+    endif()
     foreach(_test IN ITEMS package package_payload package_profile python_tools distribution logic_engine)
         add_test(NAME test_${_test}
-            COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tests/test_${_test}.py"
+            COMMAND "${_tools_test_python}" "${CMAKE_SOURCE_DIR}/tests/test_${_test}.py"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     endforeach()
     visiontools_test_path(_vt_test_paths)
     set_tests_properties(test_package test_package_payload test_package_profile test_distribution test_python_tools test_logic_engine PROPERTIES
-        ENVIRONMENT "PATH=${_vt_test_paths};VISIONTOOLS_VALIDATOR=${VISIONTOOLS_VALIDATOR};PYTHONDONTWRITEBYTECODE=1")
+        ENVIRONMENT "PATH=${_vt_test_paths};VISIONTOOLS_VALIDATOR=${VISIONTOOLS_VALIDATOR};PYTHONDONTWRITEBYTECODE=1;VISIONTOOLS_AUTHOR_SDK=${VISIONTOOLS_AUTHOR_SDK};CMAKE_COMMAND=${CMAKE_COMMAND}")
 endif()

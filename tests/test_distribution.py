@@ -48,10 +48,6 @@ class DistributionContract(unittest.TestCase):
 
     def _python_fixture(self, project: Path) -> Path:
         """Builds the minimal one-tool Python package the rest of this file distributes."""
-        # A project that ships Python tools carries the one author SDK the packager injects.
-        sdk = project / "python/author_sdk/visiontools_sdk"
-        sdk.mkdir(parents=True)
-        (sdk / "__init__.py").write_text("", encoding="utf-8")
         definition = project / "assets/tools/custom/math/arithmetic/add.json"
         definition.parent.mkdir(parents=True)
         document = {
@@ -84,7 +80,8 @@ class DistributionContract(unittest.TestCase):
         catalog = {"schema_version": 1, "modules": [],
                    "tools": [{"definition": definition.relative_to(project).as_posix()}]}
         package_tools.save_json(catalog, project / "tools/package_catalog.json")
-        manifest = {"variant": "portable-release", "config": "Release", "modules": {}, "runtime_files": []}
+        manifest = {"variant": "portable-release", "config": "Release", "modules": {}, "runtime_files": [],
+                    "author_sdk": os.environ["VISIONTOOLS_AUTHOR_SDK"]}
         (build / "Release/resolved_dependencies.json").write_text(json.dumps(manifest), encoding="utf-8")
         build_info = {
             "schema_version": 1, "component": "VisionTools", "version": "0.1.0",

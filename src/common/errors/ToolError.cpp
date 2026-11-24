@@ -6,20 +6,13 @@ std::string_view defaultMessage(std::int64_t code) noexcept
 {
     switch (static_cast<CommonToolError>(code))
     {
-    case CommonToolError::InputMissing:
-        return "输入缺失";
-    case CommonToolError::InputTypeMismatch:
-        return "输入类型不匹配";
-    case CommonToolError::InputOutOfRange:
-        return "输入超出允许范围";
-    case CommonToolError::ResourceUnavailable:
-        return "所需资源不可用";
-    case CommonToolError::OperatorFailed:
-        return "算子执行失败";
-    case CommonToolError::OutputContractViolation:
-        return "输出端口不符合契约";
-    case CommonToolError::UnsupportedImage:
-        return "图像格式不受支持";
+#define VRT_ENUM_BEGIN(name, underlying, ...)
+#define VRT_ENUM_VALUE(name, value, python, message) case CommonToolError::name: return message;
+#define VRT_ENUM_END(name)
+#include "common/errors/CommonToolErrors.def"
+#undef VRT_ENUM_BEGIN
+#undef VRT_ENUM_VALUE
+#undef VRT_ENUM_END
     }
     return "工具执行失败";
 }

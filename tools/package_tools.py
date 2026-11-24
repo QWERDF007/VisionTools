@@ -9,7 +9,6 @@ deletes a previous usable package.
 
 from __future__ import annotations
 
-from protocol_enums import declared_kind, ToolKind
 
 import argparse
 from dataclasses import dataclass
@@ -24,7 +23,7 @@ import zipfile
 import json
 
 import package_profile
-from package_payload import CopyPlan, PackagingError, ToolPayload, load_json, relative_path, resolve_inside, save_json
+from package_payload import AuthorSdk, CopyPlan, PackagingError, ToolPayload, load_json, relative_path, resolve_inside, save_json
 
 _cmake_dir = Path(__file__).resolve().parent.parent / "cmake"
 if str(_cmake_dir) not in sys.path:
@@ -158,6 +157,8 @@ def _load_build(build_dir: Path, config: str, project_root: Path, validator: Pat
         raise PackagingError(f"无法读取构建元数据或发行目录表：{error}") from error
     if not isinstance(metadata, dict) or not isinstance(catalog, dict):
         raise PackagingError("构建元数据与发行目录表必须是对象")
+    sdk = AuthorSdk.read(metadata.get("author_sdk"))
+    ToolKind = sdk.tool_kind
     # The profile decides which installed runtime files ship. It is applied to the real CMake
     # install output below, not to the (possibly empty) manifest list, so the report and the files
     # on disk come from one set.
@@ -183,14 +184,14 @@ def _load_build(build_dir: Path, config: str, project_root: Path, validator: Pat
     for entry in catalog["tools"]:
         if not isinstance(entry, dict) or set(entry) - {"definition", "module", "processing_locator", "training_locator"} or "definition" not in entry:
             raise PackagingError("发行目录表工具条目只允许 definition 与 module")
-        payload = ToolPayload.read(project_root, entry["definition"])
+        payload = ToolPayload.read(project_root, entry["definition"], sdk)
         source, declaration = payload.source, payload.document
         tool_id = declaration.get("name_en")
         if not isinstance(tool_id, str) or not tool_id or tool_id in identities:
             raise PackagingError(f"工具声明 name_en 为空或重复：{source}")
         identities.add(tool_id)
         module = entry.get("module")
-        kind = declared_kind(declaration.get("implementation", {}))
+        kind = sdk.declared_kind(declaration.get("implementation", {}))
         if kind == ToolKind.Cpp:
             if module not in known_modules:
                 raise PackagingError(f"C++ 工具缺少有效模块归属：{tool_id}")
@@ -512,7 +513,8 @@ def package_tools(
     targets = resolve_targets(install_dir, project_root, zip_output)
     metadata, index, build_validator, payloads = _load_build(build_dir, config, project_root, validator, profile)
     _validate_targets(targets, project_root, build_dir)
-    source_commit, _, source_dirty = check_git_workspace(project_root)
+    source_commit, _, source_dirty = check_git_workspace(
+        project_root, cmake_cmd=metadata.get("runtime_install", {}).get("cmake"))
     _precheck_payload(metadata, payloads)
 
     token = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"

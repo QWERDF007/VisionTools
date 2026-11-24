@@ -4,10 +4,10 @@
 - [几何契约](../3rdparty/VisionRTContracts/include/visionrt/contracts/ROI.h)、[工具几何适配](../src/common/RoiSupport.h)、[圆测量输出](../src/metrology/CircleTool.cpp)、[几何验证](../tests/test_geometry_contract.cpp)
 - [ROI 创建工具](../src/preprocess/CreateRoiTool.h)、[几何声明](../assets/tools/builtin/预处理/ROI)、[模块验证](../tests/test_module_contract.cpp)、[安装消费](../tests/test_installation_consumer.cpp)
 - [CPU 注册](../src/preprocess/PreprocessModule.cpp)、[识别注册](../src/recognition/RecognitionModule.cpp)、[推理注册](../src/infer/InferModule.cpp)、[函数与类实例注册](../3rdparty/VisionRTContracts/include/visionrt/contracts/FunctionTool.h)
-- [公共枚举源定义](../3rdparty/VisionRTContracts/include/visionrt/contracts/ProtocolEnums.h)、[声明枚举名称](../3rdparty/VisionRTContracts/include/visionrt/contracts/DeclarationNames.def)、[枚举导出](../3rdparty/VisionRTContracts/tools/export_enums.py)、[打包侧枚举与 SDK 生成](../tools/protocol_enums.py)
+- [公共枚举源定义](../3rdparty/VisionRTContracts/include/visionrt/contracts/ProtocolEnums.def)、[声明枚举名称](../3rdparty/VisionRTContracts/include/visionrt/contracts/DeclarationNames.def)、[原生导出](../tools/export_protocol_enums.cpp)、[构建 SDK 消费](../tools/package_payload.py)、[公共错误定义](../src/common/errors/CommonToolErrors.def)
 - [作者声明](../assets/tools)、[发行目录表](../tools/package_catalog.json)
 - [直边训练参数声明](../assets/tools/builtin/处理/识别/通过直边确定对齐.json)、[业务实例训练](../src/recognition/TrainStraightBorders.cpp)、[颜色训练](../src/recognition/TrainColorModel.cpp)、[共享参数解析](../src/recognition/StraightEdgeLocator.cpp)
-- [构建与安装](../CMakeLists.txt)、[依赖解析](../cmake/ConfigDependencyDefaults.cmake)、[预设](../CMakePresets.json)
+- [构建与安装](../CMakeLists.txt)、[原生模块依赖](../src/common/CMakeLists.txt)、[依赖解析](../cmake/ConfigDependencyDefaults.cmake)、[预设](../CMakePresets.json)
 - [作者 JSON 与资源收集](../tools/package_payload.py)、[双来源与路径边界验证](../tests/test_package_payload.py)、[发行事务与目标保护](../tools/package_tools.py)、[事务验证](../tests/test_package.py)
 - [真实模块注册验证](../tests/test_module_contract.cpp)、[动态消费](../tests/test_installation_consumer.cpp)、[算法数值](../tests/test_preprocess_contract.cpp)
 - [直边对齐与颜色识别契约](../tests/test_recognition_contract.cpp)、[共享边缘采样](../src/common/EdgeProfile.h)、[直边模型](../src/recognition/StraightEdgeModel.h)、[颜色模型](../src/recognition/ColorModel.h)
@@ -24,7 +24,7 @@
 
 Python 来源、入口及资源规则见 [资源收集器](../tools/package_payload.py) 与 [测试](../tests/test_package.py)。
 
-Python 工具以 `from .visiontools_sdk import ...` 使用[作者 SDK](../python/author_sdk/visiontools_sdk)。[资源收集器](../tools/package_payload.py) 将 SDK 及从 Contracts 生成的 `enums.py` 写入各 Python 工具包；工具目录不保存副本。构建侧 SDK 的生成与测试导入位置见 [CMakeLists.txt](../CMakeLists.txt)。
+Python 工具以 `from .visiontools_sdk import ...` 使用[作者 SDK](../python/author_sdk/visiontools_sdk)。[资源收集器](../tools/package_payload.py) 从构建清单读取完整 SDK 产物并注入 Python 工具包；组装、测试选项及解释器路径见 [CMakeLists.txt](../CMakeLists.txt) 和 [测试配置](../cmake/ConfigPython.cmake)。
 
 ## 目标 profile 与出包集合
 

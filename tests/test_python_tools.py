@@ -8,6 +8,7 @@ and fail in the host.
 """
 
 import importlib
+import os
 import json
 import pathlib
 import sys
@@ -16,7 +17,7 @@ import unittest
 import numpy as np
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-AUTHOR_SDK = ROOT / "build/python"
+AUTHOR_SDK = pathlib.Path(os.environ["VISIONTOOLS_AUTHOR_SDK"]).parent
 
 
 def load_module_from_file(file_path: pathlib.Path):
@@ -310,10 +311,8 @@ class TestPythonToolContracts(unittest.TestCase):
         self.assertEqual(status(custom)["message"], "模型不受支持")
 
     def test_sdk_preserves_raw_status_types_without_coercion(self):
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("vt_sdk", ROOT / "python/author_sdk/visiontools_sdk/__init__.py")
-        sdk = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(sdk)
+        tool = load_module_from_file(ROOT / "python/custom/examples/image_mean/mean.py")
+        sdk = importlib.import_module(tool.__package__ + ".visiontools_sdk")
 
         # bool must not be coerced to int 1
         res = sdk.result(code=True, message=None, detail=None)

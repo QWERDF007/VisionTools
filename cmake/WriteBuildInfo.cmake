@@ -9,8 +9,6 @@
 # 参数：
 #   COMPONENT      组件名（写入 JSON）
 #   VERSION        版本号
-#   COMMIT         组件自身仓库的 40 位提交（若未提供 REPO_DIR 时的备选）
-#   BRANCH         组件自身仓库的分支
 #   OUTPUT         目标 build_info.json
 #   SOURCE_FILE    可选，单个构建产物
 #   SCAN_DIR       可选，产物所在目录
@@ -44,79 +42,26 @@ if(NOT GIT_EXECUTABLE)
     set(GIT_EXECUTABLE git)
 endif()
 
-if(NOT PYTHON_EXECUTABLE)
-    find_program(PYTHON_EXECUTABLE NAMES python3 python py
-        PATHS
-            "D:/Software/anaconda3"
-            "C:/Program Files/Python312"
-            "C:/Program Files/Python311"
-            "C:/Program Files/Python310"
-            "C:/Program Files/Python39"
-    )
-endif()
-if(NOT PYTHON_EXECUTABLE)
-    set(PYTHON_EXECUTABLE python)
-endif()
-
-set(GIT_QUERY_OK FALSE)
-set(IS_DIRTY_VALUE "false")
-
-if(DEFINED REPO_DIR AND IS_DIRECTORY "${REPO_DIR}")
-    execute_process(
-        COMMAND "${PYTHON_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/check_git_workspace.py" "${REPO_DIR}" "${GIT_EXECUTABLE}"
-        OUTPUT_VARIABLE _git_out
-        RESULT_VARIABLE _git_res
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-    )
-
-    if(_git_res EQUAL 0 AND _git_out)
-        string(REGEX MATCH "COMMIT=([^\r\n]*)" _match_c "${_git_out}")
-        set(COMMIT "${CMAKE_MATCH_1}")
-        string(REGEX MATCH "BRANCH=([^\r\n]*)" _match_b "${_git_out}")
-        set(BRANCH "${CMAKE_MATCH_1}")
-        string(REGEX MATCH "DIRTY=([^\r\n]*)" _match_d "${_git_out}")
-        set(_dirty_state "${CMAKE_MATCH_1}")
-
-        if(_dirty_state STREQUAL "false")
-            set(IS_DIRTY_VALUE "false")
-            set(GIT_QUERY_OK TRUE)
-        elseif(_dirty_state STREQUAL "true")
-            set(IS_DIRTY_VALUE "true")
-            set(GIT_QUERY_OK TRUE)
-            if(RELEASE_BUILD)
-                message(FATAL_ERROR "WriteBuildInfo: 发布模式禁止脏工作区候选（${REPO_DIR} 存在未提交变更或未跟踪生产输入）")
-            endif()
-        else()
-            set(COMMIT "unknown")
-            set(BRANCH "unknown")
-            set(IS_DIRTY_VALUE "\"unknown\"")
-            if(RELEASE_BUILD)
-                message(FATAL_ERROR "WriteBuildInfo: 发布模式禁止未知候选。无法在 ${REPO_DIR} 查询 Git 提交或状态")
-            endif()
-        endif()
-    else()
-        set(COMMIT "unknown")
-        set(BRANCH "unknown")
-        set(IS_DIRTY_VALUE "\"unknown\"")
-        if(RELEASE_BUILD)
-            message(FATAL_ERROR "WriteBuildInfo: 发布模式禁止未知候选。check_git_workspace 查询失败（退出码：${_git_res}）")
-        endif()
-    endif()
-else()
-    if(NOT COMMIT OR COMMIT STREQUAL "")
-        set(COMMIT "unknown")
-    endif()
-    if(NOT BRANCH OR BRANCH STREQUAL "")
-        set(BRANCH "unknown")
-    endif()
+include("${CMAKE_CURRENT_LIST_DIR}/../3rdparty/VisionRTContracts/cmake/GitWorkspace.cmake")
+visionrt_git_workspace("${REPO_DIR}" "${GIT_EXECUTABLE}" _workspace)
+string(JSON COMMIT GET "${_workspace}" commit)
+string(JSON BRANCH GET "${_workspace}" branch)
+string(JSON _dirty GET "${_workspace}" dirty)
+if(_dirty STREQUAL "unknown")
     set(IS_DIRTY_VALUE "\"unknown\"")
-
-    if(RELEASE_BUILD)
-        message(FATAL_ERROR "WriteBuildInfo: 发布模式需要有效的 REPO_DIR 以验证组件候选身份")
-    endif()
+elseif(_dirty)
+    set(IS_DIRTY_VALUE true)
+else()
+    set(IS_DIRTY_VALUE false)
 endif()
-
+if(RELEASE_BUILD AND (_dirty STREQUAL "unknown" OR COMMIT STREQUAL "unknown" OR BRANCH STREQUAL "unknown"))
+    message(FATAL_ERROR "WriteBuildInfo: 发布模式禁止未知候选（${REPO_DIR}）")
+elseif(RELEASE_BUILD AND _dirty)
+    message(FATAL_ERROR "WriteBuildInfo: 发布模式禁止脏工作区候选（${REPO_DIR}）")
+endif()
+# Git branch names can contain JSON quote characters.
+string(REPLACE "\\" "\\\\" BRANCH "${BRANCH}")
+string(REPLACE "\"" "\\\"" BRANCH "${BRANCH}")
 set(BUILT_AT_EPOCH "")
 if(DEFINED SOURCE_FILE AND EXISTS "${SOURCE_FILE}")
     file(TIMESTAMP "${SOURCE_FILE}" BUILT_AT_EPOCH "%s" UTC)

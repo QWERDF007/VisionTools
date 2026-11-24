@@ -14,6 +14,9 @@
 
 namespace visiontools {
 
+#define VRT_ENUM_FILE "common/errors/CommonToolErrors.def"
+#include <visionrt/contracts/EnumDeclarations.h>
+
 // Tool business codes are positive and fixed: domain * 1000 + local. A domain is owned by one tool
 // group, so a code keeps its meaning when a tool moves between modules and two tools can never
 // report the same number for different failures. Host-side negative codes never appear here.

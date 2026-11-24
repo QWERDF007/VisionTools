@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from protocol_enums import declared_kind, ToolKind, SDK_SOURCE
+from enum import IntEnum
+import importlib.util
 
 import json
 import os
@@ -19,6 +20,29 @@ CACHE_SUFFIXES = {".pyc"}
 
 class PackagingError(RuntimeError):
     """An actionable packaging failure with a Chinese message."""
+
+
+@dataclass(frozen=True)
+class AuthorSdk:
+    directory: Path
+    tool_kind: type[IntEnum]
+    kind_names: dict[str, IntEnum]
+
+    @classmethod
+    def read(cls, directory) -> AuthorSdk:
+        if not isinstance(directory, str) or not directory:
+            raise PackagingError("构建清单缺少 author_sdk，请先构建 visiontools_author_sdk")
+        root = Path(directory).resolve()
+        for name in ("__init__.py", "enums.py"):
+            if not (root / name).is_file():
+                raise PackagingError(f"作者 SDK 产物缺失：{root / name}，请先构建 visiontools_author_sdk")
+        spec = importlib.util.spec_from_file_location("_visiontools_generated_enums", root / "enums.py")
+        enums = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(enums)
+        return cls(root, enums.ToolKind, enums.ENUM_WIRE_NAMES["ToolKind"])
+
+    def declared_kind(self, implementation: dict) -> IntEnum | None:
+        return self.kind_names.get(implementation.get("kind"))
 
 
 def _unique_members(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -135,9 +159,10 @@ class ToolPayload:
     source: Path
     document: dict
     origin: str
+    sdk: AuthorSdk
 
     @classmethod
-    def read(cls, project_root: Path, definition) -> ToolPayload:
+    def read(cls, project_root: Path, definition, sdk: AuthorSdk) -> ToolPayload:
         relative = relative_path(definition, "工具声明")
         if len(relative.parts) < 4 or relative.parts[:2] != ("assets", "tools") or relative.parts[2] not in ("builtin", "custom"):
             raise PackagingError(f"工具声明必须位于 assets/tools/builtin 或 custom：{relative}")
@@ -149,7 +174,7 @@ class ToolPayload:
         document = load_json(source)
         if not isinstance(document, dict):
             raise PackagingError(f"工具声明必须是对象：{source}")
-        return cls(project_root, relative, source, document, origin)
+        return cls(project_root, relative, source, document, origin, sdk)
 
     @property
     def destination(self) -> Path:
@@ -164,7 +189,8 @@ class ToolPayload:
 
     @property
     def is_python(self) -> bool:
-        return declared_kind(self.implementation) in (ToolKind.PythonFunction, ToolKind.PythonClass)
+        return self.sdk.declared_kind(self.implementation) in (
+            self.sdk.tool_kind.PythonFunction, self.sdk.tool_kind.PythonClass)
 
     @property
     def python_package(self) -> tuple[Path, Path]:
@@ -216,15 +242,8 @@ class ToolPayload:
             source, destination = self.python_package
             for path in _files(source, source, True):
                 plan.add(path, destination / path.relative_to(source))
-            # The author SDK has one source directory; the packager is the only writer
-            # that puts it inside a tool package, so every shipped tool imports the same code and
-            # no example carries a hand-maintained copy.
-            sdk = self.project_root / "python/author_sdk/visiontools_sdk"
-            if not sdk.is_dir():
-                raise PackagingError(f"作者 SDK 缺失：{sdk}")
-            for path in _files(sdk, sdk, False):
-                plan.add(path, destination / "visiontools_sdk" / path.relative_to(sdk))
-            plan.add(SDK_SOURCE, destination / "visiontools_sdk/enums.py")
+            for name in ("__init__.py", "enums.py"):
+                plan.add(self.sdk.directory / name, destination / "visiontools_sdk" / name)
         resources = self.resources()
         for source, destination, boundary in resources:
             if source.is_dir():

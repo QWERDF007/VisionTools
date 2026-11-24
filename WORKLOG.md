@@ -30,6 +30,59 @@
 - ...
 -->
 
+### 2026-11-24 — 提交原生构建与依赖清理
+
+**目标**
+- 提交原生构建、公共错误统一及既有未使用 JSON 头文件清理。
+
+**当前状态**
+- Contracts 已固定为 8dc07bdc3b5e4c1f6dac40f5cc152df14e831df5，与宿主一致，SDK 检出干净。本仓全部现有改动已纳入提交，包括 nlohmann 删除；提交身份以 Git 历史为准，尚未推送。
+- 本次只整理账本和共享契约引用，已验证的实现行为不变；实现与缓存清理限制见下方相关条目。
+
+**验证证据**
+- 两份 SDK 暂存树一致，提交前差异检查通过；本仓 build/native-final-tests.log 的 8 项及宿主 12 项回归、13 项元数据测试此前全部通过。
+- build/native-package.log 记录 30 个声明及 13 个 CPU 工具真实消费成功；未因提交重复运行测试。
+
+**下一步**
+- 宿主验收入口为 F:/Projects/VisionRT/build/bin/VisionRT.exe；无待续接代码改动。
+
+### 2026-11-24 — 原生构建与公共错误统一
+
+**目标**
+- 原生构建不执行 Python；枚举和公共错误由 C++ 唯一来源派生，打包复用构建 SDK。
+
+**当前状态**
+- 原生生成器从定义表导出完整作者 SDK，构建清单发布 author_sdk 路径；打包和测试使用同一产物，删除 Python 头文件解析器、运行时错误 JSON 读取和重复 C++ 消息映射。
+- VISIONTOOLS_BUILD_PYTHON_TESTS 只控制测试注册，解释器路径不在配置或编译时执行。构建身份复用 Contracts 的 CMake/Git 查询；CMD 入口通过 CRLF 检出规则保持可运行。
+- Contracts 已恢复至父仓固定的 df519c35c33008852ef35278124eaf85e9f28d56，并与宿主保持相同未提交改动。既有 nlohmann 删除保留，本轮未提交或推送。
+- 旧 build/python/visiontools_sdk/errors.json 缓存的清理被自动审查拒绝（blocked by policy），未重试删除；源码已删除，缓存不被 SDK 消费器读取或打包。
+
+**验证证据**
+- `tools/build.cmd cmake --build build --target all test_common_errors_contract test_recognition_contract test_module_contract test_installation_consumer --parallel 4` 通过，含推理模块；见 build/native-final-build.log。
+- 无 Python 的 PATH 下，测试开关开启且测试解释器路径不存在，CPU 配置与默认构建仍通过，见 build/native-no-python-configure.log、native-no-python-build.log。
+- 公共错误测试先复现 1006，统一后十个错误均通过；`ctest --test-dir build -C Release -R '^(test_common_errors_contract|test_recognition_contract|test_module_contract|test_python_tools|test_logic_engine|test_package_payload|test_package|test_distribution)$' --output-on-failure --timeout 120` 的 8 项全部通过，见 build/native-final-tests.log。
+- `python -B tools/package_tools.py --build-dir build --install-dir F:/Projects/VisionRT/build/bin/tools-package --profile rtx40-build --allow-dirty --verify-runtime` 通过，30 个声明及 13 个 CPU 工具实际消费成功，见 build/native-package.log。宿主 12 项回归及 SDK 安装消费通过，见宿主 build/native-final-tests.log。
+
+**下一步**
+- 宿主验收使用 F:/Projects/VisionRT/build/bin/VisionRT.exe；提交顺序为 Contracts、两个父仓，共享契约必须固定相同新提交。
+
+### 2026-11-24 — 清理未使用的 JSON 头文件
+
+**目标**
+- 删除已无引用的 3rdparty/nlohmann 依赖，核对 Contracts 的 JSON 解析使用情况。
+
+**当前状态**
+- 已通过 Git 删除 json.hpp 及其空目录，原生模块依赖索引已补入 docs/README.md；尚未提交。
+- 本轮开始时 Contracts 已检出为 6c9c3b99828d635c1bba3c3b7922402815d32ae4，父仓锁定 df519c35c33008852ef35278124eaf85e9f28d56，且其 RapidJSON 目录未跟踪；该既有状态阻止源码重建验证。
+
+**验证证据**
+- `git rm -- 3rdparty/nlohmann/json.hpp` 成功；目录不存在，源码、CMake、测试、打包脚本及当前文档对该库的引用检索为零；暂存和工作区差异检查通过。
+- 使用现有构建产物执行 `ctest --test-dir build -C Release --tests-from-file build/remove-unused-json-selection.txt --output-on-failure`，test_recognition_contract、test_module_contract 两项通过，见 build/remove-unused-json-tests.log。
+- 源码重建未通过：工具仓 build.cmd 命令解析失败，改用宿主的 MSVC 初始化入口后，CMake 因当前 Contracts 缺少 tools/export_enums.py 在配置阶段停止；见 build/remove-unused-json-build.log、build/remove-unused-json-msvc-build.log。上述现有产物测试不作为重新编译成功的证据。
+
+**下一步**
+- 后续重建先核对 Contracts 的既有检出状态及构建脚本；本轮交付范围为头文件删除、文档索引和本条账本。
+
 ### 2026-11-23 — 训练实现与共享契约提交
 
 **目标**

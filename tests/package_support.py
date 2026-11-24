@@ -45,10 +45,6 @@ class PackageFixture(unittest.TestCase):
             # Output ids start at 2: the first two output ports belong to the host status envelope.
             "outputs": [{"id": 2, "name_zh": "Value", "type": 'int'}],
         }
-        # Every project that ships Python tools carries the one author SDK the packager injects.
-        sdk = self.project / "python/author_sdk/visiontools_sdk"
-        sdk.mkdir(parents=True)
-        (sdk / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
         self.code = self.project / "python/custom/examples/math"
         self.code.mkdir(parents=True)
         (self.code / "tool.py").write_text(
@@ -62,7 +58,8 @@ class PackageFixture(unittest.TestCase):
             "schema_version": 1, "modules": [],
             "tools": [{"definition": self.declaration.relative_to(self.project).as_posix()}],
         }
-        self.manifest = {"variant": "portable-release", "config": "Release", "modules": {}, "runtime_files": []}
+        self.manifest = {"variant": "portable-release", "config": "Release", "modules": {}, "runtime_files": [],
+                         "author_sdk": os.environ["VISIONTOOLS_AUTHOR_SDK"]}
         package.save_json(self.document, self.declaration)
         package.save_json(self.index, self.project / "tools/package_catalog.json")
         (self.project / ".gitignore").write_text("/build/\n/dist/\n", encoding="utf-8")

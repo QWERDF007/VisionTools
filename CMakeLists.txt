@@ -16,7 +16,7 @@ include(PrintConfig)
 
 option(VISIONTOOLS_BUILD_TESTS "Build contract and unit tests" ON)
 option(VISIONTOOLS_BUILD_INFER "Build InferRT GPU tools module" ON)
-option(VISIONTOOLS_BUILD_PYTHON "Enable Python tool and packaging tests" ON)
+option(VISIONTOOLS_BUILD_PYTHON_TESTS "Register Python tool and packaging tests" ON)
 option(VISIONTOOLS_RELEASE_BUILD "Enforce release gating checks (rejects dirty/unknown build metadata)" OFF)
 set(VISIONTOOLS_VALIDATOR "$ENV{VISIONTOOLS_VALIDATOR}" CACHE FILEPATH "Host tool declaration validator")
 
@@ -24,34 +24,32 @@ if(VISIONTOOLS_BUILD_INFER)
     include(ConfigCUDA)
     include(ConfigInferRT)
 endif()
-if(VISIONTOOLS_BUILD_PYTHON)
+include(3rdparty/VisionRTContracts/tools/EnumExport.cmake)
+visionrt_add_enum_exporter(visiontools_enum_export tools/export_protocol_enums.cpp)
+target_include_directories(visiontools_enum_export PRIVATE "${CMAKE_SOURCE_DIR}/src")
+set(VISIONTOOLS_AUTHOR_SDK "${CMAKE_BINARY_DIR}/python/visiontools_sdk")
+add_custom_command(OUTPUT "${VISIONTOOLS_AUTHOR_SDK}/enums.py"
+    COMMAND visiontools_enum_export --python "${VISIONTOOLS_AUTHOR_SDK}/enums.py"
+    DEPENDS visiontools_enum_export
+    VERBATIM)
+add_custom_command(OUTPUT "${VISIONTOOLS_AUTHOR_SDK}/__init__.py"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/python/author_sdk/visiontools_sdk/__init__.py"
+        "${VISIONTOOLS_AUTHOR_SDK}/__init__.py"
+    DEPENDS "${CMAKE_SOURCE_DIR}/python/author_sdk/visiontools_sdk/__init__.py"
+    VERBATIM)
+add_custom_target(visiontools_author_sdk ALL DEPENDS
+    "${VISIONTOOLS_AUTHOR_SDK}/enums.py" "${VISIONTOOLS_AUTHOR_SDK}/__init__.py")
+if(VISIONTOOLS_BUILD_TESTS AND VISIONTOOLS_BUILD_PYTHON_TESTS)
     include(ConfigPython)
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
-    set(_contracts "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/VisionRTContracts")
-    set(_sdk "${CMAKE_CURRENT_BINARY_DIR}/python/visiontools_sdk")
-    foreach(_file __init__.py errors.json)
-        configure_file("python/author_sdk/visiontools_sdk/${_file}" "${_sdk}/${_file}" COPYONLY)
-    endforeach()
-    execute_process(COMMAND "${Python3_EXECUTABLE}" "${_contracts}/tools/export_enums.py"
-        --python "${_sdk}/enums.py"
-        "${_contracts}/include/visionrt/contracts/ProtocolEnums.h"
-        "${_contracts}/include/visionrt/contracts/TypeSpec.h"
-        "${_contracts}/include/visionrt/contracts/ROI.h"
-        COMMAND_ERROR_IS_FATAL ANY)
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-        "${_contracts}/tools/export_enums.py"
-        "${_contracts}/include/visionrt/contracts/ProtocolEnums.h"
-        "${_contracts}/include/visionrt/contracts/TypeSpec.h"
-        "${_contracts}/include/visionrt/contracts/ROI.h")
 endif()
-
 set(VISIONTOOLS_DISTRIBUTION "${PROJECT_NAME}-${PROJECT_VERSION}" CACHE STRING "Distribution configuration name")
 set(VISIONTOOLS_BUILT_MODULES visiontools_preprocess visiontools_metrology visiontools_recognition)
 if(VISIONTOOLS_BUILD_INFER)
     list(APPEND VISIONTOOLS_BUILT_MODULES visiontools_infer)
 endif()
 set(_resolved_deps_content "{\n  \"variant\": \"${VISIONTOOLS_DISTRIBUTION}\",\n  \"config\": \"$<CONFIG>\",\n  \"validator\": \"${VISIONTOOLS_VALIDATOR}\",\n")
-string(APPEND _resolved_deps_content "  \"runtime_install\": {\"cmake\": \"${CMAKE_COMMAND}\", \"component\": \"VisionToolsRuntime\"},\n  \"runtime_files\": [],\n  \"modules\": {")
+string(APPEND _resolved_deps_content "  \"author_sdk\": \"${VISIONTOOLS_AUTHOR_SDK}\",\n  \"runtime_install\": {\"cmake\": \"${CMAKE_COMMAND}\", \"component\": \"VisionToolsRuntime\"},\n  \"runtime_files\": [],\n  \"modules\": {")
 set(_module_separator "")
 foreach(_module IN LISTS VISIONTOOLS_BUILT_MODULES)
     string(APPEND _resolved_deps_content "${_module_separator}\n    \"${_module}\": {\"source\": \"$<TARGET_FILE:${_module}>\"}")
@@ -60,33 +58,6 @@ endforeach()
 string(APPEND _resolved_deps_content "\n  }\n}\n")
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/resolved_dependencies.json" CONTENT "${_resolved_deps_content}")
 
-# 生成工具包构建元数据 build_info.json (Ticket AT-01)
-find_package(Git QUIET)
-set(VISIONTOOLS_COMMIT "unknown")
-if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
-    execute_process(
-        COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-        OUTPUT_VARIABLE _vt_commit
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-    )
-    if(_vt_commit)
-        set(VISIONTOOLS_COMMIT "${_vt_commit}")
-    endif()
-endif()
-if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
-    execute_process(
-        COMMAND "${GIT_EXECUTABLE}" rev-parse --abbrev-ref HEAD
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-        OUTPUT_VARIABLE _vt_branch
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-    )
-    if(_vt_branch)
-        set(VISIONTOOLS_BRANCH "${_vt_branch}")
-    endif()
-endif()
 set(_devenv_dirs "${VISIONTOOLS_OPENCV_BIN}")
 if(VISIONTOOLS_BUILD_INFER)
     list(APPEND _devenv_dirs "${INFERRT_BIN_DIR}" "${VISIONTOOLS_CUDA_BIN}" "${TRT_ROOT}/bin")
@@ -185,8 +156,6 @@ add_custom_target(visiontools_build_info ALL
     COMMAND ${CMAKE_COMMAND}
         -DCOMPONENT=VisionTools
         -DVERSION=${PROJECT_VERSION}
-        -DCOMMIT=${VISIONTOOLS_COMMIT}
-        -DBRANCH=${VISIONTOOLS_BRANCH}
         -DREPO_DIR=${CMAKE_CURRENT_SOURCE_DIR}
         -DSCAN_DIR=${CMAKE_CURRENT_BINARY_DIR}/src
         -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/build_info.json
