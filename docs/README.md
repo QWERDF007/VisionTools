@@ -6,7 +6,7 @@
 - [CPU 注册](../src/preprocess/PreprocessModule.cpp)、[识别注册](../src/recognition/RecognitionModule.cpp)、[推理注册](../src/infer/InferModule.cpp)、[函数与类实例注册](../3rdparty/VisionRTContracts/include/visionrt/contracts/FunctionTool.h)
 - [公共枚举源定义](../3rdparty/VisionRTContracts/include/visionrt/contracts/ProtocolEnums.h)、[声明枚举名称](../3rdparty/VisionRTContracts/include/visionrt/contracts/DeclarationNames.def)、[枚举导出](../3rdparty/VisionRTContracts/tools/export_enums.py)、[打包侧枚举与 SDK 生成](../tools/protocol_enums.py)
 - [作者声明](../assets/tools)、[发行目录表](../tools/package_catalog.json)
-- [训练调用复用业务端口的声明](../assets/tools/builtin/处理/识别/通过直边确定对齐.json)、[直边训练器](../src/recognition/TrainStraightBorders.cpp)
+- [直边训练参数声明](../assets/tools/builtin/处理/识别/通过直边确定对齐.json)、[业务实例训练](../src/recognition/TrainStraightBorders.cpp)、[颜色训练](../src/recognition/TrainColorModel.cpp)、[共享参数解析](../src/recognition/StraightEdgeLocator.cpp)
 - [构建与安装](../CMakeLists.txt)、[依赖解析](../cmake/ConfigDependencyDefaults.cmake)、[预设](../CMakePresets.json)
 - [作者 JSON 与资源收集](../tools/package_payload.py)、[双来源与路径边界验证](../tests/test_package_payload.py)、[发行事务与目标保护](../tools/package_tools.py)、[事务验证](../tests/test_package.py)
 - [真实模块注册验证](../tests/test_module_contract.cpp)、[动态消费](../tests/test_installation_consumer.cpp)、[算法数值](../tests/test_preprocess_contract.cpp)
@@ -20,7 +20,7 @@
 
 ## 新增工具
 
-以 [AdaptiveBinaryTool](../src/preprocess/AdaptiveBinaryTool.h)、[实现](../src/preprocess/AdaptiveBinaryTool.cpp) 为最小原生示例；接入位置分别为 [模块注册](../src/preprocess/PreprocessModule.cpp)、[CMake 目标](../src/preprocess/CMakeLists.txt)、[JSON 声明](../assets/tools/builtin/预处理/图像处理/自适应二值化.json) 与 [发行目录表](../tools/package_catalog.json)。工具只消费公共 Values，不解析作者声明。路径参数由工具自己解释：绝对路径与 UNC 原样使用，其余非空相对值以主程序所在目录为基准（[实现](../src/common/ProductPaths.h)）；宿主既不改写字符串，也不向工具传目录。
+以 [AdaptiveBinaryTool](../src/preprocess/AdaptiveBinaryTool.h)、[实现](../src/preprocess/AdaptiveBinaryTool.cpp) 为最小原生示例；接入位置分别为 [模块注册](../src/preprocess/PreprocessModule.cpp)、[CMake 目标](../src/preprocess/CMakeLists.txt)、[JSON 声明](../assets/tools/builtin/预处理/图像处理/自适应二值化.json) 与 [发行目录表](../tools/package_catalog.json)。普通资源路径见 [ProductPaths](../src/common/ProductPaths.h)，模型引用和训练产物见 [Contracts 实例接口](../3rdparty/VisionRTContracts/include/visionrt/contracts/Tool.h)。
 
 Python 来源、入口及资源规则见 [资源收集器](../tools/package_payload.py) 与 [测试](../tests/test_package.py)。
 

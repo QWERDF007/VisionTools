@@ -44,7 +44,7 @@ class RowSpacingTool final : public visionrt::IToolInstance
 public:
     ~RowSpacingTool() override = default;
 
-    visionrt::ToolStatus initialize(const visionrt::Values &parameters) override;
+    visionrt::ToolStatus initialize(const visionrt::ToolConfiguration &parameters) override;
     visionrt::ToolResult execute(const visionrt::Values &inputs) override;
     visionrt::ToolStatus release() override;
 };

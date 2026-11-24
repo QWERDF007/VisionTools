@@ -1,4 +1,4 @@
-#include "TrainColorModel.h"
+#include "RecognizeColorTool.h"
 
 #include "ColorModel.h"
 #include "common/ToolOutputs.h"
@@ -13,12 +13,12 @@
 
 namespace visiontools::recognition {
 namespace {
-namespace p   = ports::train_color_model;
+namespace p   = ports::recognize_color;
 using FieldId = visionrt::TrainingFieldId;
 
 visionrt::Values missingOutputs()
 {
-    return missingPorts({p::out::MODEL});
+    return missingPorts({p::out::MODEL_PATH});
 }
 
 // Training frames keep the order they arrived in; the model itself works in BGR. Normalizing here
@@ -51,30 +51,12 @@ cv::Mat bgrFrame(const visionrt::TrainingImage &image)
 }
 } // namespace
 
-visionrt::ToolStatus TrainColorModelTool::initialize(const visionrt::Values &)
+visionrt::ToolResult RecognizeColorTool::train(const visionrt::TrainingSet &training, const visionrt::Values &parameters)
 {
-    return {};
-}
-
-visionrt::ToolResult TrainColorModelTool::execute(const visionrt::Values &inputs)
-{
-    const auto  setEntry = inputs.find(p::in::SET);
-    const auto *set
-        = setEntry == inputs.end() ? nullptr : std::get_if<visionrt::DataRef<visionrt::TrainingSet>>(&setEntry->second);
-    if (!set)
-        return failure(missingOutputs(), CommonToolError::InputTypeMismatch, "训练集");
-    const auto  labelEntry  = inputs.find(p::in::LABEL_FIELD);
-    const auto  regionEntry = inputs.find(p::in::REGION_FIELD);
-    const auto *labelValue  = labelEntry == inputs.end() ? nullptr : std::get_if<std::int64_t>(&labelEntry->second);
-    const auto *regionValue = regionEntry == inputs.end() ? nullptr : std::get_if<std::int64_t>(&regionEntry->second);
-    if (!labelValue || !regionValue)
-        return failure(missingOutputs(), CommonToolError::InputTypeMismatch, "字段编号");
-    const auto labelField  = static_cast<FieldId>(*labelValue);
-    const auto regionField = static_cast<FieldId>(*regionValue);
-
+    constexpr auto labelField = p::train::LABEL;
+    constexpr auto regionField = p::train::REGIONS;
     try
     {
-        const auto &training = set->get();
         visionrt::validateTrainingSet(training);
         if (training.records.empty())
             fail(RecognitionError::ColorSamplesMissing, "训练集");
@@ -116,9 +98,10 @@ visionrt::ToolResult TrainColorModelTool::execute(const visionrt::Values &inputs
 
         const auto       bytes = ColorModel::train(samples).encode();
         visionrt::Values outputs;
-        outputs.emplace(p::out::MODEL, visionrt::Array::dense(visionrt::DType::UInt8,
-                                                              {static_cast<std::int64_t>(bytes.size())}, bytes));
-        return visionrt::toolResult(std::move(outputs), {0, "ok"});
+        outputs.emplace(p::out::MODEL_PATH, std::get<std::string>(parameters.at(p::train::MODEL_PATH)));
+        auto result = visionrt::toolResult(std::move(outputs), {0, "训练成功"});
+        result.artifacts.emplace("color-model", visionrt::ModelArtifact{bytes});
+        return result;
     }
     catch (const ToolFailure &error)
     {
@@ -128,11 +111,6 @@ visionrt::ToolResult TrainColorModelTool::execute(const visionrt::Values &inputs
     {
         return failure(missingOutputs(), CommonToolError::OperatorFailed, "颜色模型训练失败", error.what());
     }
-}
-
-visionrt::ToolStatus TrainColorModelTool::release()
-{
-    return {};
 }
 
 } // namespace visiontools::recognition

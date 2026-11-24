@@ -1,7 +1,7 @@
 {
   "name_en": "CropImage",
   "name_zh": "图像裁剪",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -12,6 +12,10 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     },
     {
@@ -19,7 +23,9 @@
       "name_zh": "矩形区域",
       "type": "roi",
       "ui": {
-        "editor": "rect"
+        "editor": "rect",
+        "tab": "basic_input",
+        "group": "检测区域"
       },
       "relations": {
         "image": {

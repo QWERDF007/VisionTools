@@ -61,8 +61,9 @@ visionrt::Values proposalOutputs(const EdgeProbeResult &result)
 }
 } // namespace
 
-visionrt::ToolStatus LocateStraightEdgeTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus LocateStraightEdgeTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
+    const auto &parameters = configuration.parameters;
     if (!parameters.empty())
         return {visionrt::kContractViolationStatus, "直边定位辅助工具不接受初始化参数"};
     return {};

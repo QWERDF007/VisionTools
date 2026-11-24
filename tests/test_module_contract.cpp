@@ -59,7 +59,7 @@ struct ThrowingClassTool final : public visionrt::IToolInstance
         throw std::runtime_error("故意构造抛错");
     }
 
-    visionrt::ToolStatus initialize(const visionrt::Values &) override
+    visionrt::ToolStatus initialize(const visionrt::ToolConfiguration &configuration) override
     {
         return {};
     }

@@ -27,32 +27,19 @@ visionrt::Values missingOutputs()
     return missingPorts({p::out::ALIGNMENTS, p::out::FOUND_SEGMENTS});
 }
 
-edge::EdgePolarity parsePolarity(const std::string &value)
-{
-    if (value == "any")
-        return edge::EdgePolarity::Any;
-    if (value == "dark_to_light")
-        return edge::EdgePolarity::DarkToLight;
-    if (value == "light_to_dark")
-        return edge::EdgePolarity::LightToDark;
-    fail(CommonToolError::InputOutOfRange, "跃迁方向", "只能是 any、dark_to_light 或 light_to_dark");
-}
 } // namespace
 
-visionrt::ToolStatus AlignStraightBordersTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus AlignStraightBordersTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
     try
     {
-        const auto found = parameters.find(p::init::MODEL);
-        if (found == parameters.end() || !std::holds_alternative<std::string>(found->second))
-            return status(RecognitionError::StraightEdgeModelPathMissing, "初始化参数 1");
-        const auto &path = std::get<std::string>(found->second);
-        if (path.empty())
-            return status(RecognitionError::StraightEdgeModelPathMissing, "初始化参数 1");
-        const auto    resolved = common::resolveResourcePath(path);
-        std::ifstream file(resolved, std::ios::binary);
-        if (!file)
-            return status(RecognitionError::StraightEdgeModelUnreadable, path, "文件不存在或无法打开");
+        const auto found = configuration.models.find("edge-model");
+        if (found == configuration.models.end() || found->second.empty())
+            return status(RecognitionError::StraightEdgeModelPathMissing, "模型路径");
+        const auto utf8 = found->second.generic_u8string();
+        modelPath_ = std::string(reinterpret_cast<const char*>(utf8.data()), utf8.size());
+        std::ifstream file(found->second, std::ios::binary);
+        if (!file) return status(RecognitionError::StraightEdgeModelUnreadable, modelPath_);
         const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
         model_ = StraightEdgeModel::decode(bytes);
         return {};
@@ -89,14 +76,7 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
 
     try
     {
-        if (!(options.contrast >= 0.0) || !(options.contrast <= 1024.0))
-            fail(CommonToolError::InputOutOfRange, "边缘对比度", "必须在 [0, 1024] 内");
-        if (edgeWidth < 1 || edgeWidth > 63)
-            fail(CommonToolError::InputOutOfRange, "边缘宽度", "必须在 [1, 63] 内");
-        options.width = static_cast<int>(edgeWidth);
-        if (!(options.minCompleteness >= 0.0) || !(options.minCompleteness <= 1.0))
-            fail(CommonToolError::InputOutOfRange, "最低边完整度", "必须在 [0, 1] 内");
-        options.polarity = parsePolarity(polarityName);
+        options = EdgeSearchOptions::fromParameters(options.contrast, edgeWidth, polarityName, options.minCompleteness);
 
         const auto &images  = imagesRef.get();
         const auto  regions = roi::groups(regionsRef, images.size(), "搜索区域");
@@ -136,6 +116,7 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
         }
 
         visionrt::Values outputs;
+        outputs.emplace(p::out::MODEL_PATH, modelPath_);
         outputs.emplace(p::out::ALIGNMENTS, geometry::alignmentArray(alignments));
         outputs.emplace(p::out::FOUND_SEGMENTS, roi::roiValue(std::move(foundSegments)));
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());

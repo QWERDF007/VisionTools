@@ -11,8 +11,9 @@ template<visionrt::RoiKind Kind>
 class CreateRoiTool final : public visionrt::IToolInstance
 {
 public:
-    visionrt::ToolStatus initialize(const visionrt::Values &parameters) override
+    visionrt::ToolStatus initialize(const visionrt::ToolConfiguration &configuration) override
     {
+    const auto &parameters = configuration.parameters;
         return parameters.empty()
                  ? visionrt::ToolStatus{}
                  : visionrt::ToolStatus{visionrt::kContractViolationStatus, "创建工具不接受初始化参数"};

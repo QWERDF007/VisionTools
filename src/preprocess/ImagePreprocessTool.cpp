@@ -36,8 +36,9 @@ cv::Mat toGray(const cv::Mat &image, std::size_t index)
 
 } // namespace
 
-visionrt::ToolStatus ImagePreprocessTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus ImagePreprocessTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
+    const auto &parameters = configuration.parameters;
     if (!parameters.empty())
     {
         return {visionrt::kContractViolationStatus, "图像预处理不接受初始化参数"};

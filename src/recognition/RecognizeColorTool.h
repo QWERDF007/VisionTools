@@ -9,8 +9,10 @@ namespace visiontools::recognition {
 namespace ports::recognize_color {
 inline constexpr char TOOL_ID[] = "RecognizeColor";
 
-namespace init {
-inline constexpr visionrt::PortId MODEL = 1;
+namespace train {
+inline constexpr visionrt::PortId MODEL_PATH = 3;
+inline constexpr visionrt::PortId LABEL = 1;
+inline constexpr visionrt::PortId REGIONS = 2;
 }
 
 namespace in {
@@ -22,6 +24,7 @@ inline constexpr visionrt::PortId MIN_RATIO = 5;
 } // namespace in
 
 namespace out {
+inline constexpr visionrt::PortId MODEL_PATH = 9;
 inline constexpr visionrt::PortId REGIONS  = 3;
 inline constexpr visionrt::PortId COLORS   = 4;
 inline constexpr visionrt::PortId SCORES   = 5;
@@ -37,11 +40,13 @@ inline constexpr visionrt::PortId CENTER_Y = 8;
 class RecognizeColorTool final : public visionrt::IToolInstance
 {
 public:
-    visionrt::ToolStatus initialize(const visionrt::Values &parameters) override;
+    visionrt::ToolStatus initialize(const visionrt::ToolConfiguration &parameters) override;
     visionrt::ToolResult execute(const visionrt::Values &inputs) override;
+    visionrt::ToolResult train(const visionrt::TrainingSet &, const visionrt::Values &) override;
     visionrt::ToolStatus release() override;
 
 private:
+    std::string modelPath_;
     ColorModel model_;
 };
 

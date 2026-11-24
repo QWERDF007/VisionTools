@@ -1,20 +1,11 @@
 {
   "name_en": "AlignStraightBorders",
   "name_zh": "通过直边确定对齐",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
-  "init_params": [
-    {
-      "id": 1,
-      "name_zh": "直边模型路径",
-      "type": "string",
-      "ui": {
-        "editor": "path"
-      }
-    }
-  ],
+  "init_params": [],
   "inputs": [
     {
       "id": 1,
@@ -22,21 +13,26 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     },
     {
       "id": 2,
       "name_zh": "边缘对比度",
       "type": "float",
-      "default": 30.0,
+      "default": 30,
       "constraints": {
-        "min": 0.0,
-        "max": 1024.0
+        "min": 0,
+        "max": 1024
       },
       "ui": {
         "editor": "number",
         "tab": "detection",
-        "decimals": 2
+        "decimals": 2,
+        "group": "边缘提取"
       }
     },
     {
@@ -50,7 +46,8 @@
       },
       "ui": {
         "editor": "number",
-        "tab": "detection"
+        "tab": "detection",
+        "group": "边缘提取"
       }
     },
     {
@@ -67,7 +64,8 @@
       },
       "ui": {
         "editor": "text",
-        "tab": "detection"
+        "tab": "detection",
+        "group": "边缘提取"
       }
     },
     {
@@ -76,13 +74,14 @@
       "type": "float",
       "default": 0.4,
       "constraints": {
-        "min": 0.0,
-        "max": 1.0
+        "min": 0,
+        "max": 1
       },
       "ui": {
         "editor": "number",
         "tab": "detection",
-        "decimals": 2
+        "decimals": 2,
+        "group": "边缘提取"
       }
     },
     {
@@ -95,7 +94,11 @@
       },
       "name_zh": "搜索区域",
       "id": 6,
-      "default": []
+      "default": [],
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测区域"
+      }
     }
   ],
   "outputs": [
@@ -106,7 +109,8 @@
         "type": "array",
         "dtype": "float64",
         "rank": 3
-      }
+      },
+      "produced_by": "execute"
     },
     {
       "id": 3,
@@ -118,6 +122,11 @@
           "id": 1
         }
       }
+    },
+    {
+      "id": 4,
+      "name_zh": "模型路径",
+      "type": "string"
     }
   ],
   "training": {
@@ -125,68 +134,118 @@
       "stage": "inputs",
       "id": 1
     },
-    "records": {
-      "max": 1,
-      "fields": []
-    },
-    "call": {
-      "tool": "TrainStraightBorders",
-      "inputs": [
-        {
-          "port": 1,
-          "context": "training_set"
-        },
-        {
-          "source": {
-            "stage": "inputs",
-            "id": 6
-          },
-          "port": 2
-        },
-        {
-          "port": 3,
-          "source": {
-            "stage": "inputs",
-            "id": 2
-          }
-        },
-        {
-          "port": 4,
-          "source": {
-            "stage": "inputs",
-            "id": 3
-          }
-        },
-        {
-          "port": 5,
-          "source": {
-            "stage": "inputs",
-            "id": 4
-          }
-        },
-        {
-          "port": 6,
-          "source": {
-            "stage": "inputs",
-            "id": 5
-          }
-        }
-      ]
-    },
+    "max_records": 1,
+    "overlay_output": 3,
     "artifacts": [
       {
         "id": "edge-model",
-        "source_port": 2,
+        "source_port": 4,
         "format": "visiontools.straight-edge-model",
         "version": 2,
         "target": {
-          "stage": "init",
+          "stage": "train_params",
           "id": 1
         }
       }
-    ],
-    "overlay_output": 3,
-    "region_input": 6
+    ]
   },
-  "schema_version": 2
+  "schema_version": 2,
+  "train_params": [
+    {
+      "id": 1,
+      "name_zh": "直边模型路径",
+      "type": "string",
+      "scope": "tool",
+      "ui": {
+        "editor": "path",
+        "group": "模型",
+        "tab": "training"
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "训练搜索区域",
+      "type": "roi",
+      "scope": "record",
+      "default": [],
+      "canvas": {
+        "min": 2,
+        "max": 2
+      },
+      "ui": {
+        "editor": "roi",
+        "group": "训练数据",
+        "tab": "training"
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "边缘对比度",
+      "type": "float",
+      "default": 30,
+      "constraints": {
+        "min": 0,
+        "max": 1024
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "training",
+        "decimals": 2,
+        "group": "训练参数"
+      },
+      "scope": "tool"
+    },
+    {
+      "id": 4,
+      "name_zh": "边缘宽度",
+      "type": "int",
+      "default": 3,
+      "constraints": {
+        "min": 1,
+        "max": 63
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "training",
+        "group": "训练参数"
+      },
+      "scope": "tool"
+    },
+    {
+      "id": 5,
+      "name_zh": "跃迁方向",
+      "type": "string",
+      "default": "any",
+      "constraints": {
+        "options": [
+          "any",
+          "dark_to_light",
+          "light_to_dark"
+        ]
+      },
+      "ui": {
+        "editor": "text",
+        "tab": "training",
+        "group": "训练参数"
+      },
+      "scope": "tool"
+    },
+    {
+      "id": 6,
+      "name_zh": "最低边完整度",
+      "type": "float",
+      "default": 0.4,
+      "constraints": {
+        "min": 0,
+        "max": 1
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "training",
+        "decimals": 2,
+        "group": "训练参数"
+      },
+      "scope": "tool"
+    }
+  ]
 }

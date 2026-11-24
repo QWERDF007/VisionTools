@@ -15,6 +15,10 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     }
   ],

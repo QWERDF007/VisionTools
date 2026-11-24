@@ -66,17 +66,16 @@ std::vector<std::uint8_t> readModel(const std::filesystem::path &path)
 }
 } // namespace
 
-visionrt::ToolStatus RecognizeColorTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus RecognizeColorTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
     try
     {
-        const auto found = parameters.find(p::init::MODEL);
-        if (found == parameters.end() || !std::holds_alternative<std::string>(found->second))
-            return status(RecognitionError::ColorModelPathMissing, "初始化参数 1");
-        const auto &path = std::get<std::string>(found->second);
-        if (path.empty())
-            return status(RecognitionError::ColorModelPathMissing, "初始化参数 1");
-        model_ = ColorModel::decode(readModel(common::resolveResourcePath(path)));
+        const auto found = configuration.models.find("color-model");
+        if (found == configuration.models.end() || found->second.empty())
+            return status(RecognitionError::ColorModelPathMissing, "模型路径");
+        const auto utf8 = found->second.generic_u8string();
+        modelPath_ = std::string(reinterpret_cast<const char*>(utf8.data()), utf8.size());
+        model_ = ColorModel::decode(readModel(found->second));
         return {};
     }
     catch (const ToolFailure &error)
@@ -182,6 +181,7 @@ visionrt::ToolResult RecognizeColorTool::execute(const visionrt::Values &inputs)
         }
 
         visionrt::Values outputs;
+        outputs.emplace(p::out::MODEL_PATH, modelPath_);
 
         outputs.emplace(p::out::REGIONS, roi::roiValue(std::move(currentCircles)));
         outputs.emplace(p::out::COLORS, visionrt::Array::fromNested(std::move(colors)));

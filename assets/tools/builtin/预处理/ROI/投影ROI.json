@@ -1,7 +1,7 @@
 {
   "name_en": "ProjectRoi",
   "name_zh": "投影ROI",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -12,6 +12,10 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     },
     {
@@ -26,7 +30,8 @@
         ]
       },
       "ui": {
-        "tab": "preprocess"
+        "tab": "detection",
+        "group": "投影参数"
       }
     },
     {
@@ -41,7 +46,8 @@
         ]
       },
       "ui": {
-        "tab": "preprocess"
+        "tab": "detection",
+        "group": "投影参数"
       }
     },
     {
@@ -55,8 +61,9 @@
       },
       "ui": {
         "editor": "number",
-        "tab": "preprocess",
-        "step": 1
+        "tab": "detection",
+        "step": 1,
+        "group": "投影参数"
       }
     },
     {
@@ -69,7 +76,8 @@
       },
       "ui": {
         "editor": "number",
-        "tab": "preprocess"
+        "tab": "detection",
+        "group": "投影参数"
       }
     },
     {
@@ -82,7 +90,8 @@
       },
       "ui": {
         "editor": "number",
-        "tab": "preprocess"
+        "tab": "detection",
+        "group": "投影参数"
       }
     },
     {
@@ -94,7 +103,8 @@
       },
       "ui": {
         "editor": "number",
-        "tab": "preprocess"
+        "tab": "detection",
+        "group": "投影参数"
       }
     },
     {
@@ -106,7 +116,8 @@
       },
       "ui": {
         "editor": "number",
-        "tab": "preprocess"
+        "tab": "detection",
+        "group": "投影参数"
       }
     }
   ],

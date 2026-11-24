@@ -1,7 +1,7 @@
 {
   "name_en": "MeasureCircle",
   "name_zh": "测量圆",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -12,6 +12,10 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     },
     {
@@ -20,7 +24,9 @@
       "type": "roi",
       "default": [],
       "ui": {
-        "editor": "array"
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "检测区域"
       },
       "relations": {
         "image": {
@@ -42,7 +48,9 @@
         "rank": 3
       },
       "ui": {
-        "editor": "array"
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "输入数据"
       }
     },
     {
@@ -55,63 +63,73 @@
         "max": 4096
       },
       "ui": {
-        "editor": "number"
+        "editor": "number",
+        "tab": "detection",
+        "group": "卡尺采样"
       }
     },
     {
       "id": 5,
       "name_zh": "径向半搜索宽度",
       "type": "float",
-      "default": 8.0,
+      "default": 8,
       "constraints": {
         "min": 0.5,
-        "max": 4096.0
+        "max": 4096
       },
       "ui": {
         "editor": "number",
-        "decimals": 2
+        "decimals": 2,
+        "tab": "detection",
+        "group": "卡尺采样"
       }
     },
     {
       "id": 6,
       "name_zh": "切向平均宽度",
       "type": "float",
-      "default": 3.0,
+      "default": 3,
       "constraints": {
-        "min": 1.0,
-        "max": 1024.0
+        "min": 1,
+        "max": 1024
       },
       "ui": {
         "editor": "number",
-        "decimals": 2
+        "decimals": 2,
+        "tab": "detection",
+        "group": "卡尺采样"
       }
     },
     {
       "id": 7,
       "name_zh": "平滑标准差",
       "type": "float",
-      "default": 1.0,
+      "default": 1,
       "constraints": {
         "min": 0.1,
-        "max": 20.0
+        "max": 20
       },
       "ui": {
         "editor": "number",
-        "decimals": 2
+        "decimals": 2,
+        "tab": "detection",
+        "group": "边缘提取"
       }
     },
     {
       "id": 8,
       "name_zh": "最小梯度",
       "type": "float",
-      "default": 8.0,
+      "default": 8,
       "constraints": {
-        "min": 0.0,
-        "max": 255.0
+        "min": 0,
+        "max": 255
       },
       "ui": {
         "editor": "number",
-        "decimals": 2
+        "decimals": 2,
+        "tab": "detection",
+        "group": "边缘提取"
       }
     },
     {
@@ -127,7 +145,9 @@
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": "text",
+        "tab": "detection",
+        "group": "边缘提取"
       }
     },
     {
@@ -140,7 +160,9 @@
         "max": 4096
       },
       "ui": {
-        "editor": "number"
+        "editor": "number",
+        "tab": "detection",
+        "group": "拟合约束"
       }
     },
     {
@@ -149,26 +171,30 @@
       "type": "float",
       "default": 0.6,
       "constraints": {
-        "min": 0.0,
-        "max": 1.0
+        "min": 0,
+        "max": 1
       },
       "ui": {
         "editor": "number",
-        "decimals": 2
+        "decimals": 2,
+        "tab": "detection",
+        "group": "拟合约束"
       }
     },
     {
       "id": 12,
       "name_zh": "最小覆盖角度",
       "type": "float",
-      "default": 180.0,
+      "default": 180,
       "constraints": {
-        "min": 0.0,
-        "max": 360.0
+        "min": 0,
+        "max": 360
       },
       "ui": {
         "editor": "number",
-        "decimals": 1
+        "decimals": 1,
+        "tab": "detection",
+        "group": "拟合约束"
       }
     },
     {
@@ -177,50 +203,58 @@
       "type": "float",
       "default": 0.5,
       "constraints": {
-        "min": 0.0
+        "min": 0
       },
       "ui": {
         "editor": "number",
-        "decimals": 3
+        "decimals": 3,
+        "tab": "detection",
+        "group": "拟合约束"
       }
     },
     {
       "id": 14,
       "name_zh": "最大半径",
       "type": "float",
-      "default": 1000000.0,
+      "default": 1000000,
       "constraints": {
-        "min": 0.0
+        "min": 0
       },
       "ui": {
         "editor": "number",
-        "decimals": 3
+        "decimals": 3,
+        "tab": "detection",
+        "group": "拟合约束"
       }
     },
     {
       "id": 15,
       "name_zh": "最大拟合误差",
       "type": "float",
-      "default": 1.0,
+      "default": 1,
       "constraints": {
-        "min": 0.0
+        "min": 0
       },
       "ui": {
         "editor": "number",
-        "decimals": 3
+        "decimals": 3,
+        "tab": "detection",
+        "group": "拟合约束"
       }
     },
     {
       "id": 16,
       "name_zh": "每像素物理长度",
       "type": "float",
-      "default": 1.0,
+      "default": 1,
       "constraints": {
-        "min": 1E-09
+        "min": 1e-9
       },
       "ui": {
         "editor": "number",
-        "decimals": 6
+        "decimals": 6,
+        "tab": "detection",
+        "group": "标定换算"
       }
     },
     {
@@ -229,7 +263,9 @@
       "type": "string",
       "default": "px",
       "ui": {
-        "editor": "text"
+        "editor": "text",
+        "tab": "detection",
+        "group": "标定换算"
       }
     }
   ],

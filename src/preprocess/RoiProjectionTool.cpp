@@ -34,8 +34,9 @@ cv::Mat toGray(const cv::Mat &image, std::size_t index)
 
 } // namespace
 
-visionrt::ToolStatus RoiProjectionTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus RoiProjectionTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
+    const auto &parameters = configuration.parameters;
     if (!parameters.empty())
     {
         return {visionrt::kContractViolationStatus, "投影ROI不接受初始化参数"};

@@ -6,6 +6,7 @@
 #include <opencv2/core.hpp>
 
 #include <optional>
+#include <cstdint>
 #include <string>
 
 namespace visiontools::recognition {
@@ -37,6 +38,7 @@ struct EdgeSearchOptions
     int                width           = 3;
     edge::EdgePolarity polarity        = edge::EdgePolarity::Any;
     double             minCompleteness = 0.4;
+    static EdgeSearchOptions fromParameters(double contrast, std::int64_t width, const std::string &polarity, double completeness);
 };
 
 struct LocatedSegment

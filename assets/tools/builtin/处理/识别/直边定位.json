@@ -15,6 +15,10 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     },
     {
@@ -22,7 +26,9 @@
       "name_zh": "搜索区域",
       "type": "roi",
       "ui": {
-        "editor": "roi"
+        "editor": "roi",
+        "tab": "basic_input",
+        "group": "检测区域"
       }
     },
     {
@@ -31,7 +37,9 @@
       "type": "roi",
       "default": [],
       "ui": {
-        "editor": "array"
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "检测区域"
       },
       "relations": {
         "image": {
@@ -49,7 +57,9 @@
         "rank": 3
       },
       "ui": {
-        "editor": "array"
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "输入数据"
       }
     }
   ],

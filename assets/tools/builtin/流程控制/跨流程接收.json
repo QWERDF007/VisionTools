@@ -10,17 +10,29 @@
     {
       "id": 0,
       "name_zh": "源流程ID",
-      "type": "string"
+      "type": "string",
+      "ui": {
+        "tab": "basic_input",
+        "group": "流程控制"
+      }
     },
     {
       "id": 1,
       "name_zh": "源节点序号",
-      "type": "string"
+      "type": "string",
+      "ui": {
+        "tab": "basic_input",
+        "group": "流程控制"
+      }
     },
     {
       "id": 2,
       "name_zh": "源端口ID",
-      "type": "int"
+      "type": "int",
+      "ui": {
+        "tab": "basic_input",
+        "group": "流程控制"
+      }
     },
     {
       "id": 3,
@@ -28,6 +40,10 @@
       "type": "int",
       "constraints": {
         "min": 0
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "流程控制"
       }
     }
   ],

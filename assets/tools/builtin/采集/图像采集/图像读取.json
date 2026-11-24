@@ -11,7 +11,9 @@
       "name_zh": "图像路径",
       "type": "string",
       "ui": {
-        "editor": "path"
+        "editor": "path",
+        "tab": "detection",
+        "group": "图像来源"
       }
     },
     {
@@ -19,7 +21,9 @@
       "name_zh": "递归选项",
       "type": "bool",
       "ui": {
-        "editor": "recursive"
+        "editor": "recursive",
+        "tab": "detection",
+        "group": "图像来源"
       }
     },
     {
@@ -34,7 +38,9 @@
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": "text",
+        "tab": "detection",
+        "group": "图像来源"
       }
     },
     {
@@ -49,7 +55,9 @@
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": "text",
+        "tab": "detection",
+        "group": "图像来源"
       }
     },
     {
@@ -62,7 +70,9 @@
         "max": 64
       },
       "ui": {
-        "editor": "number"
+        "editor": "number",
+        "tab": "detection",
+        "group": "图像来源"
       }
     },
     {
@@ -70,7 +80,9 @@
       "name_zh": "重新读图",
       "type": "bool",
       "ui": {
-        "editor": "switch"
+        "editor": "switch",
+        "tab": "detection",
+        "group": "图像来源"
       }
     }
   ],

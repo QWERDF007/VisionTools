@@ -62,8 +62,9 @@ visionrt::Values baseOutputs(const LocationResult &result)
 
 } // namespace
 
-visionrt::ToolStatus LocateCircleTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus LocateCircleTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
+    const auto &parameters = configuration.parameters;
     if (!parameters.empty())
         return {visionrt::kContractViolationStatus, "圆定位辅助工具不接受初始化参数"};
     return {};
@@ -99,8 +100,9 @@ visionrt::ToolStatus LocateCircleTool::release()
     return {};
 }
 
-visionrt::ToolStatus LocateRowSpacingTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus LocateRowSpacingTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
+    const auto &parameters = configuration.parameters;
     if (!parameters.empty())
         return {visionrt::kContractViolationStatus, "行间距定位辅助工具不接受初始化参数"};
     return {};

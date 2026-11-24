@@ -10,6 +10,19 @@
 #include <vector>
 
 namespace visiontools::recognition {
+EdgeSearchOptions EdgeSearchOptions::fromParameters(double contrast, std::int64_t width, const std::string &polarity, double completeness)
+{
+    if (!(contrast >= 0.0 && contrast <= 1024.0)) fail(CommonToolError::InputOutOfRange, "边缘对比度", "必须在 [0, 1024] 内");
+    if (width < 1 || width > 63) fail(CommonToolError::InputOutOfRange, "边缘宽度", "必须在 [1, 63] 内");
+    if (!(completeness >= 0.0 && completeness <= 1.0)) fail(CommonToolError::InputOutOfRange, "最低边完整度", "必须在 [0, 1] 内");
+    edge::EdgePolarity direction;
+    if (polarity == "any") direction = edge::EdgePolarity::Any;
+    else if (polarity == "dark_to_light") direction = edge::EdgePolarity::DarkToLight;
+    else if (polarity == "light_to_dark") direction = edge::EdgePolarity::LightToDark;
+    else fail(CommonToolError::InputOutOfRange, "跃迁方向", "只能是 any、dark_to_light 或 light_to_dark");
+    return {contrast, static_cast<int>(width), direction, completeness};
+}
+
 namespace {
 constexpr double kPi = 3.14159265358979323846;
 

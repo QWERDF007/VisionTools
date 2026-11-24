@@ -10,8 +10,6 @@
 #include "recognition/LocateStraightEdgeTool.h"
 #include "recognition/RecognizeColorTool.h"
 #include "recognition/StraightEdgeProbe.h"
-#include "recognition/TrainColorModel.h"
-#include "recognition/TrainStraightBorders.h"
 #include "recognition/errors/RecognitionErrors.h"
 
 #include <opencv2/imgcodecs.hpp>
@@ -44,7 +42,7 @@ using namespace visiontools;
 
 namespace {
 namespace align = recognition::ports::align_straight_borders;
-namespace train = recognition::ports::train_straight_borders;
+namespace train = recognition::ports::align_straight_borders;
 namespace color = recognition::ports::recognize_color;
 
 std::filesystem::path fixtureDirectory()
@@ -97,19 +95,18 @@ ToolResult trainEdges(const cv::Mat &reference, std::array<cv::Vec4d, 2> bands)
     TrainingRecord record;
     record.id      = 1;
     record.imageId = 1;
-    record.fields.emplace(1, DataRef<ROI>(std::move(regions)));
+    record.fields.emplace(2, DataRef<ROI>(std::move(regions)));
     set.records.emplace(record.id, std::move(record));
 
-    recognition::TrainStraightBordersTool trainer;
-    REQUIRE(trainer.initialize({}).code == 0, "the edge trainer must initialize");
+    recognition::AlignStraightBordersTool trainer;
+
     Values inputs;
-    inputs.emplace(train::in::SET, DataRef<TrainingSet>(set));
-    inputs.emplace(train::in::SEARCH_REGIONS, std::get<DataRef<ROI>>(set.records.at(1).fields.at(1)));
-    inputs.emplace(train::in::CONTRAST, 30.0);
-    inputs.emplace(train::in::EDGE_WIDTH, std::int64_t{3});
-    inputs.emplace(train::in::POLARITY, std::string("any"));
-    inputs.emplace(train::in::MIN_COMPLETENESS, 0.4);
-    return trainer.execute(inputs);
+    inputs.emplace(train::train::MODEL_PATH, std::string{});
+    inputs.emplace(train::train::CONTRAST, 30.0);
+    inputs.emplace(train::train::EDGE_WIDTH, std::int64_t{3});
+    inputs.emplace(train::train::POLARITY, std::string("any"));
+    inputs.emplace(train::train::MIN_COMPLETENESS, 0.4);
+    return trainer.train(set, inputs);
 }
 
 std::filesystem::path straightEdgeModel(const std::filesystem::path &directory,
@@ -121,14 +118,12 @@ std::filesystem::path straightEdgeModel(const std::filesystem::path &directory,
     const auto result = trainEdges(connectorImage(), bands);
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
 
-    const auto *model = std::get_if<Array>(&result.outputs.at(train::out::MODEL));
-    REQUIRE(model != nullptr, "the trainer must return the model bytes");
-    const auto bytes = model->elements<std::uint8_t>();
+    const auto &bytes = result.artifacts.at("edge-model").bytes;
     REQUIRE(bytes.size() > 16, "the published edge model cannot be empty");
 
     // The trainer also answers with what it measured, in reference coordinates: the training page
     // draws those lines and the host never derives an endpoint itself.
-    const auto &found = std::get<DataRef<ROI>>(result.outputs.at(train::out::SEGMENTS)).get();
+    const auto &found = std::get<DataRef<ROI>>(result.outputs.at(align::out::FOUND_SEGMENTS)).get();
     REQUIRE(found.size() == 1 && found.front().size() == 2, "one measured line per drawn band");
     for (const auto &segment : found.front())
         REQUIRE(visionrt::RegionView(segment).kind() == visionrt::RoiKind::Segment,
@@ -163,8 +158,8 @@ void straightEdgeAlignment(const std::filesystem::path &directory)
     const auto reference = connectorImage();
 
     recognition::AlignStraightBordersTool tool;
-    Values                                init;
-    init.emplace(align::init::MODEL, generic(modelPath));
+    ToolConfiguration                                init;
+    init.models.emplace("edge-model", generic(modelPath));
     REQUIRE(tool.initialize(init).code == 0, "the published edge model must load");
 
     const auto identity = tool.execute(alignmentInputs(reference, "any"));
@@ -203,8 +198,8 @@ void straightEdgeAlignment(const std::filesystem::path &directory)
                                     cv::Vec4d{220 + shift,         180, 160, 90}
         });
         recognition::AlignStraightBordersTool shiftedTool;
-        Values                                shiftedInit;
-        shiftedInit.emplace(align::init::MODEL, generic(shifted));
+        ToolConfiguration                                shiftedInit;
+        shiftedInit.models.emplace("edge-model", generic(shifted));
         REQUIRE(shiftedTool.initialize(shiftedInit).code == 0, "the shifted-band model must load");
         const auto posed = shiftedTool.execute(alignmentInputs(reference, "any"));
         REQUIRE(testview::status(posed).code == 0, testview::status(posed).message);
@@ -422,15 +417,12 @@ std::filesystem::path colorTraining(const std::filesystem::path &directory)
     secondRecord.fields.emplace(2, DataRef<ROI>(std::move(secondRegions)));
     set.records.emplace(secondRecord.id, std::move(secondRecord));
 
-    recognition::TrainColorModelTool trainer;
+    recognition::RecognizeColorTool trainer;
     Values                           inputs;
-    inputs.emplace(recognition::ports::train_color_model::in::SET, DataRef<TrainingSet>(std::move(set)));
-    inputs.emplace(recognition::ports::train_color_model::in::LABEL_FIELD, std::int64_t{1});
-    inputs.emplace(recognition::ports::train_color_model::in::REGION_FIELD, std::int64_t{2});
-    const auto result = trainer.execute(inputs);
+    inputs.emplace(color::train::MODEL_PATH, std::string{});
+    const auto result = trainer.train(set, inputs);
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
-    const auto model = std::get<Array>(result.outputs.at(recognition::ports::train_color_model::out::MODEL));
-    const auto bytes = model.elements<std::uint8_t>();
+    const auto &bytes = result.artifacts.at("color-model").bytes;
     REQUIRE(!bytes.empty(), "the trainer returned no model bytes");
     const auto decoded = recognition::ColorModel::decode(bytes);
     REQUIRE(decoded.classCount() == 4, "records with the same label and different shapes aggregate into one class");
@@ -473,8 +465,8 @@ void colorRecognition(const std::filesystem::path &directory)
     const auto modelPath = colorTraining(directory);
 
     recognition::RecognizeColorTool tool;
-    Values                          init;
-    init.emplace(color::init::MODEL, generic(modelPath));
+    ToolConfiguration                          init;
+    init.models.emplace("color-model", generic(modelPath));
     const auto trained = tool.initialize(init);
     REQUIRE(trained.code == 0, trained.message);
 
@@ -572,22 +564,22 @@ void assetValidation(const std::filesystem::path &directory)
     const auto corruptModel = directory / "corrupt_edge.model";
     writeText(corruptModel, "not an edge model");
     recognition::AlignStraightBordersTool tool;
-    Values                                init;
-    init.emplace(align::init::MODEL, generic(corruptModel));
+    ToolConfiguration                                init;
+    init.models.emplace("edge-model", generic(corruptModel));
     const auto status = tool.initialize(init);
     REQUIRE(status.code == static_cast<std::int64_t>(recognition::RecognitionError::StraightEdgeModelIncompatible),
             "a damaged edge model is rejected");
 
-    Values missing;
-    missing.emplace(align::init::MODEL, std::string{});
+    ToolConfiguration missing;
+    missing.models.emplace("edge-model", std::string{});
     REQUIRE(tool.initialize(missing).code
                 == static_cast<std::int64_t>(recognition::RecognitionError::StraightEdgeModelPathMissing),
             "an unconfigured model path has its own diagnosis");
 
     // A model of one reference must not claim a match on a picture that has no such edge.
     const auto trained = straightEdgeModel(directory);
-    Values     good;
-    good.emplace(align::init::MODEL, generic(trained));
+    ToolConfiguration     good;
+    good.models.emplace("edge-model", generic(trained));
     REQUIRE(tool.initialize(good).code == 0, "the trained model must load");
     const auto blank = tool.execute(alignmentInputs(cv::Mat(400, 400, CV_8UC3, cv::Scalar{0, 0, 0}), "any"));
     REQUIRE(testview::status(blank).code == static_cast<std::int64_t>(recognition::RecognitionError::EdgeNotFound),
@@ -610,7 +602,7 @@ void assetValidation(const std::filesystem::path &directory)
                                                     cv::Vec4d{130, 160, 140, angle}
         });
         REQUIRE(testview::status(fitted).code == 0, "two non-right-angle edges must train a valid pose model");
-        const auto model = std::get<Array>(fitted.outputs.at(train::out::MODEL)).elements<std::uint8_t>();
+        const auto model = fitted.artifacts.at("edge-model").bytes;
         const auto path  = directory / "oblique.model";
         {
             std::ofstream file(path, std::ios::binary);
@@ -618,9 +610,7 @@ void assetValidation(const std::filesystem::path &directory)
         }
         recognition::AlignStraightBordersTool obliqueTool;
         REQUIRE(obliqueTool
-                        .initialize({
-                            {align::init::MODEL, generic(path)}
-        })
+                        .initialize(ToolConfiguration{{}, {{"edge-model", path}}})
                         .code
                     == 0,
                 "the non-right-angle model must load");
@@ -674,31 +664,28 @@ void assetValidation(const std::filesystem::path &directory)
         TrainingRecord record;
         record.id      = 1;
         record.imageId = 1;
-        record.fields.emplace(1, DataRef<ROI>(std::move(regions)));
+        record.fields.emplace(2, DataRef<ROI>(std::move(regions)));
         set.records.emplace(record.id, std::move(record));
 
-        recognition::TrainStraightBordersTool trainer;
+        recognition::AlignStraightBordersTool trainer;
         trainer.initialize({});
         Values inputs;
-        inputs.emplace(train::in::SET, DataRef<TrainingSet>(set));
-        inputs.emplace(train::in::SEARCH_REGIONS, std::get<DataRef<ROI>>(set.records.at(1).fields.at(1)));
-        inputs.emplace(train::in::CONTRAST, 30.0);
-        inputs.emplace(train::in::EDGE_WIDTH, std::int64_t{3});
-        inputs.emplace(train::in::POLARITY, std::string("any"));
-        inputs.emplace(train::in::MIN_COMPLETENESS, 0.4);
-        const auto single = trainer.execute(inputs);
+        inputs.emplace(train::train::MODEL_PATH, std::string{});
+        inputs.emplace(train::train::CONTRAST, 30.0);
+        inputs.emplace(train::train::EDGE_WIDTH, std::int64_t{3});
+        inputs.emplace(train::train::POLARITY, std::string("any"));
+        inputs.emplace(train::train::MIN_COMPLETENESS, 0.4);
+        const auto single = trainer.train(set, inputs);
         REQUIRE(testview::status(single).code
                     == static_cast<std::int64_t>(recognition::RecognitionError::StraightEdgeRegionsInvalid),
                 "one band cannot produce a pose");
     }
 
-    recognition::TrainColorModelTool trainer;
+    recognition::RecognizeColorTool trainer;
     Values                           empty;
     TrainingSet                      noRecords;
-    empty.emplace(recognition::ports::train_color_model::in::SET, DataRef<TrainingSet>(std::move(noRecords)));
-    empty.emplace(recognition::ports::train_color_model::in::LABEL_FIELD, std::int64_t{1});
-    empty.emplace(recognition::ports::train_color_model::in::REGION_FIELD, std::int64_t{2});
-    const auto emptyResult = trainer.execute(empty);
+    empty.emplace(color::train::MODEL_PATH, std::string{});
+            const auto emptyResult = trainer.train(noRecords, empty);
     REQUIRE(testview::status(emptyResult).code
                 == static_cast<std::int64_t>(recognition::RecognitionError::ColorSamplesMissing),
             "an empty training set is rejected");
@@ -716,10 +703,8 @@ void assetValidation(const std::filesystem::path &directory)
     unsupportedRecord.fields.emplace(2, DataRef<ROI>(std::move(unsupportedRegions)));
     unsupported.records.emplace(1, std::move(unsupportedRecord));
     Values wide;
-    wide.emplace(recognition::ports::train_color_model::in::SET, DataRef<TrainingSet>(std::move(unsupported)));
-    wide.emplace(recognition::ports::train_color_model::in::LABEL_FIELD, std::int64_t{1});
-    wide.emplace(recognition::ports::train_color_model::in::REGION_FIELD, std::int64_t{2});
-    const auto wideResult = trainer.execute(wide);
+    wide.emplace(color::train::MODEL_PATH, std::string{});
+            const auto wideResult = trainer.train(unsupported, wide);
     REQUIRE(testview::status(wideResult).code
                 == static_cast<std::int64_t>(recognition::RecognitionError::UnsupportedColorImage),
             "training accepts only 8-bit three-channel frames");
@@ -727,20 +712,20 @@ void assetValidation(const std::filesystem::path &directory)
     const auto brokenColor = directory / "broken_color.model";
     writeText(brokenColor, "not a colour model");
     recognition::RecognizeColorTool colorTool;
-    Values                          colorInit;
-    colorInit.emplace(color::init::MODEL, generic(brokenColor));
+    ToolConfiguration                          colorInit;
+    colorInit.models.emplace("color-model", generic(brokenColor));
     const auto colorStatus = colorTool.initialize(colorInit);
     REQUIRE(colorStatus.code == static_cast<std::int64_t>(recognition::RecognitionError::ColorModelIncompatible),
             "a corrupt model is rejected instead of retrained");
 
-    Values truncatedInit;
-    truncatedInit.emplace(color::init::MODEL, generic(directory / "color_truncated.model"));
+    ToolConfiguration truncatedInit;
+    truncatedInit.models.emplace("color-model", generic(directory / "color_truncated.model"));
     const auto truncatedStatus = colorTool.initialize(truncatedInit);
     REQUIRE(truncatedStatus.code == static_cast<std::int64_t>(recognition::RecognitionError::ColorModelIncompatible),
             "a truncated model is rejected by its length check");
 
-    Values missingInit;
-    missingInit.emplace(color::init::MODEL, generic(directory / "absent.model"));
+    ToolConfiguration missingInit;
+    missingInit.models.emplace("color-model", generic(directory / "absent.model"));
     const auto missingStatus = colorTool.initialize(missingInit);
     REQUIRE(missingStatus.code == static_cast<std::int64_t>(recognition::RecognitionError::ColorModelUnreadable),
             "a missing model reports its own path problem");

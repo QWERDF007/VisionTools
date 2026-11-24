@@ -1,7 +1,7 @@
 {
   "name_en": "DetectObjectsYolo",
   "name_zh": "YOLO目标检测",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -15,6 +15,10 @@
         "options": [
           "yolov8n"
         ]
+      },
+      "ui": {
+        "tab": "detection",
+        "group": "模型与引擎"
       }
     },
     {
@@ -27,6 +31,10 @@
           "engine",
           "build_wts"
         ]
+      },
+      "ui": {
+        "tab": "detection",
+        "group": "模型与引擎"
       }
     },
     {
@@ -34,7 +42,9 @@
       "name_zh": "模型路径",
       "type": "string",
       "ui": {
-        "editor": "path"
+        "editor": "path",
+        "tab": "detection",
+        "group": "模型与引擎"
       }
     },
     {
@@ -42,7 +52,9 @@
       "name_zh": "引擎输出路径",
       "type": "string",
       "ui": {
-        "editor": "path"
+        "editor": "path",
+        "tab": "detection",
+        "group": "模型与引擎"
       }
     },
     {
@@ -50,14 +62,20 @@
       "name_zh": "标签路径",
       "type": "string",
       "ui": {
-        "editor": "path"
+        "editor": "path",
+        "tab": "detection",
+        "group": "模型与引擎"
       }
     },
     {
       "id": 5,
       "name_zh": "推理精度",
       "type": "string",
-      "default": "fp16"
+      "default": "fp16",
+      "ui": {
+        "tab": "detection",
+        "group": "模型与引擎"
+      }
     },
     {
       "id": 6,
@@ -65,6 +83,10 @@
       "type": "int",
       "constraints": {
         "min": 0
+      },
+      "ui": {
+        "tab": "detection",
+        "group": "模型与引擎"
       }
     },
     {
@@ -74,6 +96,10 @@
       "default": 640,
       "constraints": {
         "min": 32
+      },
+      "ui": {
+        "tab": "detection",
+        "group": "模型与引擎"
       }
     },
     {
@@ -83,6 +109,10 @@
       "default": 640,
       "constraints": {
         "min": 32
+      },
+      "ui": {
+        "tab": "detection",
+        "group": "模型与引擎"
       }
     },
     {
@@ -92,6 +122,10 @@
       "default": 80,
       "constraints": {
         "min": 1
+      },
+      "ui": {
+        "tab": "detection",
+        "group": "模型与引擎"
       }
     }
   ],
@@ -102,6 +136,10 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     },
     {
@@ -115,7 +153,8 @@
       },
       "ui": {
         "tab": "detection",
-        "step": 0.05
+        "step": 0.05,
+        "group": "检测判定"
       }
     },
     {
@@ -129,7 +168,8 @@
       },
       "ui": {
         "tab": "detection",
-        "step": 0.05
+        "step": 0.05,
+        "group": "检测判定"
       }
     },
     {
@@ -141,7 +181,8 @@
         "min": 1
       },
       "ui": {
-        "tab": "detection"
+        "tab": "detection",
+        "group": "检测判定"
       }
     }
   ],

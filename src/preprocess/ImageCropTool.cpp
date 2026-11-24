@@ -53,8 +53,9 @@ std::size_t maskBuildCount = 0;
 } // namespace testing
 #endif
 
-visionrt::ToolStatus ImageCropTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus ImageCropTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
+    const auto &parameters = configuration.parameters;
     if (!parameters.empty())
         return {visionrt::kContractViolationStatus, "图像裁剪不接受初始化参数"};
     return {};

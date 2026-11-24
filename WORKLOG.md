@@ -30,6 +30,42 @@
 - ...
 -->
 
+### 2026-11-23 — 训练实现与共享契约提交
+
+**目标**
+- 将现有工具声明、业务训练及参数分组改动一并提交，并固定共享 SDK 引用。
+
+**当前状态**
+- Contracts 已统一到 df519c35c33008852ef35278124eaf85e9f28d56；两份 SDK 的暂存树完全一致，工具侧检出干净。
+- 本次包含业务训练实现、30 个工具声明及发行目录、测试和文档；运行产物与 Python 缓存不纳入提交。
+
+**验证证据**
+- test_recognition_contract、test_module_contract 两项通过，见宿主 build/training-tools-final-tests.log。
+- 默认工具包经宿主接受 30 个声明，安装消费者实际执行 13 个 CPU 工具，见宿主 build/default-tools-package.log；宿主 build/default-build-tests.log 的 19 项回归通过。
+- 本次未修改算法或声明内容，沿用上述验证；提交前检查暂存差异和 gitlink。
+
+**下一步**
+- 工具提交身份以 Git 历史为准；宿主验收入口为 F:/Projects/VisionRT/build/bin/VisionRT.exe，尚未推送。
+
+### 2026-11-23 — 业务实例训练与统一分组
+
+**目标**
+- 实施可选 train、统一训练参数与输出、全工具参数分组，业务版本统一 1.0.0，工具 JSON schema_version 保持 2。
+
+**当前状态**
+- 直边和颜色业务实例复用原拟合算法实现 train；移除独立训练器注册、头文件与声明。模型字节通过临时产物返回，模型路径使用共享输出，初始化通过 ToolConfiguration 接收解析后的模型引用。
+- 直边训练与检测参数独立，EdgeSearchOptions 统一解析训练和运行参数。30 个工具的声明与发行目录已同步，YOLO 未声明训练能力。
+- Contracts 与宿主检出的 13 个改动文件一致，ABI 为 13。完整包已安装到 F:/Projects/VisionRT/build/training/bin/tools-package；未提交或推送。
+
+**验证证据**
+- 实际四模块及消费者构建通过，见宿主 build/training-tools-delivery-build.log。
+- `ctest --test-dir build -C Release -R '^(test_recognition_contract|test_module_contract)$' --output-on-failure` 两项通过，见宿主 build/training-tools-final-tests.log。
+- package_tools.py --profile rtx40-build --allow-dirty --verify-runtime 经真实宿主接受 30 个声明，安装消费者实际执行全部 13 个 CPU 工具，见宿主 build/training-package-final.log。
+- 宿主十四项相关验证及 SDK 隔离安装消费通过，包含真实直边与颜色训练、保存、加载、输出替换、保存失败与已有 GPU 引擎推理；入口见宿主 WORKLOG 最新条目。
+
+**下一步**
+- 运行宿主 build/training/bin/VisionRT.exe；文档索引见 docs/README.md。需要提交时先提交共享 Contracts，再同步工具和宿主引用。
+
 ### 2026-11-23 — ROI 创建、直边搜索输入与输出归属
 
 **目标**

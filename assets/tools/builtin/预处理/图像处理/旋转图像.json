@@ -12,6 +12,10 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     },
     {
@@ -20,7 +24,9 @@
       "type": "float",
       "ui": {
         "editor": "number",
-        "decimals": 3
+        "decimals": 3,
+        "tab": "detection",
+        "group": "变换参数"
       }
     },
     {
@@ -32,7 +38,9 @@
         "rank": 1
       },
       "ui": {
-        "editor": "array"
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "输入数据"
       }
     },
     {
@@ -47,7 +55,9 @@
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": "text",
+        "tab": "detection",
+        "group": "变换参数"
       }
     },
     {
@@ -63,7 +73,9 @@
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": "text",
+        "tab": "detection",
+        "group": "变换参数"
       }
     },
     {
@@ -75,10 +87,12 @@
         "rank": 1
       },
       "default": [
-        0.0
+        0
       ],
       "ui": {
-        "editor": "array"
+        "editor": "array",
+        "tab": "detection",
+        "group": "变换参数"
       }
     },
     {
@@ -90,7 +104,9 @@
         "rank": 3
       },
       "ui": {
-        "editor": "array"
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "输入数据"
       }
     }
   ],

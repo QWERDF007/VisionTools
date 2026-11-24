@@ -12,19 +12,25 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     },
     {
       "id": 2,
       "name_zh": "增益",
       "type": "float",
-      "default": 1.0,
+      "default": 1,
       "constraints": {
-        "min": 0.0
+        "min": 0
       },
       "ui": {
         "editor": "number",
-        "decimals": 3
+        "decimals": 3,
+        "tab": "detection",
+        "group": "算法参数"
       }
     },
     {
@@ -33,7 +39,9 @@
       "type": "float",
       "ui": {
         "editor": "number",
-        "decimals": 3
+        "decimals": 3,
+        "tab": "detection",
+        "group": "算法参数"
       }
     },
     {
@@ -42,7 +50,9 @@
       "type": "roi",
       "default": [],
       "ui": {
-        "editor": "array"
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "检测区域"
       },
       "relations": {
         "image": {
@@ -61,6 +71,10 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     },
     {
@@ -72,7 +86,9 @@
         "rank": 3
       },
       "ui": {
-        "editor": "array"
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "输入数据"
       }
     }
   ],

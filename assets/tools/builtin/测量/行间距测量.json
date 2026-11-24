@@ -1,7 +1,7 @@
 {
   "name_en": "MeasureRowSpacing",
   "name_zh": "测量行间距",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -12,6 +12,10 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     },
     {
@@ -20,7 +24,9 @@
       "type": "roi",
       "default": [],
       "ui": {
-        "editor": "array"
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "检测区域"
       },
       "relations": {
         "image": {
@@ -42,35 +48,41 @@
         "rank": 3
       },
       "ui": {
-        "editor": "array"
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "输入数据"
       }
     },
     {
       "id": 4,
       "name_zh": "平滑标准差",
       "type": "float",
-      "default": 1.0,
+      "default": 1,
       "constraints": {
         "min": 0.1,
-        "max": 20.0
+        "max": 20
       },
       "ui": {
         "editor": "number",
-        "decimals": 2
+        "decimals": 2,
+        "tab": "detection",
+        "group": "边缘提取"
       }
     },
     {
       "id": 5,
       "name_zh": "最小梯度",
       "type": "float",
-      "default": 8.0,
+      "default": 8,
       "constraints": {
-        "min": 0.0,
-        "max": 255.0
+        "min": 0,
+        "max": 255
       },
       "ui": {
         "editor": "number",
-        "decimals": 2
+        "decimals": 2,
+        "tab": "detection",
+        "group": "边缘提取"
       }
     },
     {
@@ -85,46 +97,54 @@
         ]
       },
       "ui": {
-        "editor": "text"
+        "editor": "text",
+        "tab": "detection",
+        "group": "边缘提取"
       }
     },
     {
       "id": 7,
       "name_zh": "合格宽度下限",
       "type": "float",
-      "default": 1.0,
+      "default": 1,
       "constraints": {
-        "min": 0.0
+        "min": 0
       },
       "ui": {
         "editor": "number",
-        "decimals": 3
+        "decimals": 3,
+        "tab": "detection",
+        "group": "合格判定"
       }
     },
     {
       "id": 8,
       "name_zh": "合格宽度上限",
       "type": "float",
-      "default": 1000000.0,
+      "default": 1000000,
       "constraints": {
-        "min": 0.0
+        "min": 0
       },
       "ui": {
         "editor": "number",
-        "decimals": 3
+        "decimals": 3,
+        "tab": "detection",
+        "group": "合格判定"
       }
     },
     {
       "id": 9,
       "name_zh": "每像素物理长度",
       "type": "float",
-      "default": 1.0,
+      "default": 1,
       "constraints": {
-        "min": 1E-09
+        "min": 1e-9
       },
       "ui": {
         "editor": "number",
-        "decimals": 6
+        "decimals": 6,
+        "tab": "detection",
+        "group": "标定换算"
       }
     },
     {
@@ -133,7 +153,9 @@
       "type": "string",
       "default": "px",
       "ui": {
-        "editor": "text"
+        "editor": "text",
+        "tab": "detection",
+        "group": "标定换算"
       }
     }
   ],

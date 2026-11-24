@@ -142,8 +142,9 @@ std::atomic<std::size_t>                           decodeCount{0};
 } // namespace testing
 #endif
 
-visionrt::ToolStatus ReadImageTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus ReadImageTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
+    const auto &parameters = configuration.parameters;
     if (!parameters.empty())
         return {visionrt::kContractViolationStatus, "图像读取不接受初始化参数"};
     return {};

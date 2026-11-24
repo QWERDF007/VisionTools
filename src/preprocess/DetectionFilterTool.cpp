@@ -17,8 +17,9 @@ namespace p = ports::detection_filter;
 
 } // namespace
 
-visionrt::ToolStatus DetectionFilterTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus DetectionFilterTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
+    const auto &parameters = configuration.parameters;
     if (!parameters.empty())
     {
         return {visionrt::kContractViolationStatus, "缺陷过滤不接受初始化参数"};

@@ -25,7 +25,11 @@
             100
           ]
         ]
-      ]
+      ],
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测区域"
+      }
     },
     {
       "type": "image",
@@ -33,6 +37,10 @@
       "id": 2,
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     }
   ],

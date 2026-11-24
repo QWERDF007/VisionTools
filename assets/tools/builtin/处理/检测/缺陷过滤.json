@@ -1,7 +1,7 @@
 {
   "name_en": "FilterDetections",
   "name_zh": "缺陷过滤",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -12,6 +12,10 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     },
     {
@@ -23,6 +27,10 @@
           "stage": "inputs",
           "id": 1
         }
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测区域"
       }
     },
     {
@@ -32,6 +40,10 @@
         "type": "array",
         "dtype": "float32",
         "rank": 2
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "输入数据"
       }
     },
     {
@@ -41,6 +53,10 @@
         "type": "array",
         "dtype": "int64",
         "rank": 2
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "输入数据"
       }
     },
     {
@@ -50,6 +66,10 @@
         "type": "array",
         "dtype": "string",
         "rank": 2
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "输入数据"
       }
     },
     {
@@ -63,7 +83,8 @@
       },
       "ui": {
         "tab": "detection",
-        "step": 0.05
+        "step": 0.05,
+        "group": "筛选条件"
       }
     },
     {
@@ -76,7 +97,8 @@
       },
       "ui": {
         "tab": "detection",
-        "step": 1
+        "step": 1,
+        "group": "筛选条件"
       }
     },
     {
@@ -88,7 +110,8 @@
         "rank": 1
       },
       "ui": {
-        "tab": "detection"
+        "tab": "detection",
+        "group": "筛选条件"
       }
     }
   ],

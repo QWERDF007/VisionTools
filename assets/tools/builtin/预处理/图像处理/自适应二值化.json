@@ -12,6 +12,10 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     },
     {
@@ -25,7 +29,9 @@
       },
       "ui": {
         "editor": "number",
-        "step": 2
+        "step": 2,
+        "tab": "detection",
+        "group": "算法参数"
       }
     },
     {
@@ -35,7 +41,9 @@
       "default": 5,
       "ui": {
         "editor": "number",
-        "decimals": 3
+        "decimals": 3,
+        "tab": "detection",
+        "group": "算法参数"
       }
     }
   ],

@@ -18,8 +18,9 @@ namespace p = ports::adaptive_binary;
 
 } // namespace
 
-visionrt::ToolStatus AdaptiveBinaryTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus AdaptiveBinaryTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
+    const auto &parameters = configuration.parameters;
     if (!parameters.empty())
         return {visionrt::kContractViolationStatus, "自适应二值化不接受初始化参数"};
     return {};

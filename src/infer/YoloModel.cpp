@@ -210,8 +210,9 @@ YoloTool::YoloTool() = default;
 
 YoloTool::~YoloTool() = default;
 
-ToolStatus YoloTool::initialize(const Values &parameters)
+ToolStatus YoloTool::initialize(const ToolConfiguration &configuration)
 {
+    const auto &parameters = configuration.parameters;
     const auto cleanup = release();
     if (!cleanup)
         return cleanup;

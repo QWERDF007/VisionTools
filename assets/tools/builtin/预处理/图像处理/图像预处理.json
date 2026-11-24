@@ -12,6 +12,10 @@
       "type": "image",
       "display": {
         "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
       }
     },
     {
@@ -28,7 +32,8 @@
         ]
       },
       "ui": {
-        "tab": "preprocess"
+        "tab": "detection",
+        "group": "算法参数"
       }
     },
     {
@@ -41,8 +46,9 @@
       },
       "ui": {
         "editor": "number",
-        "tab": "preprocess",
-        "step": 2
+        "tab": "detection",
+        "step": 2,
+        "group": "算法参数"
       }
     },
     {
@@ -56,8 +62,9 @@
       },
       "ui": {
         "editor": "number",
-        "tab": "preprocess",
-        "step": 1
+        "tab": "detection",
+        "step": 1,
+        "group": "算法参数"
       }
     }
   ],

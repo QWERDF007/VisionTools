@@ -69,8 +69,9 @@ visionrt::Array array3(std::vector<std::vector<std::vector<T>>> values)
 }
 } // namespace
 
-visionrt::ToolStatus CircleTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus CircleTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
+    const auto &parameters = configuration.parameters;
     if (!parameters.empty())
         return {visionrt::kContractViolationStatus, "圆测量不接受初始化参数"};
     return {};

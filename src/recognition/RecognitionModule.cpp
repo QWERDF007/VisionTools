@@ -1,8 +1,6 @@
 #include "AlignStraightBordersTool.h"
 #include "LocateStraightEdgeTool.h"
 #include "RecognizeColorTool.h"
-#include "TrainColorModel.h"
-#include "TrainStraightBorders.h"
 
 #include <visionrt/contracts/FunctionTool.h>
 #include <visionrt/contracts/Module.h>
@@ -20,10 +18,7 @@ visionrt::ToolStatus VT_CALL registerTools(visionrt::IToolRegistry &registry) no
     if (auto status = visionrt::registerClass<LocateStraightEdgeTool>(registry, ports::locate_straight_edge::TOOL_ID);
         !status)
         return status;
-    if (auto status = visionrt::registerClass<TrainColorModelTool>(registry, ports::train_color_model::TOOL_ID);
-        !status)
-        return status;
-    return visionrt::registerClass<TrainStraightBordersTool>(registry, ports::train_straight_borders::TOOL_ID);
+    return {};
 }
 }} // namespace visiontools::recognition
 

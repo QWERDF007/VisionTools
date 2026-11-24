@@ -71,7 +71,7 @@ class YoloTool final : public IToolInstance
 public:
     YoloTool();
     ~YoloTool() override;
-    ToolStatus                     initialize(const Values &parameters) override;
+    ToolStatus                     initialize(const ToolConfiguration &parameters) override;
     ToolResult                     execute(const Values &inputs) override;
     ToolStatus                     release() override;
     // The standalone probe crosses exactly the same execution path. Capture is

@@ -65,8 +65,9 @@ visionrt::Values missingOutputs()
 }
 } // namespace
 
-visionrt::ToolStatus RotateImageTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus RotateImageTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
+    const auto &parameters = configuration.parameters;
     if (!parameters.empty())
         return {visionrt::kContractViolationStatus, "旋转图像不接受初始化参数"};
     return {};

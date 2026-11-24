@@ -33,8 +33,9 @@ visionrt::Values missingOutputs()
 }
 } // namespace
 
-visionrt::ToolStatus RowSpacingTool::initialize(const visionrt::Values &parameters)
+visionrt::ToolStatus RowSpacingTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
+    const auto &parameters = configuration.parameters;
     if (!parameters.empty())
         return {visionrt::kContractViolationStatus, "行间距测量不接受初始化参数"};
     return {};
