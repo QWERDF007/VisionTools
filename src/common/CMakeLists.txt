@@ -2,6 +2,7 @@ include("${PROJECT_SOURCE_DIR}/cmake/GenerateToolMetadata.cmake")
 add_library(visiontools_common STATIC
     EdgeProfile.cpp
     GeometryTransform.cpp
+    PlanarCalibration.cpp
     ProductPaths.cpp
     RoiSupport.cpp
     errors/ToolError.cpp

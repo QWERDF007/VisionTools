@@ -30,6 +30,60 @@
 - ...
 -->
 
+### 2026-11-25 — 提交具体形状与标定工具
+
+**目标**
+- 提交参数训练、具体形状端口、标定工具和此前相关改动。
+
+**当前状态**
+- 本仓固定 Contracts 提交 4746f7487226043ae9f976bdb8aa17b3afde6f5a，与宿主一致；两份 SDK 检出干净。本轮提交包含当前实现、31 个声明、测试和文档，提交身份以 Git 历史为准，未推送。
+- 本次只整理账本和子模块引用，未修改已验证行为；实现证据见下方“具体形状参数与标定正 Y”和“通用参数与标定测量实施”。
+
+**验证证据**
+- Contracts 两份暂存树一致，提交同步后工作区均干净。
+- 沿用 build/concrete-final-tests.log 的 11 项通过及 concrete-final-package.log 的 31 个声明、13 个 CPU 工具实际消费通过；真实标定和宿主窗口证据见宿主任务账本。
+
+**下一步**
+- 无待续接工具开发；本轮提交身份见 Git 历史，尚未推送。
+
+### 2026-11-25 — 具体形状参数与标定正 Y
+
+**目标**
+- 删除通用 ROI 端口，工具、Python 和训练字段声明具体形状；真实标定坐标系统一正 Y 向上。
+
+**当前状态**
+- 已迁移原生工具、31 个声明和 Python 矩形示例，亮度工具按矩形、圆、多边形分开输入。Contracts ABI 15、声明格式 4；标定模型版本 2，板描述坐标和观察索引共同确定实际 Y 方向。未提交。
+- 工具包已安装宿主 build/bin/tools-package；最终构建、回归与两份 SDK 字节同步已完成。
+
+**验证证据**
+- concrete-tools-and-y-red.log 复现 Y 方向错误，green 通过；concrete-tools-regression.log 原生几何、识别、搜索方向、合成和真实标定、模块注册通过。检测过滤旧负例经类型化迁移后 concrete-filter.log 通过。
+- concrete-package.log：31 个声明、13 个 CPU 工具实际动态消费通过。首次使用旧 ABI 消费者失败，重编后旧布尔编号 7 又与新圆参数冲突，已按现有声明更新夹具并通过。
+- 真实模型重投影误差 0.102466 px、59 个中心距均值 0.999998 mm、样本标准差 4.48425 um；宿主已更新随包模型，工作台训练、发布和完整标定工程通过。
+
+- concrete-final-build.log 构建通过，concrete-final-tests.log 的 11 项全部通过，覆盖原生工具、真实标定、Python 作者 SDK、发行资源和声明；concrete-final-package.log 的 31 个声明和 13 个 CPU 工具实际消费通过。
+
+**下一步**
+- 无待续接工具代码，未提交；整体交付和正式认知收尾入口见宿主 WORKLOG 最新条目。
+
+### 2026-11-25 — 通用参数与标定测量实施
+
+**目标**
+- 配合宿主已确认方案，统一训练接口，迁移六系数对齐，增加方向输出和标定工具。
+
+**当前状态**
+- 宿主 Contracts 的修改和新增文件已同步至本仓 SDK，ABI 为 14、声明格式 3。普通参数支持方向、二维坐标系、图像和 TrainingSet；训练入口为 train(Values)。宿主 WORKLOG 最新条目包含跨仓实际进度。
+- GeometryTransform 复用 SDK Affine2D 的 N×6，Missing 不变成单位阵；两个训练工具使用普通 TrainingSet 参数，作者声明为格式 3，极性使用中文标签。搜索方向与实际边缘采样共用来源。
+- CalibrateCamera、标定板观察、division 镜头拟合、模型持久化及 RowSpacing 非线性物理映射已实现。默认构建与安装验证通过，31 个声明已安装至宿主 build/bin/tools-package，尚未提交。
+
+**验证证据**
+- affine-tools-green.log、search-directions-green.log、parameters-integration.log 的原生几何、搜索方向、识别和模块通过；Python 作者 SDK 的训练参数零编号及模型 bytes 在 python-training-sdk-green.log 通过。
+- calibration-final-build.log、calibration-final.log 两项通过。真实标定板与尺子：RMS 0.102466 px，59 个中心距，均值 0.999998 mm，样本标准差 4.48425 um；证据模型 build/evidence/calibration-model.bin。测试入口支持 Windows 宽字符资源路径。
+- calibration-package.log 记录 31 个声明和 13 个 CPU 工具真实消费通过；第一次安装消费因旧 RotateImage 夹具仍传空三维对齐失败，修正夹具为显式六系数单位阵后通过。
+- calibration-regression.log 的七项原生回归通过；发行夹具从格式 2 更新为 3 后，calibration-package-tests.log 的打包、资源收集、分发三项通过。宿主真实标定训练、示例和截图验收见宿主最新账本。
+
+**下一步**
+- 无待续接业务开发；共享契约两份检出必须同步。宿主 WORKLOG 记录正式交付和认知收尾入口；尚未提交。
+
 ### 2026-11-24 — 提交原生构建与依赖清理
 
 **目标**

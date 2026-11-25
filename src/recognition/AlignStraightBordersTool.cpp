@@ -22,18 +22,18 @@ namespace visiontools::recognition {
 namespace {
 namespace p = ports::align_straight_borders;
 
-visionrt::Values missingOutputs()
-{
-    return missingPorts({p::out::ALIGNMENTS, p::out::FOUND_SEGMENTS});
-}
-
 } // namespace
+
+visionrt::Values AlignStraightBordersTool::missingOutputs()
+{
+    return missingPorts({p::out::ALIGNMENTS, p::out::FOUND_SEGMENTS, p::out::MODEL_PATH, p::out::SEARCH_DIRECTIONS});
+}
 
 visionrt::ToolStatus AlignStraightBordersTool::initialize(const visionrt::ToolConfiguration &configuration)
 {
     try
     {
-        const auto found = configuration.models.find("edge-model");
+        const auto found = configuration.models.find(p::MODEL_ARTIFACT);
         if (found == configuration.models.end() || found->second.empty())
             return status(RecognitionError::StraightEdgeModelPathMissing, "模型路径");
         const auto utf8 = found->second.generic_u8string();
@@ -64,7 +64,7 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
 
     Readings          readings(inputs, p::TOOL_ID);
     const auto        imagesRef  = readings.image(p::in::IMAGES);
-    const auto        regionsRef = readings.roi(p::in::SEARCH_REGIONS);
+    const auto        regionsRef = readings.rectangle(p::in::SEARCH_REGIONS);
     EdgeSearchOptions options;
     options.contrast        = readings.real(p::in::CONTRAST);
     const auto edgeWidth    = readings.integer(p::in::EDGE_WIDTH);
@@ -84,6 +84,7 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
             fail(RecognitionError::StraightEdgeRegionsInvalid, "搜索区域", "需要两个有顺序的旋转矩形");
         std::vector<geometry::Alignment>      alignments;
         std::vector<std::vector<roi::Record>> foundSegments;
+        visionrt::Direction::Nested directions;
         alignments.reserve(images.size());
         foundSegments.reserve(images.size());
 
@@ -96,8 +97,10 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
 
             if (regions[index].size() != 2)
                 fail(RecognitionError::StraightEdgeRegionsInvalid, "搜索区域", "每张图需要恰好两个旋转矩形");
-            const auto first  = locateSegment(gray, searchRectangle(regions[index][0], 0), options);
-            const auto second = locateSegment(gray, searchRectangle(regions[index][1], 1), options);
+            const auto firstBand = searchRectangle(regions[index][0], 0);
+            const auto secondBand = searchRectangle(regions[index][1], 1);
+            const auto first  = locateSegment(gray, firstBand, options);
+            const auto second = locateSegment(gray, secondBand, options);
             if (!first)
                 fail(RecognitionError::EdgeNotFound, trained[0].name, "第 " + std::to_string(index + 1) + " 张图");
             if (!second)
@@ -109,6 +112,7 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
                      "参考边或当前找到的两条边近似平行");
 
             alignments.push_back(*alignment);
+            directions.push_back({searchDirectionRecord(firstBand), searchDirectionRecord(secondBand)});
             std::vector<roi::Record> segments;
             segments.push_back(roi::segmentValue(first->start.x, first->start.y, first->end.x, first->end.y));
             segments.push_back(roi::segmentValue(second->start.x, second->start.y, second->end.x, second->end.y));
@@ -118,7 +122,8 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
         visionrt::Values outputs;
         outputs.emplace(p::out::MODEL_PATH, modelPath_);
         outputs.emplace(p::out::ALIGNMENTS, geometry::alignmentArray(alignments));
-        outputs.emplace(p::out::FOUND_SEGMENTS, roi::roiValue(std::move(foundSegments)));
+        outputs.emplace(p::out::FOUND_SEGMENTS, roi::value<visionrt::Line>(std::move(foundSegments)));
+        outputs.emplace(p::out::SEARCH_DIRECTIONS, visionrt::Direction::fromNested(std::move(directions)));
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const visionrt::ContractError &)

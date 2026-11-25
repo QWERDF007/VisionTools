@@ -5,6 +5,7 @@
 #include "common/GeometryTransform.h"
 #include "common/ImageSupport.h"
 #include "common/InputValues.h"
+#include "common/PlanarCalibration.h"
 #include "common/RoiSupport.h"
 #include "common/ToolOutputs.h"
 #include "common/UpstreamStatus.h"
@@ -57,7 +58,8 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
     const auto unitsPerPixel  = readings.real(p::in::UNITS_PER_PIXEL);
     const auto unit           = readings.text(p::in::UNIT);
     const auto alignmentValue = readings.find(p::in::ALIGNMENT);
-    const auto roiValue       = readings.find(p::in::ROIS);
+    const auto roiValue       = readings.rectangle(p::in::ROIS);
+    const auto calibrationValue = readings.find(p::in::CALIBRATION);
     if (readings.failed())
         return visionrt::toolResult(missingOutputs(),
                                     readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
@@ -84,14 +86,23 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
     if (unit.empty())
         return failure(missingOutputs(), CommonToolError::InputOutOfRange,
                        parameterName("MeasureRowSpacing", "inputs", p::in::UNIT) + " 不能为空");
-    if (!alignmentValue || !roiValue)
+    if (!alignmentValue)
         return failure(missingOutputs(), CommonToolError::InputMissing,
-                       parameterName(p::TOOL_ID, "inputs", !alignmentValue ? p::in::ALIGNMENT : p::in::ROIS));
+                       parameterName(p::TOOL_ID, "inputs", p::in::ALIGNMENT));
     options.brightObject = polarity == "bright";
     try
     {
         const auto alignments = geometry::alignmentsFromValue(*alignmentValue, images.size());
-        const auto records    = roi::groups(*roiValue, images.size(), "rois");
+        const auto records    = roi::groups(roiValue, images.size(), "rois");
+        std::vector<geometry::PlanarCalibration> calibrations;
+        if (calibrationValue)
+        {
+            if (visionrt::isMissing(*calibrationValue)) fail(CommonToolError::InputMissing, "标定数据");
+            const auto *array = std::get_if<visionrt::Array>(calibrationValue);
+            if (!array) fail(CommonToolError::InputTypeMismatch, "标定数据必须是数组");
+            calibrations = geometry::calibrationsFromArray(*array, images.size());
+        }
+        const auto millimetersPerUnit = calibrations.empty() ? 1.0 : geometry::millimetersPerUnit(unit);
         if (!roi::anyRecord(records))
             fail(MetrologyError::RoiNotConfigured);
 
@@ -108,6 +119,8 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
         {
             const auto &source = images[image];
             requireSupportedImage(source, "行间距测量");
+            if (!calibrations.empty() && calibrations[image].imageSize != source.size())
+                fail(CommonToolError::InputOutOfRange, "测量图像尺寸与标定数据不一致");
             const auto  gray    = grayscale(source);
             const auto &matrix  = alignments[image];
             const auto  inverse = matrix.inverse();
@@ -165,14 +178,6 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
                 gapPixels.back().push_back(measurement.gaps);
                 pitchPixels.back().push_back(measurement.pitches);
 
-                std::vector<double> widthConverted, gapConverted, pitchConverted;
-                for (double value : measurement.widths) widthConverted.push_back(value * unitsPerPixel);
-                for (double value : measurement.gaps) gapConverted.push_back(value * unitsPerPixel);
-                for (double value : measurement.pitches) pitchConverted.push_back(value * unitsPerPixel);
-                widthValues.back().push_back(std::move(widthConverted));
-                gapValues.back().push_back(std::move(gapConverted));
-                pitchValues.back().push_back(std::move(pitchConverted));
-
                 const auto                       currentView = visionrt::RectangleView(current);
                 const double                     radians     = currentView.angle() * kPi / 180.0;
                 const auto                       direction   = cv::Point2d{std::cos(radians), std::sin(radians)};
@@ -193,6 +198,32 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
                                               edge.x + normal.x * halfLength, edge.y + normal.y * halfLength));
                 }
                 pairPoints.back().push_back(std::move(points));
+                std::vector<double> widthConverted, gapConverted, pitchConverted;
+                if (calibrations.empty())
+                {
+                    for (double value : measurement.widths) widthConverted.push_back(value * unitsPerPixel);
+                    for (double value : measurement.gaps) gapConverted.push_back(value * unitsPerPixel);
+                    for (double value : measurement.pitches) pitchConverted.push_back(value * unitsPerPixel);
+                }
+                else
+                {
+                    const auto &calibration = calibrations[image];
+                    std::optional<cv::Point2d> previousEnd, previousCenter;
+                    for (const auto &pair : pairPoints.back().back())
+                    {
+                        const cv::Point2d first(pair[0], pair[1]), second(pair[2], pair[3]);
+                        const auto start = calibration.map(first), end = calibration.map(second);
+                        const auto center = calibration.map((first + second) * 0.5);
+                        widthConverted.push_back(cv::norm(end - start) / millimetersPerUnit);
+                        if (previousEnd) gapConverted.push_back(cv::norm(start - *previousEnd) / millimetersPerUnit);
+                        if (previousCenter) pitchConverted.push_back(cv::norm(center - *previousCenter) / millimetersPerUnit);
+                        previousEnd = end;
+                        previousCenter = center;
+                    }
+                }
+                widthValues.back().push_back(std::move(widthConverted));
+                gapValues.back().push_back(std::move(gapConverted));
+                pitchValues.back().push_back(std::move(pitchConverted));
             }
             segments.push_back(std::move(imageSegments));
         }
@@ -212,7 +243,7 @@ visionrt::ToolResult RowSpacingTool::execute(const visionrt::Values &inputs)
         outputs.emplace(p::out::GAP, visionrt::Array::fromNested(std::move(gapValues)));
         outputs.emplace(p::out::PITCH, visionrt::Array::fromNested(std::move(pitchValues)));
         outputs.emplace(p::out::PAIR_POINTS, visionrt::Array::fromNested(std::move(pairPoints)));
-        outputs.emplace(p::out::OVERLAY_SEGMENTS, roi::roiValue(std::move(segments)));
+        outputs.emplace(p::out::OVERLAY_SEGMENTS, roi::value<visionrt::Line>(std::move(segments)));
         outputs.emplace(p::out::UNIT, unit);
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }

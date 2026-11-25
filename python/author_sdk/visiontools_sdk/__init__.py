@@ -72,8 +72,8 @@ def status(code=0, message="", detail=""):
     return {"code": int(code) if isinstance(code, IntEnum) else code, "message": message, "detail": detail}
 
 
-def result(outputs=None, code=0, message="", detail=""):
-    """The envelope ``execute`` returns: business outputs plus the one status."""
+def result(outputs=None, code=0, message="", detail="", artifacts=None):
+    """The execution or training result, with optional named model bytes."""
     res = {} if outputs is None else dict(outputs)
     for key in res:
         _port(key)
@@ -81,7 +81,10 @@ def result(outputs=None, code=0, message="", detail=""):
             raise ContractError("状态由宿主发布，工具不得写入输出" + _label(key))
     res[0] = int(code) if isinstance(code, IntEnum) else code
     res[1] = message
-    return {"outputs": res, "detail": detail}
+    answer = {"outputs": res, "detail": detail}
+    if artifacts:
+        answer["artifacts"] = dict(artifacts)
+    return answer
 
 
 def success(outputs=None, message="运行成功"):
@@ -163,6 +166,21 @@ class InputReader:
             raise ContractError("输入" + self._label(key) + "类型不匹配（期望 ndarray 或列表）")
         return value
 
+    image = array
+    point = array
+    line = array
+    rectangle = array
+    circle = array
+    polygon = array
+    direction = array
+    coordinate_frame_2d = array
+
+    def training_set(self, key):
+        value = self._require(key)
+        if not isinstance(value, dict):
+            raise ContractError("输入" + self._label(key) + "类型不匹配（期望训练集）")
+        return value
+
     def optional_integer(self, key):
         value = self._find(key)
         if value is None:
@@ -235,6 +253,16 @@ class OutputWriter:
     def value(self, key, raw):
         self._write(key, raw)
 
+    image = array
+    point = array
+    line = array
+    rectangle = array
+    circle = array
+    polygon = array
+    direction = array
+    coordinate_frame_2d = array
+    training_set = value
+
     def _write(self, key, value):
         _port(key)
         if key in RESERVED_PORTS:
@@ -247,7 +275,22 @@ class OutputWriter:
         return self._values
 
 
-class InputParametersBase(ABC):
+class ParametersBase(ABC):
+    """A view of arbitrary initialization or training parameters, including port zero."""
+
+    def parse(self, values):
+        self.read_fields(InputReader(values, getattr(self, "parameter_names", None)))
+
+    @abstractmethod
+    def read_fields(self, reader):
+        """Read declared parameters through the shared typed reader."""
+
+
+InitializationParametersBase = ParametersBase
+TrainingParametersBase = ParametersBase
+
+
+class InputParametersBase(ParametersBase):
     """Base class for typed input views; reads upstream_status once, centrally."""
 
     def __init__(self):
@@ -276,6 +319,7 @@ class OutputParametersBase(ABC):
         self.status_code = 0
         self.status_message = ""
         self.status_detail = ""
+        self.artifacts = {}
 
     def status(self):
         """The status a lifecycle call returns."""
@@ -285,7 +329,7 @@ class OutputParametersBase(ABC):
         """The envelope execute returns: the written outputs plus this status."""
         writer = OutputWriter()
         self.write_fields(writer)
-        return result(writer.take(), self.status_code, self.status_message, self.status_detail)
+        return result(writer.take(), self.status_code, self.status_message, self.status_detail, self.artifacts)
 
     @abstractmethod
     def write_fields(self, writer):

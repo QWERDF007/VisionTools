@@ -1,26 +1,25 @@
 {
-  "schema_version": 2,
+  "schema_version": 4,
   "name_en": "CreateLine",
   "name_zh": "创建线",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "implementation": {
     "kind": "cpp"
   },
   "inputs": [
     {
-      "type": "roi",
+      "type": "line",
       "relations": {
         "image": {
           "stage": "inputs",
           "id": 2
         }
       },
-      "name_zh": "几何数据",
+      "name_zh": "线",
       "id": 1,
       "default": [
         [
           [
-            1,
             100,
             100,
             200,
@@ -48,8 +47,8 @@
   ],
   "outputs": [
     {
-      "type": "roi",
-      "name_zh": "区域",
+      "type": "line",
+      "name_zh": "线",
       "id": 2
     }
   ]

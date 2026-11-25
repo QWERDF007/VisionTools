@@ -44,38 +44,15 @@ CircularSearch circularSearch(const visionrt::PortValue &value, const char *port
 std::vector<std::vector<Record>> groups(const visionrt::PortValue &value, std::size_t imageCount,
                                         const char *portName)
 {
-    std::vector<std::vector<Record>> result;
     const std::string                name(portName);
     if (visionrt::isMissing(value))
-        return result;
-    const auto *reference = std::get_if<visionrt::DataRef<visionrt::ROI>>(&value);
+        return {};
+    const auto *reference = visionrt::shapeRegions(value);
     if (!reference)
-        fail(CommonToolError::InputTypeMismatch, name + " 必须是 ROI");
-    const auto &images = reference->get();
-    if (!images.empty() && images.size() != imageCount)
-        fail(CommonToolError::InputOutOfRange, name + " 外层长度必须为 " + std::to_string(imageCount) + " 张图像，实际 "
-                                      + std::to_string(images.size()));
-    result.resize(images.size());
-    for (std::size_t image = 0; image < images.size(); ++image)
-    {
-        for (const auto &record : images[image])
-        {
-            if (record.empty())
-                fail(GeometryError::RoiOutOfImage, name + " 含空 ROI 记录");
-            try
-            {
-                // One validation per region at the external entry; downstream code receives the
-                // record as an already-checked encoding and reads it through typed views.
-                (void)visionrt::RegionView(record);
-            }
-            catch (const visionrt::ContractError &error)
-            {
-                fail(CommonToolError::InputOutOfRange, name + " 的 ROI 记录不合法：" + error.what());
-            }
-            result[image].push_back(record);
-        }
-    }
-    return result;
+        fail(CommonToolError::InputTypeMismatch, name + " 必须声明具体形状类型");
+    if (!reference->empty() && reference->size() != imageCount)
+        fail(CommonToolError::InputOutOfRange, name + " 外层长度必须与图像数量一致");
+    return *reference;
 }
 
 bool anyRecord(const std::vector<std::vector<Record>> &records) noexcept
@@ -172,19 +149,6 @@ cv::Mat regionMask(const std::vector<Record> &records, cv::Size size, const geom
             }
     }
     return mask;
-}
-
-visionrt::ROI toRoi(std::vector<std::vector<Record>> records)
-{
-    visionrt::ROI result;
-    result.reserve(records.size());
-    for (auto &image : records) result.push_back(std::move(image));
-    return result;
-}
-
-visionrt::PortValue roiValue(std::vector<std::vector<Record>> records)
-{
-    return visionrt::DataRef<visionrt::ROI>(toRoi(std::move(records)));
 }
 
 Record point(double x, double y)

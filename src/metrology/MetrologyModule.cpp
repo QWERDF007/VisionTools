@@ -1,4 +1,5 @@
 #include "CircleTool.h"
+#include "CalibrateCameraTool.h"
 #include "LocatorTools.h"
 #include "RowSpacingTool.h"
 
@@ -8,6 +9,8 @@
 namespace visiontools::metrology { namespace {
 visionrt::ToolStatus VT_CALL registerTools(visionrt::IToolRegistry &registry) noexcept
 {
+    if (auto s = visionrt::registerClass<CalibrateCameraTool>(registry, ports::calibrate_camera::TOOL_ID); !s)
+        return s;
     if (auto s = visionrt::registerClass<CircleTool>(registry, ports::measure_circle::TOOL_ID); !s)
         return s;
     if (auto s = visionrt::registerClass<RowSpacingTool>(registry, ports::measure_row_spacing::TOOL_ID); !s)

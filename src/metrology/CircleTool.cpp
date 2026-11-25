@@ -100,7 +100,7 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
     const auto unitsPerPixel  = readings.real(p::in::UNITS_PER_PIXEL);
     const auto unit           = readings.text(p::in::UNIT);
     const auto alignmentValue = readings.find(p::in::ALIGNMENT);
-    const auto roiValue       = readings.find(p::in::ROIS);
+    const auto roiValue       = readings.circle(p::in::ROIS);
     if (readings.failed())
         return visionrt::toolResult(missingOutputs(),
                                     readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
@@ -131,12 +131,12 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
         const double sampleCount = 2.0 * options.searchHalfWidth / 0.5 + 1.0;
         if (sampleCount * std::max(1.0, options.averageWidth) > 8.0e6)
             fail(CommonToolError::InputOutOfRange, "卡尺采样预算超限，请减小搜索宽度或平均宽度");
-        if (!alignmentValue || !roiValue)
+        if (!alignmentValue)
             fail(CommonToolError::InputMissing,
-                 parameterName(p::TOOL_ID, "inputs", !alignmentValue ? p::in::ALIGNMENT : p::in::ROIS));
+                 parameterName(p::TOOL_ID, "inputs", p::in::ALIGNMENT));
 
         const auto alignments = geometry::alignmentsFromValue(*alignmentValue, images.size());
-        const auto records    = roi::groups(*roiValue, images.size(), "rois");
+        const auto records    = roi::groups(roiValue, images.size(), "rois");
         if (!roi::anyRecord(records))
             fail(MetrologyError::RoiNotConfigured);
 
@@ -234,13 +234,13 @@ visionrt::ToolResult CircleTool::execute(const visionrt::Values &inputs)
         outputs.emplace(p::out::REASONS, array2(std::move(reasons)));
         outputs.emplace(p::out::VALID_COUNT, array1(std::move(validCounts)));
         outputs.emplace(p::out::SOURCE_ROI_INDICES, array2(std::move(sourceIndices)));
-        outputs.emplace(p::out::CIRCLES, roi::roiValue(std::move(circleGroups)));
+        outputs.emplace(p::out::CIRCLES, roi::value<visionrt::Circle>(std::move(circleGroups)));
         outputs.emplace(p::out::CENTERS, array3(std::move(centers)));
         outputs.emplace(p::out::RADIUS_PX, array2(std::move(radiusPixels)));
         outputs.emplace(p::out::RADIUS, array2(std::move(radii)));
         outputs.emplace(p::out::RMS, array2(std::move(rmsValues)));
         outputs.emplace(p::out::COMPLETENESS, array2(std::move(completenessValues)));
-        outputs.emplace(p::out::USED_EDGES, roi::roiValue(std::move(edgeGroups)));
+        outputs.emplace(p::out::USED_EDGES, roi::value<visionrt::Point>(std::move(edgeGroups)));
         outputs.emplace(p::out::UNIT, unit);
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }

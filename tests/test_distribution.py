@@ -51,7 +51,7 @@ class DistributionContract(unittest.TestCase):
         definition = project / "assets/tools/custom/math/arithmetic/add.json"
         definition.parent.mkdir(parents=True)
         document = {
-            "schema_version": 2, "name_en": "test.add", "name_zh": "Add", "version": "1.0.0",
+            "schema_version": 4, "name_en": "test.add", "name_zh": "Add", "version": "1.0.0",
             "implementation": {"kind": "python_function",
                                "package": "math/arithmetic",
                                "file": "add.py",

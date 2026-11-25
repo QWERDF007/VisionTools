@@ -1,7 +1,7 @@
 {
   "name_en": "AlignStraightBorders",
   "name_zh": "通过直边确定对齐",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -57,9 +57,18 @@
       "default": "any",
       "constraints": {
         "options": [
-          "any",
-          "dark_to_light",
-          "light_to_dark"
+          {
+            "value": "any",
+            "label": "任意"
+          },
+          {
+            "value": "dark_to_light",
+            "label": "暗到亮"
+          },
+          {
+            "value": "light_to_dark",
+            "label": "亮到暗"
+          }
         ]
       },
       "ui": {
@@ -85,7 +94,7 @@
       }
     },
     {
-      "type": "roi",
+      "type": "rectangle",
       "relations": {
         "image": {
           "stage": "inputs",
@@ -108,14 +117,14 @@
       "type": {
         "type": "array",
         "dtype": "float64",
-        "rank": 3
+        "rank": 2
       },
       "produced_by": "execute"
     },
     {
       "id": 3,
       "name_zh": "找到的边",
-      "type": "roi",
+      "type": "line",
       "relations": {
         "image": {
           "stage": "inputs",
@@ -127,15 +136,49 @@
       "id": 4,
       "name_zh": "模型路径",
       "type": "string"
+    },
+    {
+      "id": 5,
+      "name_zh": "搜索方向",
+      "type": "direction",
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        }
+      }
     }
   ],
   "training": {
-    "image": {
-      "stage": "inputs",
-      "id": 1
-    },
-    "max_records": 1,
-    "overlay_output": 3,
+    "datasets": [
+      {
+        "parameter": 7,
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        },
+        "fields": [
+          {
+            "id": 2,
+            "name_zh": "训练搜索区域",
+            "type": "rectangle",
+            "default": [],
+            "ui": {
+              "editor": "roi",
+              "group": "训练数据",
+              "tab": "training"
+            },
+            "constraints": {
+              "regions": {
+                "min": 2,
+                "max": 2
+              }
+            }
+          }
+        ],
+        "max_records": 1
+      }
+    ],
     "artifacts": [
       {
         "id": "edge-model",
@@ -149,32 +192,15 @@
       }
     ]
   },
-  "schema_version": 2,
+  "schema_version": 4,
   "train_params": [
     {
       "id": 1,
       "name_zh": "直边模型路径",
       "type": "string",
-      "scope": "tool",
       "ui": {
         "editor": "path",
         "group": "模型",
-        "tab": "training"
-      }
-    },
-    {
-      "id": 2,
-      "name_zh": "训练搜索区域",
-      "type": "roi",
-      "scope": "record",
-      "default": [],
-      "canvas": {
-        "min": 2,
-        "max": 2
-      },
-      "ui": {
-        "editor": "roi",
-        "group": "训练数据",
         "tab": "training"
       }
     },
@@ -192,8 +218,7 @@
         "tab": "training",
         "decimals": 2,
         "group": "训练参数"
-      },
-      "scope": "tool"
+      }
     },
     {
       "id": 4,
@@ -208,8 +233,7 @@
         "editor": "number",
         "tab": "training",
         "group": "训练参数"
-      },
-      "scope": "tool"
+      }
     },
     {
       "id": 5,
@@ -218,17 +242,25 @@
       "default": "any",
       "constraints": {
         "options": [
-          "any",
-          "dark_to_light",
-          "light_to_dark"
+          {
+            "value": "any",
+            "label": "任意"
+          },
+          {
+            "value": "dark_to_light",
+            "label": "暗到亮"
+          },
+          {
+            "value": "light_to_dark",
+            "label": "亮到暗"
+          }
         ]
       },
       "ui": {
         "editor": "text",
         "tab": "training",
         "group": "训练参数"
-      },
-      "scope": "tool"
+      }
     },
     {
       "id": 6,
@@ -244,8 +276,16 @@
         "tab": "training",
         "decimals": 2,
         "group": "训练参数"
-      },
-      "scope": "tool"
+      }
+    },
+    {
+      "id": 7,
+      "name_zh": "训练样本",
+      "type": "training_set",
+      "ui": {
+        "tab": "training",
+        "group": "训练数据"
+      }
     }
   ]
 }

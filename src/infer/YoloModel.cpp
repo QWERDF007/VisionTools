@@ -490,7 +490,7 @@ ToolResult YoloTool::run(const Values &inputs, std::vector<ImageTrace> *traces)
         }
         return toolResult(
             {
-                {       yolo_ports::out::ROIS,         DataRef<ROI>(std::move(rois))},
+                {       yolo_ports::out::ROIS,         Rectangle::fromEncoded(std::move(rois))},
                 {     yolo_ports::out::SCORES,  Array::fromNested(std::move(scores))},
                 {    yolo_ports::out::CLASSES, Array::fromNested(std::move(classes))},
                 {yolo_ports::out::CLASS_NAMES,   Array::fromNested(std::move(names))}

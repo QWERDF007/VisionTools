@@ -13,11 +13,15 @@ foreach(_file IN LISTS _definitions)
  string(JSON _tool GET "${_definition}" name_en)
  string(APPEND _header "if (tool == \"${_tool}\") {
 ")
- foreach(_stage init_params inputs outputs)
+ foreach(_stage init_params train_params inputs outputs)
   string(JSON _length ERROR_VARIABLE _error LENGTH "${_definition}" ${_stage})
   if(NOT _error AND _length GREATER 0)
    math(EXPR _end "${_length} - 1")
-   string(APPEND _header "if (stage == \"${_stage}\") { switch(id) {
+   set(_stage_name "${_stage}")
+   if(_stage STREQUAL "init_params")
+    set(_stage_name "init")
+   endif()
+   string(APPEND _header "if (stage == \"${_stage_name}\") { switch(id) {
 ")
    foreach(_j RANGE 0 ${_end})
     string(JSON _id GET "${_definition}" ${_stage} ${_j} id)

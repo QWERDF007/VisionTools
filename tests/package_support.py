@@ -32,7 +32,7 @@ class PackageFixture(unittest.TestCase):
         self.validator = validator_path()
         self.declaration = self.project / "assets/tools/custom/Math/Arithmetic/tool.json"
         self.declaration.parent.mkdir(parents=True)
-        self.document = {"schema_version": 2,
+        self.document = {"schema_version": 4,
             "name_en": "custom.math", "name_zh": "Math",
             "version": "1.0.0",
             "implementation": {

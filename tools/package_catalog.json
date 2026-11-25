@@ -43,7 +43,8 @@
             "output": 8,
             "train": 4
           }
-        ]
+        ],
+        "dataset_parameter": 7
       }
     },
     {
@@ -204,6 +205,10 @@
     {
       "definition": "assets/tools/builtin/预处理/ROI/创建多边形.json",
       "module": "visiontools_preprocess"
+    },
+    {
+      "definition": "assets/tools/builtin/测量/平面标定.json",
+      "module": "visiontools_metrology"
     }
   ]
 }

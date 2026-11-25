@@ -1,6 +1,7 @@
 #include "RecognizeColorTool.h"
 
 #include "ColorModel.h"
+#include "common/InputValues.h"
 #include "common/ToolOutputs.h"
 #include "common/errors/ToolError.h"
 #include "errors/RecognitionErrors.h"
@@ -14,7 +15,6 @@
 namespace visiontools::recognition {
 namespace {
 namespace p   = ports::recognize_color;
-using FieldId = visionrt::TrainingFieldId;
 
 visionrt::Values missingOutputs()
 {
@@ -51,10 +51,15 @@ cv::Mat bgrFrame(const visionrt::TrainingImage &image)
 }
 } // namespace
 
-visionrt::ToolResult RecognizeColorTool::train(const visionrt::TrainingSet &training, const visionrt::Values &parameters)
+visionrt::ToolResult RecognizeColorTool::train(const visionrt::Values &parameters)
 {
-    constexpr auto labelField = p::train::LABEL;
-    constexpr auto regionField = p::train::REGIONS;
+    Readings readings(parameters, p::TOOL_ID, visionrt::PortStage::Train);
+    const auto set = readings.trainingSet(p::train::DATASET);
+    const auto modelPath = readings.text(p::train::MODEL_PATH);
+    if (readings.failed()) return visionrt::toolResult(missingOutputs(), readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch));
+    const auto &training = set.get();
+    constexpr auto labelField = p::field::LABEL;
+    constexpr auto regionField = p::field::REGIONS;
     try
     {
         visionrt::validateTrainingSet(training);
@@ -73,17 +78,18 @@ visionrt::ToolResult RecognizeColorTool::train(const visionrt::TrainingSet &trai
             const auto  region = record.fields.find(regionField);
             const auto *roi    = region == record.fields.end()
                                    ? nullptr
-                                   : std::get_if<visionrt::DataRef<visionrt::ROI>>(&region->second);
+                                   : std::get_if<visionrt::Rectangle>(&region->second);
             if (!roi || roi->get().empty())
                 fail(RecognitionError::ColorSamplesMissing, "记录 " + std::to_string(id));
 
-            auto frame = frames.find(record.imageId);
+            if (!record.imageId) fail(RecognitionError::ColorSamplesMissing, "记录 " + std::to_string(id) + " 的图像");
+            auto frame = frames.find(*record.imageId);
             if (frame == frames.end())
             {
-                const auto image = training.images.find(record.imageId);
+                const auto image = training.images.find(*record.imageId);
                 if (image == training.images.end())
                     fail(RecognitionError::ColorSamplesMissing, "记录 " + std::to_string(id) + " 的图像");
-                frame = frames.emplace(record.imageId, bgrFrame(image->second)).first;
+                frame = frames.emplace(*record.imageId, bgrFrame(image->second)).first;
             }
 
             ColorModel::Sample sample;
@@ -98,7 +104,7 @@ visionrt::ToolResult RecognizeColorTool::train(const visionrt::TrainingSet &trai
 
         const auto       bytes = ColorModel::train(samples).encode();
         visionrt::Values outputs;
-        outputs.emplace(p::out::MODEL_PATH, std::get<std::string>(parameters.at(p::train::MODEL_PATH)));
+        outputs.emplace(p::out::MODEL_PATH, modelPath);
         auto result = visionrt::toolResult(std::move(outputs), {0, "训练成功"});
         result.artifacts.emplace("color-model", visionrt::ModelArtifact{bytes});
         return result;

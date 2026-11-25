@@ -1,7 +1,7 @@
 {
   "name_en": "MeasureRowSpacing",
   "name_zh": "测量行间距",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -21,7 +21,7 @@
     {
       "id": 2,
       "name_zh": "测量区域",
-      "type": "roi",
+      "type": "rectangle",
       "default": [],
       "ui": {
         "editor": "array",
@@ -45,13 +45,23 @@
       "type": {
         "type": "array",
         "dtype": "float64",
-        "rank": 3
+        "rank": 2
       },
       "ui": {
         "editor": "array",
         "tab": "basic_input",
         "group": "输入数据"
-      }
+      },
+      "default": [
+        [
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ]
+      ]
     },
     {
       "id": 4,
@@ -92,8 +102,14 @@
       "default": "bright",
       "constraints": {
         "options": [
-          "bright",
-          "dark"
+          {
+            "value": "bright",
+            "label": "亮目标"
+          },
+          {
+            "value": "dark",
+            "label": "暗目标"
+          }
         ]
       },
       "ui": {
@@ -138,7 +154,7 @@
       "type": "float",
       "default": 1,
       "constraints": {
-        "min": 1e-9
+        "min": 1e-09
       },
       "ui": {
         "editor": "number",
@@ -156,6 +172,21 @@
         "editor": "text",
         "tab": "detection",
         "group": "标定换算"
+      }
+    },
+    {
+      "id": 11,
+      "name_zh": "标定数据",
+      "type": {
+        "type": "array",
+        "dtype": "float64",
+        "rank": 3
+      },
+      "default": [],
+      "ui": {
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "测量尺度"
       }
     }
   ],
@@ -280,7 +311,7 @@
     {
       "id": 16,
       "name_zh": "边缘显示线段",
-      "type": "roi",
+      "type": "line",
       "relations": {
         "image": {
           "stage": "inputs",
@@ -294,5 +325,5 @@
       "type": "string"
     }
   ],
-  "schema_version": 2
+  "schema_version": 4
 }

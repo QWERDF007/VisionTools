@@ -1,7 +1,7 @@
 {
   "name_en": "ProjectRoi",
   "name_zh": "投影ROI",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -41,8 +41,14 @@
       "default": "bright",
       "constraints": {
         "options": [
-          "bright",
-          "dark"
+          {
+            "value": "bright",
+            "label": "亮目标"
+          },
+          {
+            "value": "dark",
+            "label": "暗目标"
+          }
         ]
       },
       "ui": {
@@ -124,8 +130,8 @@
   "outputs": [
     {
       "id": 3,
-      "name_zh": "ROI批次",
-      "type": "roi",
+      "name_zh": "矩形",
+      "type": "rectangle",
       "relations": {
         "image": {
           "stage": "inputs",
@@ -134,5 +140,5 @@
       }
     }
   ],
-  "schema_version": 2
+  "schema_version": 4
 }

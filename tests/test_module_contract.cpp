@@ -114,6 +114,7 @@ int main()
     };
     const std::vector<std::string> creators{"CreatePoint", "CreateLine", "CreateRotatedRectangle", "CreateCircle",
                                             "CreatePolygon"};
+    const std::vector<visionrt::Type> shapeTypes{visionrt::Type::Point, visionrt::Type::Line, visionrt::Type::Rectangle, visionrt::Type::Circle, visionrt::Type::Polygon};
     for (std::size_t i = 0; i < creators.size(); ++i)
     {
         const auto &creator  = registry.factories.at(creators[i]);
@@ -121,13 +122,13 @@ int main()
         REQUIRE(instance && instance->initialize({}).code == 0, "ROI creator must initialize without an image");
         const visionrt::ROI geometry{{geometries[i]}};
         const auto          result = instance->execute({
-            {1, visionrt::DataRef<visionrt::ROI>(geometry)}
+            {1, visionrt::shapeValue(shapeTypes[i], geometry)}
         });
         REQUIRE(testview::status(result).code == 0, "ROI creator must accept typed geometry without pixels");
-        REQUIRE(std::get<visionrt::DataRef<visionrt::ROI>>(result.outputs.at(2)).get() == geometry,
+        REQUIRE(*visionrt::shapeRegions(result.outputs.at(2)) == geometry,
                 "ROI creator must preserve all double coordinates");
         const auto wrong = instance->execute({
-            {1, visionrt::DataRef<visionrt::ROI>(visionrt::ROI{{geometries[(i + 1) % geometries.size()]}})}
+            {1, visionrt::shapeValue(shapeTypes[(i + 1) % shapeTypes.size()], visionrt::ROI{{geometries[(i + 1) % geometries.size()]}})}
         });
         REQUIRE(testview::status(wrong).code != 0 && visionrt::isMissing(wrong.outputs.at(2)),
                 "wrong shape must fail without a fabricated ROI");

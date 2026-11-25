@@ -115,7 +115,7 @@ int main()
                 Values values = inputs;
                 values.emplace(bright_ports::in::GAIN, 1.0);
                 values.emplace(bright_ports::in::OFFSET, 0.0);
-                values.emplace(bright_ports::in::ROIS, DataRef<ROI>(ROI{}));
+                values.emplace(bright_ports::in::ROIS, Rectangle::fromEncoded(ROI{}));
                 values.emplace(bright_ports::in::ALIGNMENT,
                                Array::fromNested(NestedVector<double, 3>{}));
                 return brightnessTool(values);

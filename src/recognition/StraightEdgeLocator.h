@@ -50,6 +50,7 @@ struct LocatedSegment
 
 // Converts one encoded search region; the caller retains the region order.
 SearchRectangle searchRectangle(const visionrt::EncodedRegion &record, std::size_t index);
+std::vector<double> searchDirectionRecord(const SearchRectangle &band);
 
 // Fits the edge points in the current search band. Empty when no sufficiently complete edge exists.
 std::optional<LocatedSegment> locateSegment(const cv::Mat &gray, const SearchRectangle &band,

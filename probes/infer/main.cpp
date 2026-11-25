@@ -386,7 +386,7 @@ std::vector<std::vector<PublicDetection>> outputContract(const ToolResult &resul
 {
     success(testview::status(result));
     require(testview::businessCount(result) == 5, "Public detection output contract must expose 5 business outputs");
-    const auto *rois     = std::get_if<DataRef<ROI>>(&result.outputs.at(3));
+    const auto *rois     = std::get_if<visionrt::Rectangle>(&result.outputs.at(3));
     const auto *scores   = std::get_if<Array>(&result.outputs.at(4));
     const auto *classes  = std::get_if<Array>(&result.outputs.at(5));
     const auto *names    = std::get_if<Array>(&result.outputs.at(6));

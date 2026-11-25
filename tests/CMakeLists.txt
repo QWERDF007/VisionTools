@@ -79,6 +79,25 @@ visiontools_add_test(test_recognition_contract
     LIBRARIES visiontools_recognition visiontools_common VisionRT::Contracts ${OpenCV_LIBS}
 )
 
+visiontools_add_test(test_search_direction_contract
+    SOURCES test_search_direction_contract.cpp
+    LIBRARIES visiontools_recognition visiontools_common VisionRT::Contracts ${OpenCV_LIBS}
+)
+
+visiontools_add_test(test_calibration_contract
+    SOURCES test_calibration_contract.cpp
+    LIBRARIES visiontools_metrology visiontools_common VisionRT::Contracts ${OpenCV_LIBS}
+)
+set(VISIONTOOLS_CALIBRATION_IMAGES "" CACHE PATH "Real calibration and ruler image directory")
+set(VISIONTOOLS_CALIBRATION_PLATE "" CACHE FILEPATH "Real calibration plate descriptor")
+if(VISIONTOOLS_CALIBRATION_IMAGES AND VISIONTOOLS_CALIBRATION_PLATE)
+    add_test(NAME test_calibration_real_contract COMMAND test_calibration_contract
+        "${VISIONTOOLS_CALIBRATION_IMAGES}/calibration_plate.png" "${VISIONTOOLS_CALIBRATION_IMAGES}/ruler_high.png"
+        "${VISIONTOOLS_CALIBRATION_PLATE}" "${CMAKE_BINARY_DIR}/evidence/calibration-model.bin")
+    get_test_property(test_calibration_contract ENVIRONMENT _calibration_environment)
+    set_tests_properties(test_calibration_real_contract PROPERTIES ENVIRONMENT "${_calibration_environment}")
+endif()
+
 visiontools_add_test(test_module_contract
     SOURCES test_module_contract.cpp
     LIBRARIES visiontools_preprocess VisionRT::Contracts

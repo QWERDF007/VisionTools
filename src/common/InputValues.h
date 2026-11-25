@@ -3,6 +3,7 @@
 #include "common/errors/ToolError.h"
 
 #include <visionrt/contracts/Parameters.h>
+#include <visionrt/contracts/Declaration.h>
 #include <visionrt/contracts/Tool.h>
 
 #include <cstdint>
@@ -46,13 +47,13 @@ struct Placeholder<visionrt::DataRef<T>>
 class Readings
 {
 public:
-    explicit Readings(const visionrt::Values &values, std::string_view tool) noexcept
-        : reader_(values), tool_(tool)
+    explicit Readings(const visionrt::Values &values, std::string_view tool, visionrt::PortStage stage = visionrt::PortStage::Inputs) noexcept
+        : reader_(values), tool_(tool), stage_(stage)
     {
     }
 
-    explicit Readings(const visionrt::InputReader &reader, std::string_view tool) noexcept
-        : reader_(reader), tool_(tool)
+    explicit Readings(const visionrt::InputReader &reader, std::string_view tool, visionrt::PortStage stage = visionrt::PortStage::Inputs) noexcept
+        : reader_(reader), tool_(tool), stage_(stage)
     {
     }
 
@@ -96,9 +97,18 @@ public:
         return take(reader_.image(id), id);
     }
 
-    visionrt::DataRef<visionrt::ROI> roi(visionrt::PortId id)
+    template<class Shape> requires visionrt::isShapeValue<Shape>
+    Shape shape(visionrt::PortId id) { return take(reader_.shape<Shape>(id), id); }
+
+#define VRT_SHAPE(name, kind, view, code, wire, label) \
+    visionrt::name wire(visionrt::PortId id) { return shape<visionrt::name>(id); } \
+    std::optional<visionrt::name> nullable##name(visionrt::PortId id) { return take(reader_.nullable##name(id), id); }
+#include <visionrt/contracts/ShapeKinds.def>
+#undef VRT_SHAPE
+
+    visionrt::DataRef<visionrt::TrainingSet> trainingSet(visionrt::PortId id)
     {
-        return take(reader_.roi(id), id);
+        return take(reader_.trainingSet(id), id);
     }
 
     std::optional<visionrt::DataRef<visionrt::Image>> nullableImage(visionrt::PortId id)
@@ -141,7 +151,7 @@ private:
             if (!issue_)
             {
                 issue_ = result.issue();
-                issue_->field = parameterName(tool_, "inputs", id);
+                issue_->field = parameterName(tool_, visionrt::stageName(stage_), id);
             }
             return detail::Placeholder<T>::make();
         }
@@ -150,6 +160,7 @@ private:
 
     visionrt::InputReader       reader_;
     std::string_view tool_;
+    visionrt::PortStage stage_;
     std::optional<visionrt::PortIssue> issue_;
 };
 

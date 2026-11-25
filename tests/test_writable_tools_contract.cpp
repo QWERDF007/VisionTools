@@ -38,7 +38,7 @@ try
         const cv::Mat header(2, 4, CV_8UC1, original);
         const Values  inputs{
              {1, DataRef<Image>(Image{header, header}, {storage})},
-             {2, DataRef<ROI>(ROI{{{2, 1, 0, 2, 2, 0}}})}
+             {2, Rectangle::fromEncoded(ROI{{{2, 1, 0, 2, 2, 0}}})}
         };
         result = instance->execute(inputs);
         assert(testview::status(result).code == 0);

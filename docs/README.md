@@ -1,7 +1,7 @@
 # VisionTools 文档索引
 
 - [公共值、状态与注册接口](../3rdparty/VisionRTContracts/docs/README.md)
-- [几何契约](../3rdparty/VisionRTContracts/include/visionrt/contracts/ROI.h)、[工具几何适配](../src/common/RoiSupport.h)、[圆测量输出](../src/metrology/CircleTool.cpp)、[几何验证](../tests/test_geometry_contract.cpp)
+- [具体形状参数](../3rdparty/VisionRTContracts/include/visionrt/contracts/ShapeValues.h)、[内部几何视图](../3rdparty/VisionRTContracts/include/visionrt/contracts/ROI.h)、[工具几何适配](../src/common/RoiSupport.h)、[圆测量输出](../src/metrology/CircleTool.cpp)、[几何验证](../tests/test_geometry_contract.cpp)
 - [ROI 创建工具](../src/preprocess/CreateRoiTool.h)、[几何声明](../assets/tools/builtin/预处理/ROI)、[模块验证](../tests/test_module_contract.cpp)、[安装消费](../tests/test_installation_consumer.cpp)
 - [CPU 注册](../src/preprocess/PreprocessModule.cpp)、[识别注册](../src/recognition/RecognitionModule.cpp)、[推理注册](../src/infer/InferModule.cpp)、[函数与类实例注册](../3rdparty/VisionRTContracts/include/visionrt/contracts/FunctionTool.h)
 - [公共枚举源定义](../3rdparty/VisionRTContracts/include/visionrt/contracts/ProtocolEnums.def)、[声明枚举名称](../3rdparty/VisionRTContracts/include/visionrt/contracts/DeclarationNames.def)、[原生导出](../tools/export_protocol_enums.cpp)、[构建 SDK 消费](../tools/package_payload.py)、[公共错误定义](../src/common/errors/CommonToolErrors.def)
@@ -11,6 +11,9 @@
 - [作者 JSON 与资源收集](../tools/package_payload.py)、[双来源与路径边界验证](../tests/test_package_payload.py)、[发行事务与目标保护](../tools/package_tools.py)、[事务验证](../tests/test_package.py)
 - [真实模块注册验证](../tests/test_module_contract.cpp)、[动态消费](../tests/test_installation_consumer.cpp)、[算法数值](../tests/test_preprocess_contract.cpp)
 - [直边对齐与颜色识别契约](../tests/test_recognition_contract.cpp)、[共享边缘采样](../src/common/EdgeProfile.h)、[直边模型](../src/recognition/StraightEdgeModel.h)、[颜色模型](../src/recognition/ColorModel.h)
+- [平面标定工具](../src/metrology/CalibrateCameraTool.h)、[训练与运行](../src/metrology/CalibrateCameraTool.cpp)、[六角标定板观察](../src/metrology/CalibrationPlate.cpp)、[OpenCV 拟合](../src/metrology/CalibrationFit.cpp)、[模型持久化](../src/metrology/CalibrationModel.cpp)
+- [标定数组与物理映射](../src/common/PlanarCalibration.h)、[标定行间距](../src/metrology/RowSpacingTool.cpp)、[合成与真实图像验证](../tests/test_calibration_contract.cpp)、[真实资源测试配置](../tests/CMakeLists.txt)
+- [六系数对齐](../3rdparty/VisionRTContracts/include/visionrt/contracts/Affine2D.h)、[方向与二维坐标系](../3rdparty/VisionRTContracts/include/visionrt/contracts/GeometryValues.h)、[搜索方向输出验证](../tests/test_search_direction_contract.cpp)
 - [分工具数值与边界用例](../tests/preprocess)、[裁剪独立像素金标与资源存活](../tests/preprocess/image_crop.cpp)、[真实 Mat 分配观测](../tests/preprocess/MatAllocationProbe.h)、[读图预算边界](../tests/preprocess/read_image.cpp)、[共享裁剪视图及外部保活](../tests/test_writable_tools_contract.cpp)
 - [状态与原始异常详情](../3rdparty/VisionRTContracts/include/visionrt/contracts/Tool.h)、[图像解码边界](../src/preprocess/ReadImageTool.cpp)
 - [C++ 参数子类](../3rdparty/VisionRTContracts/include/visionrt/contracts/Parameters.h)、[读图参数示例](../src/preprocess/ReadImageParameters.h)、[函数工具示例](../src/preprocess/BrightnessTool.h)、[Python 作者 SDK（唯一来源）](../python/author_sdk/visiontools_sdk/__init__.py)、[SDK 消费示例](../python/custom/examples/image_add/tool.py)

@@ -21,7 +21,7 @@ EdgeProbeRequest readRequest(const visionrt::Values &inputs)
 {
     Readings   readings(inputs, p::TOOL_ID);
     const auto images = readings.image(p::in::IMAGES);
-    const auto search = readings.roi(p::in::SEARCH_REGION);
+    const auto search = readings.circle(p::in::SEARCH_REGION);
     if (readings.failed())
         fail(CommonToolError::InputMissing, readings.issue()->describe());
     if (images.get().size() != 1)
@@ -50,8 +50,8 @@ visionrt::Values proposalOutputs(const EdgeProbeResult &result)
         proposal.clear();
     }
     visionrt::Values outputs;
-    outputs.emplace(p::out::PREVIEW_ROIS, roi::roiValue(std::move(preview)));
-    outputs.emplace(p::out::PROPOSAL_ROIS, roi::roiValue(std::move(proposal)));
+    outputs.emplace(p::out::PREVIEW_ROIS, roi::value<visionrt::Rectangle>(std::move(preview)));
+    outputs.emplace(p::out::PROPOSAL_ROIS, roi::value<visionrt::Rectangle>(std::move(proposal)));
     outputs.emplace(p::out::CANDIDATE_VALID, result.valid);
     outputs.emplace(p::out::QUALITY, result.quality);
     outputs.emplace(p::out::SUGGESTED_POLARITY, result.polarity);

@@ -18,6 +18,7 @@ inline constexpr visionrt::PortId WIDTH_MIN       = 7;
 inline constexpr visionrt::PortId WIDTH_MAX       = 8;
 inline constexpr visionrt::PortId UNITS_PER_PIXEL = 9;
 inline constexpr visionrt::PortId UNIT            = 10;
+inline constexpr visionrt::PortId CALIBRATION     = 11;
 } // namespace in
 
 namespace out {

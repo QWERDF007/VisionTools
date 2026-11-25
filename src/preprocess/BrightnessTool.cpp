@@ -12,6 +12,7 @@
 
 #include <opencv2/core.hpp>
 
+#include <array>
 #include <cmath>
 #include <stdexcept>
 #include <string>
@@ -64,6 +65,9 @@ visionrt::ToolStatus BrightnessInputs::readFields(visionrt::InputReader &reader)
     gain     = readings.real(p::in::GAIN);
     offset   = readings.real(p::in::OFFSET);
     mask     = readings.nullableImage(p::in::MASK);
+    rectangles = readings.rectangle(p::in::ROIS);
+    circles = readings.nullableCircle(p::in::CIRCLES);
+    polygons = readings.nullablePolygon(p::in::POLYGONS);
     if (readings.failed())
         return readings.status(CommonToolError::InputMissing, CommonToolError::InputTypeMismatch);
     if (!inRange(gain, 0.0, 1.0e12))
@@ -71,10 +75,6 @@ visionrt::ToolStatus BrightnessInputs::readFields(visionrt::InputReader &reader)
     if (!inRange(offset, -1.0e12, 1.0e12))
         return status(CommonToolError::InputOutOfRange, parameterName("AdjustBrightness", "inputs", p::in::OFFSET) + " 必须在 [-1e12, 1e12] 内");
     // The shared kernels interpret these two values; the parameter view only keeps the handle.
-    const auto *rois = reader.find(p::in::ROIS);
-    if (!rois)
-        return status(CommonToolError::InputMissing, parameterName("AdjustBrightness", "inputs", p::in::ROIS));
-    this->rois = *rois;
     const auto *alignment = reader.find(p::in::ALIGNMENT);
     if (!alignment)
         return status(CommonToolError::InputMissing, parameterName("AdjustBrightness", "inputs", p::in::ALIGNMENT));
@@ -111,7 +111,19 @@ visionrt::ToolResult brightnessTool(const visionrt::Values &values)
     try
     {
         const auto &images = inputs.images->get();
-        const auto  records = roi::groups(inputs.rois, images.size(), "rois");
+        std::vector<std::vector<roi::Record>> records;
+        const std::array<visionrt::PortValue, 3> regions{
+            inputs.rectangles,
+            inputs.circles ? visionrt::PortValue{*inputs.circles} : visionrt::PortValue{visionrt::Missing{}},
+            inputs.polygons ? visionrt::PortValue{*inputs.polygons} : visionrt::PortValue{visionrt::Missing{}}};
+        for (const auto &value : regions)
+        {
+            const auto groups = roi::groups(value, images.size(), "处理区域");
+            if (groups.empty()) continue;
+            if (records.empty()) records.resize(images.size());
+            for (std::size_t image = 0; image < groups.size(); ++image)
+                records[image].insert(records[image].end(), groups[image].begin(), groups[image].end());
+        }
         const auto  alignments = geometry::alignmentsFromValue(inputs.alignment, images.size());
         // An empty outer list means "whole image"; per-image empty groups mean
         // "leave this image unchanged".

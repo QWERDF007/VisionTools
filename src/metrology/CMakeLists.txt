@@ -1,4 +1,8 @@
 add_library(visiontools_metrology SHARED
+    CalibrationPlate.cpp
+    CalibrationFit.cpp
+    CalibrationModel.cpp
+    CalibrateCameraTool.cpp
     CircleFit.cpp
     CircleMeasureKernel.cpp
     CircleTool.cpp

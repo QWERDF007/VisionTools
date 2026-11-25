@@ -88,7 +88,7 @@ void testRoiProjectionTool()
         inputs.insert_or_assign(projection_ports::in::MIN_EXTENT, std::int64_t(10));
         auto res = tool.execute(inputs);
         requireSuccess(res, "Projection must succeed");
-        const auto *rois = std::get_if<DataRef<ROI>>(&res.outputs[projection_ports::out::ROIS]);
+        const auto *rois = std::get_if<Rectangle>(&res.outputs[projection_ports::out::ROIS]);
         REQUIRE(rois != nullptr && rois->get().size() == 1 && rois->get()[0].size() == 1, "Expected 1 projected ROI");
         const auto encoded = rois->get()[0][0];
         REQUIRE(encoded[0] == 2.0F, "ROI must be rectangle");
@@ -103,7 +103,7 @@ void testRoiProjectionTool()
         auto res = tool.execute(inputs);
         requireSuccess(res, "Empty batch must succeed");
         REQUIRE(!res.outputs.contains(2), "Projection must not publish unchanged pixels");
-        REQUIRE(std::get<DataRef<ROI>>(res.outputs[projection_ports::out::ROIS]).get().empty(),
+        REQUIRE(std::get<Rectangle>(res.outputs[projection_ports::out::ROIS]).get().empty(),
                 "Empty rois must stay empty");
     }
 

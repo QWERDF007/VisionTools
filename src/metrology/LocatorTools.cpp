@@ -23,7 +23,7 @@ LocationRequest readRequest(const visionrt::Values &inputs, std::string_view too
 {
     Readings   readings(inputs, tool);
     const auto images = readings.image(p::in::IMAGES);
-    const auto search = readings.roi(p::in::SEARCH_REGION);
+    const auto search = readings.circle(p::in::SEARCH_REGION);
     if (readings.failed())
         fail(CommonToolError::InputMissing, readings.issue()->describe());
     if (images.get().size() != 1)
@@ -42,6 +42,7 @@ LocationRequest readRequest(const visionrt::Values &inputs, std::string_view too
     return request;
 }
 
+template<class Shape>
 visionrt::Values baseOutputs(const LocationResult &result)
 {
     std::vector<std::vector<roi::Record>> preview{result.preview};
@@ -52,8 +53,8 @@ visionrt::Values baseOutputs(const LocationResult &result)
         proposal.clear();
     }
     visionrt::Values outputs;
-    outputs.emplace(p::out::PREVIEW_ROIS, roi::roiValue(std::move(preview)));
-    outputs.emplace(p::out::PROPOSAL_ROIS, roi::roiValue(std::move(proposal)));
+    outputs.emplace(p::out::PREVIEW_ROIS, roi::value<Shape>(std::move(preview)));
+    outputs.emplace(p::out::PROPOSAL_ROIS, roi::value<Shape>(std::move(proposal)));
     outputs.emplace(p::out::CANDIDATE_VALID, result.valid);
     outputs.emplace(p::out::QUALITY, result.quality);
     outputs.emplace(p::out::SUGGESTED_POLARITY, result.polarity);
@@ -76,7 +77,7 @@ visionrt::ToolResult LocateCircleTool::execute(const visionrt::Values &inputs)
     {
         const auto request = readRequest(inputs, p::CIRCLE_ID);
         const auto result  = locateCircle(grayscale(requireImages(inputs, p::in::IMAGES, "图像").front()), request);
-        auto       outputs = baseOutputs(result);
+        auto       outputs = baseOutputs<visionrt::Circle>(result);
         outputs.emplace(p::circle_out::SUGGESTED_SEARCH, result.searchHalfWidth);
         outputs.emplace(p::circle_out::SUGGESTED_SIGMA, result.sigma);
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
@@ -114,7 +115,7 @@ visionrt::ToolResult LocateRowSpacingTool::execute(const visionrt::Values &input
     {
         const auto request = readRequest(inputs, p::ROW_ID);
         const auto result = locateRowSpacing(grayscale(requireImages(inputs, p::in::IMAGES, "图像").front()), request);
-        auto outputs = baseOutputs(result);
+        auto outputs = baseOutputs<visionrt::Rectangle>(result);
         outputs.emplace(p::row_out::SUGGESTED_WIDTH_MIN, result.widthMin);
         outputs.emplace(p::row_out::SUGGESTED_WIDTH_MAX, result.widthMax);
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());

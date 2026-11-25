@@ -13,8 +13,7 @@ namespace visiontools::roi {
 // layout, validation and named access, so tools never keep a second decoded copy.
 using Record = visionrt::EncodedRegion;
 
-// Decodes ROI[image][record][value], validates each region once through the contract's view, and
-// enforces the outer group rule: empty means "no groups configured", otherwise exactly one group per
+// Reads the validated shape batch and enforces the outer group rule: empty means "no groups configured", otherwise exactly one group per
 // image. Validated records are copied because the caller may outlive the input DataRef.
 std::vector<std::vector<Record>> groups(const visionrt::PortValue &value, std::size_t imageCount,
                                         const char *portName);
@@ -34,8 +33,8 @@ bool anyRecord(const std::vector<std::vector<Record>> &records) noexcept;
 // pixel centers in reference coordinates.
 cv::Mat regionMask(const std::vector<Record> &records, cv::Size size, const geometry::Alignment &toReference);
 
-visionrt::PortValue roiValue(std::vector<std::vector<Record>> records);
-visionrt::ROI       toRoi(std::vector<std::vector<Record>> records);
+template<class Shape> requires visionrt::isShapeValue<Shape>
+Shape value(std::vector<std::vector<Record>> records) { return Shape::fromEncoded(std::move(records)); }
 
 // Constructors go through the contract so every record is valid by construction.
 Record point(double x, double y);

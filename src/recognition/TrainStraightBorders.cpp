@@ -18,16 +18,13 @@ namespace visiontools::recognition {
 namespace {
 namespace p   = ports::align_straight_borders;
 
-visionrt::Values missingOutputs()
-{
-    return missingPorts({p::out::FOUND_SEGMENTS, p::out::MODEL_PATH});
-}
-
 } // namespace
 
-visionrt::ToolResult AlignStraightBordersTool::train(const visionrt::TrainingSet &training, const visionrt::Values &inputs)
+visionrt::ToolResult AlignStraightBordersTool::train(const visionrt::Values &inputs)
 {
-    Readings readings(inputs, p::TOOL_ID);
+    Readings readings(inputs, p::TOOL_ID, visionrt::PortStage::Train);
+    const auto set = readings.trainingSet(p::train::DATASET);
+    const auto &training = set.get();
     const auto contrast = readings.real(p::train::CONTRAST);
     const auto width = readings.integer(p::train::EDGE_WIDTH);
     const auto polarity = readings.text(p::train::POLARITY);
@@ -46,12 +43,13 @@ visionrt::ToolResult AlignStraightBordersTool::train(const visionrt::TrainingSet
                  "一次只能从一张参考图画两条边，实际 " + std::to_string(training.records.size()) + " 条记录");
         const auto &record = training.records.begin()->second;
 
-        const auto field = record.fields.find(p::train::SEARCH_REGIONS);
-        const auto *rois = field == record.fields.end() ? nullptr : std::get_if<visionrt::DataRef<visionrt::ROI>>(&field->second);
+        const auto field = record.fields.find(p::field::SEARCH_REGIONS);
+        const auto *rois = field == record.fields.end() ? nullptr : std::get_if<visionrt::Rectangle>(&field->second);
         if (!rois || rois->get().size() != 1 || rois->get().front().size() != 2)
             fail(RecognitionError::StraightEdgeRegionsInvalid, "参考边", "一张参考图上只能有两条搜索矩形");
 
-        const auto image = training.images.find(record.imageId);
+        if (!record.imageId) fail(RecognitionError::ReferenceSegmentMissing, "参考图");
+        const auto image = training.images.find(*record.imageId);
         if (image == training.images.end())
             fail(RecognitionError::ReferenceSegmentMissing, "参考图");
         const cv::Mat gray = edge::grayscale(image->second.pixels);
@@ -71,9 +69,11 @@ visionrt::ToolResult AlignStraightBordersTool::train(const visionrt::TrainingSet
 
         visionrt::Values outputs;
         outputs.emplace(p::out::MODEL_PATH, modelPath);
-        outputs.emplace(p::out::FOUND_SEGMENTS, roi::roiValue({std::move(segments)}));
+        outputs.emplace(p::out::FOUND_SEGMENTS, roi::value<visionrt::Line>({std::move(segments)}));
+        outputs.emplace(p::out::SEARCH_DIRECTIONS,
+                        visionrt::Direction::fromNested({{searchDirectionRecord(bands[0]), searchDirectionRecord(bands[1])}}));
         auto result = visionrt::toolResult(std::move(outputs), {0, "训练成功"});
-        result.artifacts.emplace("edge-model", visionrt::ModelArtifact{bytes});
+        result.artifacts.emplace(p::MODEL_ARTIFACT, visionrt::ModelArtifact{bytes});
         return result;
     }
     catch (const ToolFailure &error)

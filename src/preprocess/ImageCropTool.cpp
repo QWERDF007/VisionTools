@@ -75,7 +75,7 @@ visionrt::ToolResult ImageCropTool::execute(const visionrt::Values &inputs)
         return skippedByUpstream(upstream, missingOutputs());
     Readings   readings(inputs, "CropImage");
     const auto images         = readings.image(p::in::IMAGES);
-    const auto rectangleValue = readings.roi(p::in::RECT);
+    const auto rectangleValue = readings.rectangle(p::in::RECT);
     if (readings.failed())
         return visionrt::toolResult(missingOutputs(),
                                     readings.status(ImageCropError::RoiStructure, CommonToolError::InputTypeMismatch));

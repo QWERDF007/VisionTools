@@ -24,5 +24,5 @@ def execute(inputs):
                            f"输入端口 1 批次索引 {index} 需要非空 HxW 或 HxWxC ndarray",
                            outputs={})
         height, width = int(image.shape[0]), int(image.shape[1])
-        rois.append([[2.0, 0.0, 0.0, float(width), float(height), 0.0]])
+        rois.append([[0.0, 0.0, float(width), float(height), 0.0]])
     return success({ROIS: rois})

@@ -63,7 +63,7 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
         return skippedByUpstream(upstream, missingOutputs());
     Readings   readings(inputs, "FilterDetections");
     const auto images       = readings.image(p::in::IMAGES);
-    const auto roisRef      = readings.roi(p::in::ROIS);
+    const auto roisRef      = readings.rectangle(p::in::ROIS);
     const auto scoresRef    = readings.array(p::in::SCORES);
     const auto classesRef   = readings.array(p::in::CLASSES);
     const auto namesRef     = readings.array(p::in::CLASS_NAMES);
@@ -161,7 +161,7 @@ visionrt::ToolResult DetectionFilterTool::execute(const visionrt::Values &inputs
 
         visionrt::Values outputs;
 
-        outputs.emplace(p::out::ROIS, visionrt::DataRef<visionrt::ROI>(std::move(filteredRois)));
+        outputs.emplace(p::out::ROIS, visionrt::Rectangle::fromEncoded(std::move(filteredRois)));
         outputs.emplace(p::out::SCORES, visionrt::Array::fromNested(std::move(filteredScores)));
         outputs.emplace(p::out::CLASSES, visionrt::Array::fromNested(std::move(filteredClasses)));
         outputs.emplace(p::out::CLASS_NAMES, visionrt::Array::fromNested(std::move(filteredNames)));

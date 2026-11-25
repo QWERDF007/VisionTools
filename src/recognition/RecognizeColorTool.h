@@ -11,8 +11,11 @@ inline constexpr char TOOL_ID[] = "RecognizeColor";
 
 namespace train {
 inline constexpr visionrt::PortId MODEL_PATH = 3;
-inline constexpr visionrt::PortId LABEL = 1;
-inline constexpr visionrt::PortId REGIONS = 2;
+inline constexpr visionrt::PortId DATASET = 4;
+}
+namespace field {
+inline constexpr visionrt::TrainingFieldId LABEL = 1;
+inline constexpr visionrt::TrainingFieldId REGIONS = 2;
 }
 
 namespace in {
@@ -42,7 +45,7 @@ class RecognizeColorTool final : public visionrt::IToolInstance
 public:
     visionrt::ToolStatus initialize(const visionrt::ToolConfiguration &parameters) override;
     visionrt::ToolResult execute(const visionrt::Values &inputs) override;
-    visionrt::ToolResult train(const visionrt::TrainingSet &, const visionrt::Values &) override;
+    visionrt::ToolResult train(const visionrt::Values &) override;
     visionrt::ToolStatus release() override;
 
 private:

@@ -23,7 +23,7 @@ if(_vt_opencv_home)
     list(PREPEND CMAKE_PREFIX_PATH "${_vt_opencv_home}")
 endif()
 
-find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc imgcodecs)
+find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc imgcodecs calib3d)
 
 # 解析 OpenCV 运行时 DLL 目录
 if(EXISTS "${OpenCV_DIR}/../bin")

@@ -95,7 +95,7 @@ ToolResult trainEdges(const cv::Mat &reference, std::array<cv::Vec4d, 2> bands)
     TrainingRecord record;
     record.id      = 1;
     record.imageId = 1;
-    record.fields.emplace(2, DataRef<ROI>(std::move(regions)));
+    record.fields.emplace(2, Rectangle::fromEncoded(std::move(regions)));
     set.records.emplace(record.id, std::move(record));
 
     recognition::AlignStraightBordersTool trainer;
@@ -106,7 +106,8 @@ ToolResult trainEdges(const cv::Mat &reference, std::array<cv::Vec4d, 2> bands)
     inputs.emplace(train::train::EDGE_WIDTH, std::int64_t{3});
     inputs.emplace(train::train::POLARITY, std::string("any"));
     inputs.emplace(train::train::MIN_COMPLETENESS, 0.4);
-    return trainer.train(set, inputs);
+    inputs.emplace(train::train::DATASET, DataRef<TrainingSet>(set));
+    return trainer.train(inputs);
 }
 
 std::filesystem::path straightEdgeModel(const std::filesystem::path &directory,
@@ -123,7 +124,7 @@ std::filesystem::path straightEdgeModel(const std::filesystem::path &directory,
 
     // The trainer also answers with what it measured, in reference coordinates: the training page
     // draws those lines and the host never derives an endpoint itself.
-    const auto &found = std::get<DataRef<ROI>>(result.outputs.at(align::out::FOUND_SEGMENTS)).get();
+    const auto &found = std::get<Line>(result.outputs.at(align::out::FOUND_SEGMENTS)).get();
     REQUIRE(found.size() == 1 && found.front().size() == 2, "one measured line per drawn band");
     for (const auto &segment : found.front())
         REQUIRE(visionrt::RegionView(segment).kind() == visionrt::RoiKind::Segment,
@@ -146,7 +147,7 @@ Values alignmentInputs(const cv::Mat &image, const std::string &polarity)
     inputs.emplace(align::in::EDGE_WIDTH, std::int64_t{3});
     inputs.emplace(align::in::POLARITY, polarity);
     inputs.emplace(align::in::MIN_COMPLETENESS, 0.4);
-    inputs.emplace(6, DataRef<ROI>(ROI{
+    inputs.emplace(6, Rectangle::fromEncoded(ROI{
                           {makeRectangle(120, 280, 160, 40), makeRectangle(220, 180, 160, 40, 90)}
     }));
     return inputs;
@@ -165,21 +166,21 @@ void straightEdgeAlignment(const std::filesystem::path &directory)
     const auto identity = tool.execute(alignmentInputs(reference, "any"));
     REQUIRE(testview::status(identity).code == 0, testview::status(identity).message);
     const auto identityMatrices
-        = visionrt::nestedOf<NestedVector<double, 3>>(std::get<Array>(identity.outputs.at(align::out::ALIGNMENTS)));
-    REQUIRE(identityMatrices.size() == 1 && identityMatrices.front().size() == 3, "one 3x3 matrix per image");
+        = visionrt::nestedOf<NestedVector<double, 2>>(std::get<Array>(identity.outputs.at(align::out::ALIGNMENTS)));
+    REQUIRE(identityMatrices.size() == 1 && identityMatrices.front().size() == 6, "one six-coefficient matrix per image");
     const auto &matrix = identityMatrices.front();
     // A filled rectangle covers whole pixels, so its intensity step sits half a pixel inside the
     // geometric border; the pose must reproduce the image up to that quantisation.
     const auto  identityError = [&](int row, int column)
     {
-        return std::abs(matrix[row][column] - (row == column ? 1.0 : 0.0));
+        return std::abs(matrix[row * 3 + column] - (row == column ? 1.0 : 0.0));
     };
     REQUIRE(identityError(0, 0) < 1e-3 && identityError(1, 1) < 1e-3, "reference image keeps its axes");
     REQUIRE(identityError(0, 1) < 1e-3 && identityError(1, 0) < 1e-3, "reference image keeps its rotation");
-    REQUIRE(std::hypot(matrix[0][2], matrix[1][2]) < 0.75, "reference image keeps its position");
+    REQUIRE(std::hypot(matrix[2], matrix[5]) < 0.75, "reference image keeps its position");
 
     auto offTarget = alignmentInputs(reference, "any");
-    offTarget[6]   = DataRef<ROI>(ROI{
+    offTarget[6]   = Rectangle::fromEncoded(ROI{
           {makeRectangle(5, 5, 40, 10), makeRectangle(5, 5, 40, 10, 90)}
     });
     REQUIRE(testview::status(tool.execute(offTarget)).code != 0,
@@ -204,11 +205,11 @@ void straightEdgeAlignment(const std::filesystem::path &directory)
         const auto posed = shiftedTool.execute(alignmentInputs(reference, "any"));
         REQUIRE(testview::status(posed).code == 0, testview::status(posed).message);
         const auto shiftedMatrices
-            = visionrt::nestedOf<NestedVector<double, 3>>(std::get<Array>(posed.outputs.at(align::out::ALIGNMENTS)));
+            = visionrt::nestedOf<NestedVector<double, 2>>(std::get<Array>(posed.outputs.at(align::out::ALIGNMENTS)));
         const auto &shiftedPose = shiftedMatrices.front();
-        REQUIRE(std::abs(shiftedPose[0][1]) < 1e-3 && std::abs(shiftedPose[1][0]) < 1e-3,
+        REQUIRE(std::abs(shiftedPose[1]) < 1e-3 && std::abs(shiftedPose[3]) < 1e-3,
                 "a band offset must not tilt the reference pose");
-        REQUIRE(std::hypot(shiftedPose[0][2] - matrix[0][2], shiftedPose[1][2] - matrix[1][2]) < 0.75,
+        REQUIRE(std::hypot(shiftedPose[2] - matrix[2], shiftedPose[5] - matrix[5]) < 0.75,
                 "a band offset must not move the reference pose");
     }
 
@@ -225,13 +226,9 @@ void straightEdgeAlignment(const std::filesystem::path &directory)
     const auto result = tool.execute(alignmentInputs(moved, "any"));
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     const auto matrices
-        = visionrt::nestedOf<NestedVector<double, 3>>(std::get<Array>(result.outputs.at(align::out::ALIGNMENTS)));
+        = visionrt::nestedOf<NestedVector<double, 2>>(std::get<Array>(result.outputs.at(align::out::ALIGNMENTS)));
     REQUIRE(matrices.size() == 1, "one matrix for one image");
-    std::array<double, 9> flat{};
-    for (int row = 0; row < 3; ++row)
-        for (int column = 0; column < 3; ++column)
-            flat[static_cast<std::size_t>(row * 3 + column)] = matrices.front()[row][column];
-    const geometry::Alignment recovered = *geometry::Alignment::fromRows(flat);
+    const geometry::Alignment recovered = *geometry::Alignment::fromRows(matrices.front());
     REQUIRE(recovered.isSimilarity(), "a straight-edge pose is a similarity");
 
     for (const cv::Point2d probe : {
@@ -252,7 +249,7 @@ void straightEdgeAlignment(const std::filesystem::path &directory)
     const auto mismatch = tool.execute(alignmentInputs(moved, "light_to_dark"));
     REQUIRE(testview::status(mismatch).code == static_cast<std::int64_t>(recognition::RecognitionError::EdgeNotFound),
             "a polarity that fits one edge must not fabricate the other");
-    REQUIRE(testview::businessCount(mismatch) == 2, "a failed alignment still publishes every port as Missing");
+    REQUIRE(testview::businessCount(mismatch) == 4, "a failed alignment still publishes every port as Missing");
     const recognition::ReferenceSegment firstReference{
         "first",
         {   0, 0},
@@ -379,30 +376,30 @@ std::filesystem::path colorTraining(const std::filesystem::path &directory)
         record.id      = nextRecord++;
         record.imageId = 1;
         record.fields.emplace(1, patches[index].first);
-        record.fields.emplace(2, DataRef<ROI>(std::move(regions)));
+        record.fields.emplace(2, Rectangle::fromEncoded(std::move(regions)));
         set.records.emplace(record.id, std::move(record));
     }
-    // A polygon of the same label must contribute to that class, not create a second one.
+    // Repeated rectangle samples on one frame contribute to the same class.
     ROI         polygonRegions;
     RegionGroup polygonGroup;
-    polygonGroup.push_back(makePolygon(triangle));
+    polygonGroup.push_back(makeRectangle(246, 310, 8, 8));
     polygonRegions.push_back(std::move(polygonGroup));
     TrainingRecord polygonRecord;
     polygonRecord.id      = nextRecord++;
     polygonRecord.imageId = 1;
     polygonRecord.fields.emplace(1, std::string("purple"));
-    polygonRecord.fields.emplace(2, DataRef<ROI>(std::move(polygonRegions)));
+    polygonRecord.fields.emplace(2, Rectangle::fromEncoded(std::move(polygonRegions)));
     set.records.emplace(polygonRecord.id, std::move(polygonRecord));
 
     ROI         circleRegions;
     RegionGroup circleGroup;
-    circleGroup.push_back(makeCircle({330, 300}, 25));
+    circleGroup.push_back(makeRectangle(320, 290, 20, 20));
     circleRegions.push_back(std::move(circleGroup));
     TrainingRecord circleRecord;
     circleRecord.id      = nextRecord++;
     circleRecord.imageId = 1;
     circleRecord.fields.emplace(1, std::string("yellow"));
-    circleRecord.fields.emplace(2, DataRef<ROI>(std::move(circleRegions)));
+    circleRecord.fields.emplace(2, Rectangle::fromEncoded(std::move(circleRegions)));
     set.records.emplace(circleRecord.id, std::move(circleRecord));
 
     // The same label on a second frame contributes to the one class rather than a second model.
@@ -414,18 +411,19 @@ std::filesystem::path colorTraining(const std::filesystem::path &directory)
     secondRecord.id      = nextRecord++;
     secondRecord.imageId = 2;
     secondRecord.fields.emplace(1, std::string("purple"));
-    secondRecord.fields.emplace(2, DataRef<ROI>(std::move(secondRegions)));
+    secondRecord.fields.emplace(2, Rectangle::fromEncoded(std::move(secondRegions)));
     set.records.emplace(secondRecord.id, std::move(secondRecord));
 
     recognition::RecognizeColorTool trainer;
     Values                           inputs;
     inputs.emplace(color::train::MODEL_PATH, std::string{});
-    const auto result = trainer.train(set, inputs);
+    inputs.emplace(color::train::DATASET, DataRef<TrainingSet>(set));
+    const auto result = trainer.train(inputs);
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     const auto &bytes = result.artifacts.at("color-model").bytes;
     REQUIRE(!bytes.empty(), "the trainer returned no model bytes");
     const auto decoded = recognition::ColorModel::decode(bytes);
-    REQUIRE(decoded.classCount() == 4, "records with the same label and different shapes aggregate into one class");
+    REQUIRE(decoded.classCount() == 4, "rectangle samples with the same label aggregate into one class");
     const auto again = decoded.encode();
     REQUIRE(again.size() == bytes.size() && std::equal(again.begin(), again.end(), bytes.begin()),
             "the model byte format round-trips without changing a class");
@@ -454,7 +452,7 @@ Values colorInputs(const cv::Mat &image, const std::vector<cv::Point2d> &centers
     Values inputs;
     inputs.emplace(color::in::IMAGES, DataRef<Image>(Image{image}));
     inputs.emplace(color::in::ALIGNMENT, geometry::alignmentArray(geometry::Alignment::identity()));
-    inputs.emplace(color::in::REGIONS, DataRef<ROI>(std::move(regions)));
+    inputs.emplace(color::in::REGIONS, Circle::fromEncoded(std::move(regions)));
     inputs.emplace(color::in::MIN_SCORE, 0.05);
     inputs.emplace(color::in::MIN_RATIO, 0.5);
     return inputs;
@@ -615,7 +613,7 @@ void assetValidation(const std::filesystem::path &directory)
                     == 0,
                 "the non-right-angle model must load");
         auto search         = alignmentInputs(oblique, "any");
-        search[6]           = DataRef<ROI>(ROI{
+        search[6]           = Rectangle::fromEncoded(ROI{
                       {makeRectangle(80, 280, 160, 40), makeRectangle(130, 160, 140, 40, angle)}
         });
         const auto identity = obliqueTool.execute(search);
@@ -664,7 +662,7 @@ void assetValidation(const std::filesystem::path &directory)
         TrainingRecord record;
         record.id      = 1;
         record.imageId = 1;
-        record.fields.emplace(2, DataRef<ROI>(std::move(regions)));
+        record.fields.emplace(2, Rectangle::fromEncoded(std::move(regions)));
         set.records.emplace(record.id, std::move(record));
 
         recognition::AlignStraightBordersTool trainer;
@@ -675,7 +673,8 @@ void assetValidation(const std::filesystem::path &directory)
         inputs.emplace(train::train::EDGE_WIDTH, std::int64_t{3});
         inputs.emplace(train::train::POLARITY, std::string("any"));
         inputs.emplace(train::train::MIN_COMPLETENESS, 0.4);
-        const auto single = trainer.train(set, inputs);
+        inputs.emplace(train::train::DATASET, DataRef<TrainingSet>(set));
+        const auto single = trainer.train(inputs);
         REQUIRE(testview::status(single).code
                     == static_cast<std::int64_t>(recognition::RecognitionError::StraightEdgeRegionsInvalid),
                 "one band cannot produce a pose");
@@ -685,7 +684,8 @@ void assetValidation(const std::filesystem::path &directory)
     Values                           empty;
     TrainingSet                      noRecords;
     empty.emplace(color::train::MODEL_PATH, std::string{});
-            const auto emptyResult = trainer.train(noRecords, empty);
+            empty.emplace(color::train::DATASET, DataRef<TrainingSet>(noRecords));
+    const auto emptyResult = trainer.train(empty);
     REQUIRE(testview::status(emptyResult).code
                 == static_cast<std::int64_t>(recognition::RecognitionError::ColorSamplesMissing),
             "an empty training set is rejected");
@@ -700,11 +700,12 @@ void assetValidation(const std::filesystem::path &directory)
     unsupportedRecord.id      = 1;
     unsupportedRecord.imageId = 1;
     unsupportedRecord.fields.emplace(1, std::string("wide"));
-    unsupportedRecord.fields.emplace(2, DataRef<ROI>(std::move(unsupportedRegions)));
+    unsupportedRecord.fields.emplace(2, Rectangle::fromEncoded(std::move(unsupportedRegions)));
     unsupported.records.emplace(1, std::move(unsupportedRecord));
     Values wide;
     wide.emplace(color::train::MODEL_PATH, std::string{});
-            const auto wideResult = trainer.train(unsupported, wide);
+            wide.emplace(color::train::DATASET, DataRef<TrainingSet>(unsupported));
+    const auto wideResult = trainer.train(wide);
     REQUIRE(testview::status(wideResult).code
                 == static_cast<std::int64_t>(recognition::RecognitionError::UnsupportedColorImage),
             "training accepts only 8-bit three-channel frames");

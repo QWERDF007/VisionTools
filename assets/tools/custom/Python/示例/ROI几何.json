@@ -1,7 +1,7 @@
 {
   "name_en": "RoiGeometry",
   "name_zh": "ROI几何",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "implementation": {
     "kind": "python_function",
     "package": "examples/roi_geometry",
@@ -25,9 +25,9 @@
   "outputs": [
     {
       "id": 2,
-      "name_zh": "逐图ROI",
-      "type": "roi"
+      "name_zh": "矩形",
+      "type": "rectangle"
     }
   ],
-  "schema_version": 2
+  "schema_version": 4
 }

@@ -6,6 +6,7 @@
 #include <opencv2/imgproc.hpp>
 #include <visionrt/contracts/Module.h>
 #include <visionrt/contracts/Tool.h>
+#include <visionrt/contracts/Affine2D.h>
 
 #include <cassert>
 #include <cstdlib>
@@ -229,7 +230,7 @@ int main(int argc, char **argv)
         visionrt::Values inputs;
         inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{inImg}));
         auto roi = std::vector<double>{2, 10.0, 10.0, 20.0, 20.0, 0.0};
-        inputs.emplace(2, visionrt::DataRef<visionrt::ROI>(visionrt::ROI{{roi}}));
+        inputs.emplace(2, visionrt::Rectangle::fromEncoded(visionrt::ROI{{roi}}));
 
         auto res = inst->execute(inputs);
         REQUIRE_EXECUTION(testview::status(res).code == 0, "Crop tool execution must succeed");
@@ -265,7 +266,7 @@ int main(int argc, char **argv)
 
         visionrt::Values inputs;
         inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{(img).clone()}));
-        inputs.emplace(2, visionrt::DataRef<visionrt::ROI>(visionrt::ROI{
+        inputs.emplace(2, visionrt::Rectangle::fromEncoded(visionrt::ROI{
                               {roi, roi}
         }));
         inputs.emplace(3, visionrt::Array::fromNested(std::vector<std::vector<float>>{scores}));
@@ -279,7 +280,7 @@ int main(int argc, char **argv)
         REQUIRE(testview::status(res).code == 0, "Detection filter execution must succeed");
         REQUIRE(testview::status(res).message == "运行成功", "Detection filter success message must be shared");
 
-        const auto *outRois = std::get_if<visionrt::DataRef<visionrt::ROI>>(&res.outputs[3]);
+        const auto *outRois = std::get_if<visionrt::Rectangle>(&res.outputs[3]);
         REQUIRE(outRois != nullptr && outRois->get()[0].size() == 1, "Only score >= 0.5 passes");
 
         // Contract error test
@@ -319,7 +320,7 @@ int main(int argc, char **argv)
         REQUIRE(testview::status(res).code == 0, "Roi projection execution must succeed");
         REQUIRE(testview::status(res).message == "运行成功", "Roi projection success message must be shared");
 
-        const auto *rois = std::get_if<visionrt::DataRef<visionrt::ROI>>(&res.outputs[3]);
+        const auto *rois = std::get_if<visionrt::Rectangle>(&res.outputs[3]);
         REQUIRE(rois != nullptr && rois->get().size() == 1 && rois->get()[0].size() == 1, "Expected 1 projected ROI");
 
         REQUIRE(inst->release().code == 0, "Roi projection release must succeed");
@@ -412,7 +413,7 @@ int main(int argc, char **argv)
         inputs.emplace(4, std::string("keep"));
         inputs.emplace(5, std::string("linear"));
         inputs.emplace(6, visionrt::Array::fromNested(visionrt::NestedVector<double, 1>{0.0}));
-        inputs.emplace(7, visionrt::Array::fromNested(visionrt::NestedVector<double, 3>{}));
+        inputs.emplace(7, visionrt::alignmentArray(visionrt::Affine2D::identity()));
         auto res = inst->execute(inputs);
         REQUIRE_ABI(testview::status(res).code == 0, "Execution of rotate must succeed");
         const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs[2]);
@@ -431,10 +432,11 @@ int main(int argc, char **argv)
         inputs.emplace(1, visionrt::DataRef<visionrt::Image>(visionrt::Image{cv::Mat(8, 8, CV_8UC1, cv::Scalar(20))}));
         inputs.emplace(2, 1.5);
         inputs.emplace(3, 0.0);
-        inputs.emplace(4, visionrt::DataRef<visionrt::ROI>(visionrt::ROI{}));
+        inputs.emplace(4, visionrt::Rectangle::fromEncoded(visionrt::ROI{}));
         inputs.emplace(5, visionrt::Missing{});
-        inputs.emplace(6, visionrt::Array::fromNested(visionrt::NestedVector<double, 3>{}));
-        inputs.emplace(7, false);
+        inputs.emplace(6, visionrt::alignmentArray(visionrt::Affine2D::identity()));
+        inputs.emplace(7, visionrt::Circle{});
+        inputs.emplace(8, visionrt::Polygon{});
         auto res = inst->execute(inputs);
         REQUIRE_ABI(testview::status(res).code == 0, "Execution of brightness must succeed");
         const auto *out = std::get_if<visionrt::DataRef<visionrt::Image>>(&res.outputs[2]);
@@ -450,6 +452,7 @@ int main(int argc, char **argv)
         {"CreateCircle", visionrt::makeCircle({10, 20}, 8)},
         {"CreatePolygon", visionrt::makePolygon(std::vector<cv::Point2d>{{0, 0}, {20, 0}, {0, 10}})}
     };
+    const std::map<std::string, visionrt::Type> types{{"CreatePoint", visionrt::Type::Point}, {"CreateLine", visionrt::Type::Line}, {"CreateRotatedRectangle", visionrt::Type::Rectangle}, {"CreateCircle", visionrt::Type::Circle}, {"CreatePolygon", visionrt::Type::Polygon}};
     for (const auto &[id, region] : geometryTools)
     {
         const auto &factory  = registry.factories.at(id);
@@ -457,10 +460,10 @@ int main(int argc, char **argv)
         REQUIRE(instance && instance->initialize({}).code == 0, "ROI creator must initialize");
         const visionrt::ROI value{{region}};
         const auto          result = instance->execute({
-            {1, visionrt::DataRef<visionrt::ROI>(value)}
+            {1, visionrt::shapeValue(types.at(id), value)}
         });
         REQUIRE(testview::status(result).code == 0, "ROI creator must execute without an image");
-        REQUIRE(std::get<visionrt::DataRef<visionrt::ROI>>(result.outputs.at(2)).get() == value,
+        REQUIRE(*visionrt::shapeRegions(result.outputs.at(2)) == value,
                 "ROI creator must preserve coordinates");
         instance->release();
         factory.destroy(instance);

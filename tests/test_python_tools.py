@@ -220,8 +220,8 @@ class TestPythonToolContracts(unittest.TestCase):
         self.assertEqual(status(result)["code"], 0)
         self.assertEqual(status(result)["message"], "运行成功")
         self.assertEqual(outputs(result)[2], [
-            [[2.0, 0.0, 0.0, 5.0, 4.0, 0.0]],
-            [[2.0, 0.0, 0.0, 7.0, 3.0, 0.0]],
+            [[0.0, 0.0, 5.0, 4.0, 0.0]],
+            [[0.0, 0.0, 7.0, 3.0, 0.0]],
         ])
         self.assertTrue(all(type(value) is float
                             for group in outputs(result)[2]
@@ -345,6 +345,27 @@ class TestPythonToolContracts(unittest.TestCase):
         # outputs() strips exactly the two status numbers and keeps every business port.
         out = outputs({"outputs": {0: 0, 1: "", 9: 42, 7: 1}})
         self.assertEqual(out, {9: 42, 7: 1})
+
+
+class TrainingSdkContract(unittest.TestCase):
+    def test_training_has_ordinary_zero_parameter_and_model_artifacts(self):
+        sys.path.insert(0, str(AUTHOR_SDK))
+        import visiontools_sdk as sdk
+
+        class Parameters(sdk.TrainingParametersBase):
+            def read_fields(self, reader):
+                self.directions = reader.direction(0)
+                self.dataset = reader.training_set(1)
+
+        directions = np.array([[[10, 12, 40, 90]]], dtype=np.float64)
+        dataset = {'images': {}, 'records': {1: {'image_id': None, 'fields': {}, 'field_types': {}}}}
+        parameters = Parameters()
+        parameters.parse({0: directions, 1: dataset})
+        self.assertIs(parameters.directions, directions)
+        self.assertIs(parameters.dataset, dataset)
+        answer = sdk.result({2: directions}, artifacts={'model': b'calibrated'})
+        self.assertEqual(answer['artifacts']['model'], b'calibrated')
+        self.assertIs(answer['outputs'][2], directions)
 
 
 if __name__ == '__main__':

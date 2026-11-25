@@ -18,7 +18,7 @@ Values detectionInputs()
     std::vector<std::string>  names   = {"cat", "dog"};
     Values                    inputs;
     inputs.emplace(filter_ports::in::IMAGES, DataRef<Image>(Image{(gradient(100, 100)).clone()}));
-    inputs.emplace(filter_ports::in::ROIS, DataRef<ROI>(ROI{
+    inputs.emplace(filter_ports::in::ROIS, Rectangle::fromEncoded(ROI{
                                                {roi, roi}
     }));
     inputs.emplace(filter_ports::in::SCORES, Array::fromNested(std::vector<std::vector<float>>{scores}));
@@ -79,7 +79,7 @@ void testDetectionFilterTool()
         auto inputs = detectionInputs();
         auto res    = tool.execute(inputs);
         requireSuccess(res, "Filter must succeed");
-        const auto *rois = std::get_if<DataRef<ROI>>(&res.outputs[filter_ports::out::ROIS]);
+        const auto *rois = std::get_if<Rectangle>(&res.outputs[filter_ports::out::ROIS]);
         REQUIRE(rois != nullptr && rois->get()[0].size() == 1, "Only score >= 0.5 passes");
         const auto counts = nestedOf<std::vector<std::int64_t>>(std::get<Array>(res.outputs[filter_ports::out::COUNTS]));
         REQUIRE(counts[0] == 1, "Counts must report the filtered count");
@@ -89,7 +89,7 @@ void testDetectionFilterTool()
         inputs.insert_or_assign(filter_ports::in::ALLOWED_CLASSES, Array::fromNested(std::vector<std::int64_t>{1}));
         auto res = tool.execute(inputs);
         requireSuccess(res, "Allowed-class filter must succeed");
-        const auto *rois = std::get_if<DataRef<ROI>>(&res.outputs[filter_ports::out::ROIS]);
+        const auto *rois = std::get_if<Rectangle>(&res.outputs[filter_ports::out::ROIS]);
         REQUIRE(rois->get()[0].size() == 1, "Only the allowed class passes");
         const auto names = nestedOf<std::vector<std::vector<std::string>>>(
             std::get<Array>(res.outputs[filter_ports::out::CLASS_NAMES]))[0];
@@ -110,7 +110,7 @@ void testDetectionFilterTool()
     {
         auto       inputs = detectionInputs();
         const auto circle = std::vector<double>{3, 5, 5, 2};
-        inputs.insert_or_assign(filter_ports::in::ROIS, DataRef<ROI>(ROI{
+        inputs.insert_or_assign(filter_ports::in::ROIS, Circle::fromEncoded(ROI{
                                                             {circle, circle}
         }));
         auto res = tool.execute(inputs);
@@ -126,7 +126,7 @@ void testDetectionFilterTool()
     {
         Values inputs;
         inputs.emplace(filter_ports::in::IMAGES, DataRef<Image>(Image{}));
-        inputs.emplace(filter_ports::in::ROIS, DataRef<ROI>(ROI{}));
+        inputs.emplace(filter_ports::in::ROIS, Rectangle::fromEncoded(ROI{}));
         inputs.emplace(filter_ports::in::SCORES, Array::fromNested(std::vector<std::vector<float>>{}));
         inputs.emplace(filter_ports::in::CLASSES, Array::fromNested(std::vector<std::vector<std::int64_t>>{}));
         inputs.emplace(filter_ports::in::CLASS_NAMES, Array::fromNested(std::vector<std::vector<std::string>>{}));
@@ -135,7 +135,7 @@ void testDetectionFilterTool()
         inputs.emplace(filter_ports::in::MIN_AREA, 0.0);
         auto res = tool.execute(inputs);
         requireSuccess(res, "Empty detection batch must succeed");
-        REQUIRE(std::get<DataRef<ROI>>(res.outputs[filter_ports::out::ROIS]).get().empty(),
+        REQUIRE(std::get<Rectangle>(res.outputs[filter_ports::out::ROIS]).get().empty(),
                 "Empty batch must produce empty rois");
     }
 

@@ -111,7 +111,7 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
         {
             visionrt::Values outputs;
 
-            outputs.emplace(p::out::ROIS, visionrt::DataRef<visionrt::ROI>(visionrt::ROI{}));
+            outputs.emplace(p::out::ROIS, visionrt::Rectangle{});
             return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
         }
 
@@ -174,7 +174,7 @@ visionrt::ToolResult RoiProjectionTool::execute(const visionrt::Values &inputs)
 
         visionrt::Values outputs;
 
-        outputs.emplace(p::out::ROIS, visionrt::DataRef<visionrt::ROI>(std::move(output)));
+        outputs.emplace(p::out::ROIS, visionrt::Rectangle::fromEncoded(std::move(output)));
         return visionrt::toolResult(std::move(outputs), visionrt::executionSuccess());
     }
     catch (const ToolFailure &error)

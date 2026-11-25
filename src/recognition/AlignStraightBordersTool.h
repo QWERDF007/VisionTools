@@ -8,6 +8,7 @@ namespace visiontools::recognition {
 
 namespace ports::align_straight_borders {
 inline constexpr char TOOL_ID[] = "AlignStraightBorders";
+inline constexpr char MODEL_ARTIFACT[] = "edge-model";
 
 namespace train {
 inline constexpr visionrt::PortId MODEL_PATH = 1;
@@ -15,7 +16,10 @@ inline constexpr visionrt::PortId CONTRAST = 3;
 inline constexpr visionrt::PortId EDGE_WIDTH = 4;
 inline constexpr visionrt::PortId POLARITY = 5;
 inline constexpr visionrt::PortId MIN_COMPLETENESS = 6;
-inline constexpr visionrt::PortId SEARCH_REGIONS = 2;
+inline constexpr visionrt::PortId DATASET = 7;
+}
+namespace field {
+inline constexpr visionrt::TrainingFieldId SEARCH_REGIONS = 2;
 }
 
 namespace in {
@@ -31,6 +35,7 @@ namespace out {
 inline constexpr visionrt::PortId MODEL_PATH = 4;
 inline constexpr visionrt::PortId ALIGNMENTS     = 2;
 inline constexpr visionrt::PortId FOUND_SEGMENTS = 3;
+inline constexpr visionrt::PortId SEARCH_DIRECTIONS = 5;
 } // namespace out
 } // namespace ports::align_straight_borders
 
@@ -41,10 +46,11 @@ class AlignStraightBordersTool final : public visionrt::IToolInstance
 public:
     visionrt::ToolStatus initialize(const visionrt::ToolConfiguration &parameters) override;
     visionrt::ToolResult execute(const visionrt::Values &inputs) override;
-    visionrt::ToolResult train(const visionrt::TrainingSet &, const visionrt::Values &) override;
+    visionrt::ToolResult train(const visionrt::Values &) override;
     visionrt::ToolStatus release() override;
 
 private:
+    static visionrt::Values missingOutputs();
     std::string modelPath_;
     StraightEdgeModel model_;
 };

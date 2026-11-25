@@ -1,7 +1,7 @@
 {
   "name_en": "RotateImage",
   "name_zh": "旋转图像",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -101,13 +101,23 @@
       "type": {
         "type": "array",
         "dtype": "float64",
-        "rank": 3
+        "rank": 2
       },
       "ui": {
         "editor": "array",
         "tab": "basic_input",
         "group": "输入数据"
-      }
+      },
+      "default": [
+        [
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ]
+      ]
     }
   ],
   "outputs": [
@@ -125,9 +135,9 @@
       "type": {
         "type": "array",
         "dtype": "float64",
-        "rank": 3
+        "rank": 2
       }
     }
   ],
-  "schema_version": 2
+  "schema_version": 4
 }

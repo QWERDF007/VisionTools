@@ -7,5 +7,5 @@
     "binding": "visionrt.select"
   },
   "node_model": "select",
-  "schema_version": 2
+  "schema_version": 4
 }

@@ -1,7 +1,7 @@
 {
   "name_en": "MeasureCircle",
   "name_zh": "测量圆",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -21,7 +21,7 @@
     {
       "id": 2,
       "name_zh": "测量区域",
-      "type": "roi",
+      "type": "circle",
       "default": [],
       "ui": {
         "editor": "array",
@@ -45,13 +45,23 @@
       "type": {
         "type": "array",
         "dtype": "float64",
-        "rank": 3
+        "rank": 2
       },
       "ui": {
         "editor": "array",
         "tab": "basic_input",
         "group": "输入数据"
-      }
+      },
+      "default": [
+        [
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ]
+      ]
     },
     {
       "id": 4,
@@ -139,9 +149,18 @@
       "default": "any",
       "constraints": {
         "options": [
-          "any",
-          "dark_to_light",
-          "light_to_dark"
+          {
+            "value": "any",
+            "label": "任意"
+          },
+          {
+            "value": "dark_to_light",
+            "label": "暗到亮"
+          },
+          {
+            "value": "light_to_dark",
+            "label": "亮到暗"
+          }
         ]
       },
       "ui": {
@@ -248,7 +267,7 @@
       "type": "float",
       "default": 1,
       "constraints": {
-        "min": 1e-9
+        "min": 1e-09
       },
       "ui": {
         "editor": "number",
@@ -309,7 +328,7 @@
     {
       "id": 7,
       "name_zh": "测得圆",
-      "type": "roi",
+      "type": "circle",
       "relations": {
         "image": {
           "stage": "inputs",
@@ -365,7 +384,7 @@
     {
       "id": 13,
       "name_zh": "拟合边缘点",
-      "type": "roi",
+      "type": "point",
       "relations": {
         "image": {
           "stage": "inputs",
@@ -379,5 +398,5 @@
       "type": "string"
     }
   ],
-  "schema_version": 2
+  "schema_version": 4
 }

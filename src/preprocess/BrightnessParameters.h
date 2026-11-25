@@ -19,7 +19,9 @@ struct BrightnessInputs final : visionrt::InputParametersBase
     double                                          gain   = 1.0;
     double                                          offset = 0.0;
     std::optional<visionrt::DataRef<visionrt::Image>> mask;
-    visionrt::PortValue                              rois;
+    visionrt::Rectangle                              rectangles;
+    std::optional<visionrt::Circle>                   circles;
+    std::optional<visionrt::Polygon>                  polygons;
     visionrt::PortValue                              alignment;
 
 protected:

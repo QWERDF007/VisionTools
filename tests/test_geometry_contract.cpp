@@ -66,19 +66,25 @@ cv::Mat rotateReference()
 
 void geometryAndRoi()
 {
-    const std::vector<double> identity{1, 0, 0, 0, 1, 0, 0, 0, 1};
+    const std::vector<double> identity{1, 0, 0, 0, 1, 0};
     const std::vector<Array> malformed{
-        Array::dense(DType::Float64, {1, 1, 9}, identity),
-        Array::fromNested(NestedVector<double, 3>{{{1}, {0, 0}, {0, 1, 0, 0, 0, 1}}}),
-        Array::dense(DType::Float64, {1, 0, 0})};
+        Array::dense(DType::Float64, {1, 3}, std::vector<double>{1, 0, 0}),
+        Array::fromNested(NestedVector<double, 2>{{1, 0, 0, 0, 1, 0}, {1}}),
+        Array::dense(DType::Float64, {0, 6})};
     for (const auto &value : malformed)
     {
         bool rejected = false;
         try { (void)geometry::alignmentsFromValue(value, 1); }
         catch (const ToolFailure &error)
-        { rejected = error.code == static_cast<std::int64_t>(CommonToolError::InputOutOfRange); }
-        REQUIRE(rejected, "alignment accepted a matrix without exactly three rows and columns");
+        { rejected = error.code != 0; }
+        REQUIRE(rejected, "alignment accepted an invalid six-coefficient batch");
     }
+    bool missingRejected = false;
+    try { (void)geometry::alignmentsFromValue(Missing{}, 1); }
+    catch (const ToolFailure &) { missingRejected = true; }
+    REQUIRE(missingRejected, "missing alignment must not become identity");
+    const auto encoded = geometry::alignmentArray(geometry::Alignment::identity());
+    REQUIRE(encoded.rank() == 2 && encoded.shape()[1] == 6, "alignment uses one flat six-coefficient record per image");
     const auto rotation = geometry::rotationAround(10.0, 20.0, 90.0);
     double     x = 0, y = 0;
     rotation.apply(10.0, 20.0, x, y);
@@ -91,7 +97,7 @@ void geometryAndRoi()
     REQUIRE(std::abs(x - 11.0) < 1e-9 && std::abs(y - 20.0) < 1e-9, "inverse transform must round-trip");
     REQUIRE(rotation.isSimilarity(), "a rotation is a similarity");
     geometry::Alignment scaled;
-    scaled.m = {2, 0, 0, 0, 1, 0, 0, 0, 1};
+    scaled.m = {2, 0, 0, 0, 1, 0};
     REQUIRE(!scaled.isSimilarity(), "non-uniform scaling must not be accepted by metrology");
 
     const roi::Record rectangle = roi::rectangle(30, 30, 20, 10, 0);
@@ -113,7 +119,7 @@ void rotateTool()
     inputs.emplace(rot::in::CANVAS, std::string("expand"));
     inputs.emplace(rot::in::INTERPOLATION, std::string("nearest"));
     inputs.emplace(rot::in::BORDER_VALUE, Array::fromNested(NestedVector<double, 1>{0.0}));
-    inputs.emplace(rot::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
+    inputs.emplace(rot::in::ALIGNMENT, geometry::alignmentArray(geometry::Alignment::identity()));
     const auto result = tool.execute(inputs);
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     const auto &images = std::get<DataRef<Image>>(result.outputs.at(rot::out::IMAGES)).get();
@@ -122,9 +128,9 @@ void rotateTool()
     REQUIRE(images[0].at<std::uint8_t>(0, 1) == 1 && images[0].at<std::uint8_t>(0, 0) == 4
                 && images[0].at<std::uint8_t>(2, 0) == 6,
             "90 degree clockwise pixel mapping is wrong");
-    const auto matrices = nestedOf<NestedVector<double, 3>>(std::get<Array>(result.outputs.at(rot::out::ALIGNMENT)));
-    REQUIRE(matrices.size() == 1 && std::abs(matrices[0][0][1] + 1.0) < 1e-9
-                && std::abs(matrices[0][1][0] - 1.0) < 1e-9 && std::abs(matrices[0][0][2] - 1.0) < 1e-9,
+    const auto matrices = nestedOf<NestedVector<double, 2>>(std::get<Array>(result.outputs.at(rot::out::ALIGNMENT)));
+    REQUIRE(matrices.size() == 1 && matrices[0].size() == 6 && std::abs(matrices[0][1] + 1.0) < 1e-9
+                && std::abs(matrices[0][3] - 1.0) < 1e-9 && std::abs(matrices[0][2] - 1.0) < 1e-9,
             "rotation alignment must include the expansion translation");
 }
 
@@ -134,8 +140,8 @@ void brightnessTool()
     Values  inputs = withImages(image);
     inputs.emplace(bright::in::GAIN, 2.0);
     inputs.emplace(bright::in::OFFSET, 10.0);
-    inputs.emplace(bright::in::ROIS, DataRef<ROI>(ROI{{{2, 10, 10, 20, 10, 0}}}));
-    inputs.emplace(bright::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
+    inputs.emplace(bright::in::ROIS, Rectangle::fromEncoded(ROI{{{2, 10, 10, 20, 10, 0}}}));
+    inputs.emplace(bright::in::ALIGNMENT, geometry::alignmentArray(geometry::Alignment::identity()));
     const auto result = preprocess::brightnessTool(inputs);
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     const auto &output = std::get<DataRef<Image>>(result.outputs.at(bright::out::IMAGES)).get().front();
@@ -151,8 +157,8 @@ void brightnessTool()
     Values  floatInputs = withImages(floatImage);
     floatInputs.emplace(bright::in::GAIN, 2.0);
     floatInputs.emplace(bright::in::OFFSET, 0.0);
-    floatInputs.emplace(bright::in::ROIS, DataRef<ROI>(ROI{}));
-    floatInputs.emplace(bright::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
+    floatInputs.emplace(bright::in::ROIS, Rectangle::fromEncoded(ROI{}));
+    floatInputs.emplace(bright::in::ALIGNMENT, geometry::alignmentArray(geometry::Alignment::identity()));
     const auto floatResult = preprocess::brightnessTool(floatInputs);
     REQUIRE(testview::status(floatResult).code == 0, testview::status(floatResult).message);
     const auto &floats = std::get<DataRef<Image>>(floatResult.outputs.at(bright::out::IMAGES)).get().front();
@@ -175,8 +181,8 @@ void circleMeasurement()
         }
     metrology::CircleTool tool;
     Values                inputs = withImages(gray);
-    inputs.emplace(circle::in::ROIS, DataRef<ROI>(ROI{{{3, 130.0, 120.0, 40.0}}}));
-    inputs.emplace(circle::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
+    inputs.emplace(circle::in::ROIS, Circle::fromEncoded(ROI{{{3, 130.0, 120.0, 40.0}}}));
+    inputs.emplace(circle::in::ALIGNMENT, geometry::alignmentArray(geometry::Alignment::identity()));
     inputs.emplace(circle::in::NUM_CALIPERS, std::int64_t{64});
     inputs.emplace(circle::in::SEARCH_HALF_WIDTH, 8.0);
     inputs.emplace(circle::in::AVERAGE_WIDTH, 3.0);
@@ -206,8 +212,8 @@ void circleMeasurement()
 
     // A missing circle ROI is a configuration error, not a silent empty success.
     Values empty = withImages(gray);
-    empty.emplace(circle::in::ROIS, DataRef<ROI>(ROI{}));
-    empty.emplace(circle::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
+    empty.emplace(circle::in::ROIS, Circle::fromEncoded(ROI{}));
+    empty.emplace(circle::in::ALIGNMENT, geometry::alignmentArray(geometry::Alignment::identity()));
     REQUIRE(testview::status(tool.execute(empty)).code != 0, "unconfigured ROI must fail");
 }
 
@@ -218,8 +224,8 @@ void rowSpacingMeasurement()
         cv::rectangle(gray, cv::Rect(20 + index * 30, 10, 8, 60), cv::Scalar(230), cv::FILLED);
     metrology::RowSpacingTool tool;
     Values                    inputs = withImages(gray);
-    inputs.emplace(rows::in::ROIS, DataRef<ROI>(ROI{{{2, 10, 20, 170, 40, 0}}}));
-    inputs.emplace(rows::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
+    inputs.emplace(rows::in::ROIS, Rectangle::fromEncoded(ROI{{{2, 10, 20, 170, 40, 0}}}));
+    inputs.emplace(rows::in::ALIGNMENT, geometry::alignmentArray(geometry::Alignment::identity()));
     inputs.emplace(rows::in::SIGMA, 1.0);
     inputs.emplace(rows::in::MIN_GRADIENT, 8.0);
     inputs.emplace(rows::in::OBJECT_POLARITY, std::string("bright"));
@@ -259,13 +265,13 @@ void assistCandidate()
     metrology::LocateCircleTool tool;
     Values inputs;
     inputs.emplace(assist::in::IMAGES, DataRef<Image>(Image{gray}));
-    inputs.emplace(assist::in::SEARCH_REGION, DataRef<ROI>(ROI{{makeCircle({130, 100}, 128)}}));
-    inputs.emplace(assist::in::SEED_ROIS, DataRef<ROI>(ROI{}));
-    inputs.emplace(assist::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
+    inputs.emplace(assist::in::SEARCH_REGION, Circle::fromEncoded(ROI{{makeCircle({130, 100}, 128)}}));
+    inputs.emplace(assist::in::SEED_ROIS, Circle::fromEncoded(ROI{}));
+    inputs.emplace(assist::in::ALIGNMENT, geometry::alignmentArray(geometry::Alignment::identity()));
     const auto result = tool.execute(inputs);
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
     REQUIRE(std::get<bool>(result.outputs.at(assist::out::CANDIDATE_VALID)), "assist must find the synthetic circle");
-    const auto proposal = std::get<DataRef<ROI>>(result.outputs.at(assist::out::PROPOSAL_ROIS)).get();
+    const auto proposal = std::get<Circle>(result.outputs.at(assist::out::PROPOSAL_ROIS)).get();
     REQUIRE(proposal.size() == 1 && proposal[0].size() == 1 && proposal[0][0].front() == 3.0,
             "proposal must be a circle in reference coordinates");
 }
@@ -289,8 +295,8 @@ Values circleInputs(const cv::Mat &gray, double centerX, double centerY, double 
 {
     Values inputs;
     inputs.emplace(circle::in::IMAGES, DataRef<Image>(Image{gray}));
-    inputs.emplace(circle::in::ROIS, DataRef<ROI>(ROI{{{3, centerX, centerY, radius}}}));
-    inputs.emplace(circle::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
+    inputs.emplace(circle::in::ROIS, Circle::fromEncoded(ROI{{{3, centerX, centerY, radius}}}));
+    inputs.emplace(circle::in::ALIGNMENT, geometry::alignmentArray(geometry::Alignment::identity()));
     inputs.emplace(circle::in::NUM_CALIPERS, std::int64_t{64});
     inputs.emplace(circle::in::SEARCH_HALF_WIDTH, 8.0);
     inputs.emplace(circle::in::AVERAGE_WIDTH, 3.0);
@@ -391,9 +397,9 @@ void assistLocalWindow()
     metrology::LocateCircleTool tool;
     Values                      inputs;
     inputs.emplace(assist::in::IMAGES, DataRef<Image>(Image{gray}));
-    inputs.emplace(assist::in::SEARCH_REGION, DataRef<ROI>(ROI{{makeCircle({60, 60}, 80)}}));
-    inputs.emplace(assist::in::SEED_ROIS, DataRef<ROI>(ROI{}));
-    inputs.emplace(assist::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{}));
+    inputs.emplace(assist::in::SEARCH_REGION, Circle::fromEncoded(ROI{{makeCircle({60, 60}, 80)}}));
+    inputs.emplace(assist::in::SEED_ROIS, Circle::fromEncoded(ROI{}));
+    inputs.emplace(assist::in::ALIGNMENT, geometry::alignmentArray(geometry::Alignment::identity()));
     const auto outside = tool.execute(inputs);
     REQUIRE(testview::status(outside).code == 0, testview::status(outside).message);
     REQUIRE(!std::get<bool>(outside.outputs.at(assist::out::CANDIDATE_VALID)),
@@ -402,22 +408,22 @@ void assistLocalWindow()
     // Non-integer resize factors must still map back through pixel centres.
     cv::Mat odd = diskImage(401, 200.5, 200.5, 40.0);
     inputs[assist::in::IMAGES] = DataRef<Image>(Image{odd});
-    inputs[assist::in::SEARCH_REGION] = DataRef<ROI>(ROI{{makeCircle({240.0, 200.5}, 160)}});
+    inputs[assist::in::SEARCH_REGION] = Circle::fromEncoded(ROI{{makeCircle({240.0, 200.5}, 160)}});
     const auto scaled = tool.execute(inputs);
     REQUIRE(testview::status(scaled).code == 0, testview::status(scaled).message);
     REQUIRE(std::get<bool>(scaled.outputs.at(assist::out::CANDIDATE_VALID)), "odd-sized images must still be searched");
-    const auto scaledProposal = std::get<DataRef<ROI>>(scaled.outputs.at(assist::out::PROPOSAL_ROIS)).get();
+    const auto scaledProposal = std::get<Circle>(scaled.outputs.at(assist::out::PROPOSAL_ROIS)).get();
     REQUIRE(std::abs(scaledProposal[0][0][1] - 200.5) <= 0.8 && std::abs(scaledProposal[0][0][2] - 200.5) <= 0.8,
             "non-integer scaling must preserve the circle centre");
 
     // A seed states the nominal geometry: the contour search is skipped, so a radius outside the
     // search extent still resolves as long as the user pointed at the target.
-    inputs[assist::in::SEARCH_REGION] = DataRef<ROI>(ROI{{makeCircle({240.5, 200.5}, 50)}});
-    inputs[assist::in::SEED_ROIS]     = DataRef<ROI>(ROI{{{3, 200.5, 200.5, 40.0}}});
+    inputs[assist::in::SEARCH_REGION] = Circle::fromEncoded(ROI{{makeCircle({240.5, 200.5}, 50)}});
+    inputs[assist::in::SEED_ROIS]     = Circle::fromEncoded(ROI{{{3, 200.5, 200.5, 40.0}}});
     const auto seeded = tool.execute(inputs);
     REQUIRE(testview::status(seeded).code == 0, testview::status(seeded).message);
     REQUIRE(std::get<bool>(seeded.outputs.at(assist::out::CANDIDATE_VALID)), "seed geometry must not depend on contour search");
-    const auto seededProposal = std::get<DataRef<ROI>>(seeded.outputs.at(assist::out::PROPOSAL_ROIS)).get();
+    const auto seededProposal = std::get<Circle>(seeded.outputs.at(assist::out::PROPOSAL_ROIS)).get();
     REQUIRE(std::abs(seededProposal[0][0][3] - 40.0) <= 0.8, "seeded radius must survive refinement");
 }
 
@@ -429,13 +435,13 @@ void locatedCircleCoordinates()
     metrology::LocateCircleTool tool;
     const Values                inputs{
                        {assist::in::IMAGES, DataRef<Image>(Image{image})},
-                       {assist::in::SEARCH_REGION, DataRef<ROI>(ROI{{makeCircle({350, 210}, 80)}})},
-                       {assist::in::SEED_ROIS, DataRef<ROI>(ROI{})},
-                       {assist::in::ALIGNMENT, Array::fromNested(NestedVector<double, 3>{{{2, 0, 10}, {0, 2, -4}, {0, 0, 1}}})}
+                       {assist::in::SEARCH_REGION, Circle::fromEncoded(ROI{{makeCircle({350, 210}, 80)}})},
+                       {assist::in::SEED_ROIS, Circle::fromEncoded(ROI{})},
+                       {assist::in::ALIGNMENT, Array::fromNested(NestedVector<double, 2>{{2, 0, 10, 0, 2, -4}})}
     };
     const auto result = tool.execute(inputs);
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
-    const auto &regions = std::get<DataRef<ROI>>(result.outputs.at(assist::out::PROPOSAL_ROIS)).get();
+    const auto &regions = std::get<Circle>(result.outputs.at(assist::out::PROPOSAL_ROIS)).get();
     REQUIRE(regions.size() == 1 && regions.front().size() == 1, "one candidate per search");
     const auto ref = RegionView(regions.front().front()).circle();
     REQUIRE(cv::norm(ref.center() - cv::Point2d{155, 107}) < 1 && std::abs(ref.radius() - 15) < 1,

@@ -1,26 +1,25 @@
 {
-  "schema_version": 2,
+  "schema_version": 4,
   "name_en": "CreateCircle",
   "name_zh": "创建圆",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "implementation": {
     "kind": "cpp"
   },
   "inputs": [
     {
-      "type": "roi",
+      "type": "circle",
       "relations": {
         "image": {
           "stage": "inputs",
           "id": 2
         }
       },
-      "name_zh": "几何数据",
+      "name_zh": "圆",
       "id": 1,
       "default": [
         [
           [
-            3,
             100,
             100,
             20
@@ -47,8 +46,8 @@
   ],
   "outputs": [
     {
-      "type": "roi",
-      "name_zh": "区域",
+      "type": "circle",
+      "name_zh": "圆",
       "id": 2
     }
   ]

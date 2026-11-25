@@ -1,0 +1,206 @@
+{
+  "schema_version": 4,
+  "name_en": "CalibrateCamera",
+  "name_zh": "平面标定",
+  "version": "2.0.0",
+  "implementation": {
+    "kind": "cpp"
+  },
+  "init_params": [],
+  "train_params": [
+    {
+      "id": 0,
+      "name_zh": "标定样本",
+      "type": "training_set",
+      "ui": {
+        "group": "标定训练",
+        "tab": "training"
+      }
+    },
+    {
+      "id": 1,
+      "name_zh": "标定板描述文件",
+      "type": "string",
+      "default": "",
+      "ui": {
+        "editor": "path",
+        "group": "标定训练",
+        "tab": "training"
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "标定模型路径",
+      "type": "string",
+      "default": "",
+      "ui": {
+        "editor": "path",
+        "group": "模型",
+        "tab": "training"
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "最大重投影误差",
+      "type": "float",
+      "default": 0.5,
+      "constraints": {
+        "min": 1e-06
+      },
+      "ui": {
+        "editor": "number",
+        "group": "标定训练",
+        "tab": "training"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "已知长度参考线",
+      "type": "line",
+      "default": [],
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        }
+      },
+      "constraints": {
+        "regions": {
+          "max": 1
+        }
+      },
+      "ui": {
+        "editor": "roi",
+        "tab": "basic_input",
+        "group": "测量平面"
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "参考长度",
+      "type": "float",
+      "default": 1,
+      "constraints": {
+        "min": 1e-06
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "detection",
+        "group": "测量平面"
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "长度单位",
+      "type": "string",
+      "default": "mm",
+      "constraints": {
+        "options": [
+          {
+            "value": "mm",
+            "label": "毫米"
+          },
+          {
+            "value": "um",
+            "label": "微米"
+          },
+          {
+            "value": "cm",
+            "label": "厘米"
+          },
+          {
+            "value": "m",
+            "label": "米"
+          }
+        ]
+      },
+      "ui": {
+        "tab": "detection",
+        "group": "测量平面"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "模型路径",
+      "type": "string"
+    },
+    {
+      "id": 3,
+      "name_zh": "标定数据",
+      "type": {
+        "type": "array",
+        "dtype": "float64",
+        "rank": 3
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "标定点",
+      "type": "circle",
+      "produced_by": "train",
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        }
+      }
+    },
+    {
+      "id": 5,
+      "name_zh": "重投影误差",
+      "type": "float"
+    },
+    {
+      "id": 6,
+      "name_zh": "坐标系",
+      "type": "coordinate_frame_2d",
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        }
+      }
+    }
+  ],
+  "training": {
+    "datasets": [
+      {
+        "parameter": 0,
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        },
+        "max_records": 1,
+        "fields": []
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "calibration-model",
+        "source_port": 2,
+        "format": "visiontools.planar-calibration",
+        "version": 2,
+        "target": {
+          "stage": "train_params",
+          "id": 2
+        }
+      }
+    ]
+  }
+}

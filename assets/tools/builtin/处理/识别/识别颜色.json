@@ -1,7 +1,7 @@
 {
   "name_en": "RecognizeColor",
   "name_zh": "识别颜色",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -25,18 +25,28 @@
       "type": {
         "type": "array",
         "dtype": "float64",
-        "rank": 3
+        "rank": 2
       },
       "ui": {
         "editor": "array",
         "tab": "basic_input",
         "group": "输入数据"
-      }
+      },
+      "default": [
+        [
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ]
+      ]
     },
     {
       "id": 3,
       "name_zh": "检测区域",
-      "type": "roi",
+      "type": "circle",
       "default": [],
       "ui": {
         "editor": "array",
@@ -91,7 +101,7 @@
     {
       "id": 3,
       "name_zh": "检测区域",
-      "type": "roi",
+      "type": "circle",
       "relations": {
         "image": {
           "stage": "inputs",
@@ -157,10 +167,43 @@
     }
   ],
   "training": {
-    "image": {
-      "stage": "inputs",
-      "id": 1
-    },
+    "datasets": [
+      {
+        "parameter": 4,
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        },
+        "fields": [
+          {
+            "id": 1,
+            "name_zh": "颜色名称",
+            "type": "string",
+            "ui": {
+              "editor": "text",
+              "group": "训练数据",
+              "tab": "training"
+            }
+          },
+          {
+            "id": 2,
+            "name_zh": "采样区",
+            "type": "rectangle",
+            "default": [],
+            "ui": {
+              "editor": "roi",
+              "group": "训练数据",
+              "tab": "training"
+            },
+            "constraints": {
+              "regions": {
+                "min": 1
+              }
+            }
+          }
+        ]
+      }
+    ],
     "artifacts": [
       {
         "id": "color-model",
@@ -174,13 +217,12 @@
       }
     ]
   },
-  "schema_version": 2,
+  "schema_version": 4,
   "train_params": [
     {
       "id": 3,
       "name_zh": "颜色模型路径",
       "type": "string",
-      "scope": "tool",
       "ui": {
         "editor": "path",
         "group": "模型",
@@ -188,29 +230,12 @@
       }
     },
     {
-      "id": 1,
-      "name_zh": "颜色名称",
-      "type": "string",
-      "scope": "record",
+      "id": 4,
+      "name_zh": "训练样本",
+      "type": "training_set",
       "ui": {
-        "editor": "text",
-        "group": "训练数据",
-        "tab": "training"
-      }
-    },
-    {
-      "id": 2,
-      "name_zh": "采样区",
-      "type": "roi",
-      "scope": "record",
-      "default": [],
-      "canvas": {
-        "min": 1
-      },
-      "ui": {
-        "editor": "roi",
-        "group": "训练数据",
-        "tab": "training"
+        "tab": "training",
+        "group": "训练数据"
       }
     }
   ]

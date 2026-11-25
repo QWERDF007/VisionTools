@@ -26,6 +26,18 @@ EdgeSearchOptions EdgeSearchOptions::fromParameters(double contrast, std::int64_
 namespace {
 constexpr double kPi = 3.14159265358979323846;
 
+struct SearchSampling
+{
+    cv::Point2d normal;
+    double halfWidth;
+};
+
+SearchSampling searchSampling(const SearchRectangle &band)
+{
+    const double radians = band.angle * kPi / 180.0;
+    return {{-std::sin(radians), std::cos(radians)}, std::max(0.5, band.height / 2.0)};
+}
+
 cv::Point2d normalized(cv::Point2d value)
 {
     const double length = std::hypot(value.x, value.y);
@@ -82,6 +94,13 @@ SearchRectangle searchRectangle(const visionrt::EncodedRegion &record, std::size
             rectangle.angle() + (rectangle.height() > rectangle.width() ? 90.0 : 0.0)};
 }
 
+std::vector<double> searchDirectionRecord(const SearchRectangle &band)
+{
+    const auto sampling = searchSampling(band);
+    const double angle = std::atan2(sampling.normal.y, sampling.normal.x) * 180.0 / kPi;
+    return visionrt::directionRecord(band.center - sampling.normal * sampling.halfWidth, 2 * sampling.halfWidth, angle);
+}
+
 std::optional<LocatedSegment> locateSegment(const cv::Mat &gray, const SearchRectangle &band,
                                             const EdgeSearchOptions &options)
 {
@@ -94,8 +113,9 @@ std::optional<LocatedSegment> locateSegment(const cv::Mat &gray, const SearchRec
     if (!(length > 1.0))
         fail(RecognitionError::StraightEdgeRegionsInvalid, "搜索矩形", "宽度不足 1 像素");
 
-    const cv::Point2d   normal{-direction.y, direction.x};
-    const double        searchHalf  = std::max(0.5, band.height / 2.0);
+    const auto sampling = searchSampling(band);
+    const cv::Point2d normal = sampling.normal;
+    const double searchHalf = sampling.halfWidth;
     const double        averageHalf = std::max(0.0, (static_cast<double>(options.width) - 1.0) / 2.0);
     const double        sigma       = std::max(0.5, static_cast<double>(options.width) / 2.0);
     const int           samples     = std::clamp(static_cast<int>(std::lround(length)), 8, 4096);
@@ -177,7 +197,7 @@ std::optional<geometry::Alignment> rigidTransform(const ReferenceSegment &firstR
     const cv::Point2d translation = *foundIntersection - rotatedReference;
 
     geometry::Alignment alignment;
-    alignment.m = {cos, -sin, translation.x, sin, cos, translation.y, 0, 0, 1};
+    alignment.m = {cos, -sin, translation.x, sin, cos, translation.y};
     if (!alignment.isSimilarity() || !alignment.invertible())
         return std::nullopt;
     return alignment;

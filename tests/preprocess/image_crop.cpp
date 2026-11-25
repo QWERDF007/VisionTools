@@ -50,7 +50,7 @@ void testImageCropTool()
         auto    roi      = std::vector<double>{2, 20.0, 20.0, 30.0, 30.0, 0.0};
         Values  inputs;
         inputs.emplace(crop_ports::in::IMAGES, DataRef<Image>(Image{srcImage}));
-        inputs.emplace(crop_ports::in::RECT, DataRef<ROI>(ROI{{roi}}));
+        inputs.emplace(crop_ports::in::RECT, Rectangle::fromEncoded(ROI{{roi}}));
         auto res = tool.execute(inputs);
         requireSuccess(res, "Crop must succeed");
         const auto *cropped = std::get_if<DataRef<Image>>(&res.outputs[crop_ports::out::IMAGES]);
@@ -71,7 +71,7 @@ void testImageCropTool()
         auto   roi = std::vector<double>{2, 0.75, 0.0, 1.0, 1.0, 0.0};
         Values inputs;
         inputs.emplace(crop_ports::in::IMAGES, DataRef<Image>(Image{(nonUniform).clone()}));
-        inputs.emplace(crop_ports::in::RECT, DataRef<ROI>(ROI{{roi}}));
+        inputs.emplace(crop_ports::in::RECT, Rectangle::fromEncoded(ROI{{roi}}));
         auto res = tool.execute(inputs);
         requireSuccess(res, "Fractional crop must succeed via mask path");
         const auto *cropped = std::get_if<DataRef<Image>>(&res.outputs[crop_ports::out::IMAGES]);
@@ -87,7 +87,7 @@ void testImageCropTool()
         cv::Mat img(10, 10, CV_8UC1, cv::Scalar(100));
         Values  inputs;
         inputs.emplace(crop_ports::in::IMAGES, DataRef<Image>(Image{(img).clone()}));
-        inputs.emplace(crop_ports::in::RECT, DataRef<ROI>(ROI{{std::vector<double>{2, 0.1, 0.1, 0.1, 0.1, 0.0}}}));
+        inputs.emplace(crop_ports::in::RECT, Rectangle::fromEncoded(ROI{{std::vector<double>{2, 0.1, 0.1, 0.1, 0.1, 0.0}}}));
         auto res = tool.execute(inputs);
         requireFailure(res, "没有有效像素中心", "Narrow ROI with no pixel centers must fail");
         REQUIRE(testview::status(res).message.find("图像索引 0") != std::string::npos, "Error must name the image index");
@@ -99,7 +99,7 @@ void testImageCropTool()
         const auto second = (cv::Mat(12, 14, CV_8UC1, cv::Scalar(79))).clone();
         Values     inputs{
                 {crop_ports::in::IMAGES,                        DataRef<Image>(Image{first, second})},
-                {  crop_ports::in::RECT, DataRef<ROI>(ROI{{std::vector<double>{2, -2, 1, 6, 3, 0}}})}
+                {  crop_ports::in::RECT, Rectangle::fromEncoded(ROI{{std::vector<double>{2, -2, 1, 6, 3, 0}}})}
         };
         auto result = tool.execute(inputs);
         requireSuccess(result, "One rectangle must crop every image in batch order");
@@ -124,14 +124,14 @@ void testImageCropTool()
         };
         for (const PortValue &invalid : std::vector<PortValue>{
                  Missing{},
-                 DataRef<ROI>(ROI{{{3, 1, 1, 1}}}
-                 ), DataRef<ROI>(ROI{}
+                 Circle::fromEncoded(ROI{{{3, 1, 1, 1}}}
+                 ), Rectangle::fromEncoded(ROI{}
                  ),
-                 DataRef<ROI>(ROI{{{2, 0, 0, 2, 2, 0}, {2, 0, 0, 2, 2, 0}}}
+                 Rectangle::fromEncoded(ROI{{{2, 0, 0, 2, 2, 0}, {2, 0, 0, 2, 2, 0}}}
                  ),
-                 DataRef<ROI>(ROI{{{2, 0, 0, 2, 2, 0}}, {{2, 0, 0, 2, 2, 0}}}
+                 Rectangle::fromEncoded(ROI{{{2, 0, 0, 2, 2, 0}}, {{2, 0, 0, 2, 2, 0}}}
                  ),
-                 DataRef<ROI>(ROI{{{2, 10, 10, 2, 2, 0}}}
+                 Rectangle::fromEncoded(ROI{{{2, 10, 10, 2, 2, 0}}}
                  )
         })
         {
@@ -143,7 +143,7 @@ void testImageCropTool()
                     "Failure must not publish partial outputs");
         }
         inputs.insert_or_assign(crop_ports::in::IMAGES, DataRef<Image>(Image{}));
-        inputs.insert_or_assign(crop_ports::in::RECT, DataRef<ROI>(ROI{{std::vector<double>{2, 0, 0, 2, 2, 0}}}));
+        inputs.insert_or_assign(crop_ports::in::RECT, Rectangle::fromEncoded(ROI{{std::vector<double>{2, 0, 0, 2, 2, 0}}}));
         auto empty = tool.execute(inputs);
         requireSuccess(empty, "A valid empty image batch must yield an empty crop batch");
         REQUIRE(std::get<DataRef<Image>>(empty.outputs.at(crop_ports::out::IMAGES)).get().empty(),
@@ -154,7 +154,7 @@ void testImageCropTool()
         inputs.insert_or_assign(crop_ports::in::IMAGES,
                                 DataRef<Image>(Image{(cv::Mat(4, 4, CV_8UC1, cv::Scalar(8))).clone(),
                                                      (cv::Mat(1, 1, CV_8UC1, cv::Scalar(9))).clone()}));
-        inputs.insert_or_assign(crop_ports::in::RECT, DataRef<ROI>(ROI{{std::vector<double>{2, 2, 2, 2, 2, 45}}}));
+        inputs.insert_or_assign(crop_ports::in::RECT, Rectangle::fromEncoded(ROI{{std::vector<double>{2, 2, 2, 2, 2, 45}}}));
         auto partial = tool.execute(inputs);
         REQUIRE(!testview::status(partial) && isMissing(partial.outputs.at(crop_ports::out::IMAGES)),
                 "A later disjoint image must fail the whole batch without publishing earlier crops");
@@ -166,7 +166,7 @@ void testImageCropTool()
         const auto rectangle = std::vector<double>{2, 2.3, 3.7, 12.4, 9.2, 30.0};
         Values     inputs{
                 {crop_ports::in::IMAGES, DataRef<Image>(Image{(image).clone()})},
-                {  crop_ports::in::RECT,         DataRef<ROI>(ROI{{rectangle}})}
+                {  crop_ports::in::RECT,         Rectangle::fromEncoded(ROI{{rectangle}})}
         };
         auto result = tool.execute(inputs);
         requireSuccess(result, "Rotated crop must succeed");
@@ -200,7 +200,7 @@ void testImageCropTool()
         const auto image = gradient(6, 6);
         Values     inputs{
                 {crop_ports::in::IMAGES,                     DataRef<Image>(Image{image})},
-                {  crop_ports::in::RECT, DataRef<ROI>(ROI{{{2., -1., -1., 4., 4., 45.}}})},
+                {  crop_ports::in::RECT, Rectangle::fromEncoded(ROI{{{2., -1., -1., 4., 4., 45.}}})},
         };
         const auto result = tool.execute(inputs);
         requireSuccess(result, "Rotated rectangle clipped by two image edges must succeed");
@@ -216,7 +216,7 @@ void testImageCropTool()
         const double half  = std::sqrt(2.0);
         Values       inputs{
                   {crop_ports::in::IMAGES,                                               DataRef<Image>(Image{image})},
-                  {  crop_ports::in::RECT, DataRef<ROI>(ROI{{{2., 2. - half, 2. - half, 2. * half, 2. * half, 45.}}})},
+                  {  crop_ports::in::RECT, Rectangle::fromEncoded(ROI{{{2., 2. - half, 2. - half, 2. * half, 2. * half, 45.}}})},
         };
         const auto result = tool.execute(inputs);
         requireSuccess(result, "Pixel centers on rotated edges must be included");
@@ -234,7 +234,7 @@ void testImageCropTool()
         {
             Values single{
                 {crop_ports::in::IMAGES, DataRef<Image>(Image{(gradient(40, 40)).clone()})},
-                {  crop_ports::in::RECT,                    DataRef<ROI>(ROI{{rectangle}})}
+                {  crop_ports::in::RECT,                    Rectangle::fromEncoded(ROI{{rectangle}})}
             };
             testing::maskBuildCount = 0;
             auto result             = tool.execute(single);
@@ -245,7 +245,7 @@ void testImageCropTool()
         for (int i = 0; i < 8; ++i) sameBounds.push_back((gradient(40, 40)).clone());
         Values inputs{
             {crop_ports::in::IMAGES,     DataRef<Image>(sameBounds)},
-            {  crop_ports::in::RECT, DataRef<ROI>(ROI{{rectangle}})}
+            {  crop_ports::in::RECT, Rectangle::fromEncoded(ROI{{rectangle}})}
         };
         testing::maskBuildCount = 0;
         const auto started      = std::chrono::steady_clock::now();
@@ -317,7 +317,7 @@ void testImageCropTool()
             const std::size_t expectedMasks = batch == 2 ? 2 : 1;
             Values            inputs{
                            {crop_ports::in::IMAGES,                  DataRef<Image>(std::move(images))},
-                           {  crop_ports::in::RECT, DataRef<ROI>(ROI{{{2., 10., 10., 15., 15., 15.}}})},
+                           {  crop_ports::in::RECT, Rectangle::fromEncoded(ROI{{{2., 10., 10., 15., 15., 15.}}})},
             };
             for (int iteration = 0; iteration < 100; ++iteration)
             {
@@ -341,13 +341,13 @@ void testImageCropTool()
         }
         Values invalid{
             {crop_ports::in::IMAGES, DataRef<Image>(Image{full, full(cv::Rect(0, 0, 5, 5))})},
-            {  crop_ports::in::RECT,      DataRef<ROI>(ROI{{{2., 10., 10., 15., 15., 15.}}})},
+            {  crop_ports::in::RECT,      Rectangle::fromEncoded(ROI{{{2., 10., 10., 15., 15., 15.}}})},
         };
         const auto failed = tool.execute(invalid);
         REQUIRE(!testview::status(failed) && isMissing(failed.outputs.at(crop_ports::out::IMAGES)),
                 "Later-image failure must not publish an earlier cropped output");
         invalid.insert_or_assign(crop_ports::in::IMAGES, DataRef<Image>(Image{full}));
-        invalid.insert_or_assign(crop_ports::in::RECT, DataRef<ROI>(ROI{{{2., 0.1, 0.1, 0.1, 0.1, 30.}}}));
+        invalid.insert_or_assign(crop_ports::in::RECT, Rectangle::fromEncoded(ROI{{{2., 0.1, 0.1, 0.1, 0.1, 30.}}}));
         const auto emptyMask = tool.execute(invalid);
         requireFailure(emptyMask, "没有有效像素中心",
                        "An empty rotated mask must fail without retaining its allocation");

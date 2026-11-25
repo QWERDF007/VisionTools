@@ -1,7 +1,7 @@
 {
   "name_en": "AdjustBrightness",
   "name_zh": "调整亮度",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "implementation": {
     "kind": "cpp"
   },
@@ -46,8 +46,8 @@
     },
     {
       "id": 4,
-      "name_zh": "测量区域",
-      "type": "roi",
+      "name_zh": "矩形区域",
+      "type": "rectangle",
       "default": [],
       "ui": {
         "editor": "array",
@@ -83,12 +83,64 @@
       "type": {
         "type": "array",
         "dtype": "float64",
-        "rank": 3
+        "rank": 2
       },
       "ui": {
         "editor": "array",
         "tab": "basic_input",
         "group": "输入数据"
+      },
+      "default": [
+        [
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "id": 7,
+      "name_zh": "圆区域",
+      "type": "circle",
+      "default": [],
+      "ui": {
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "检测区域"
+      },
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        },
+        "alignment": {
+          "stage": "inputs",
+          "id": 6
+        }
+      }
+    },
+    {
+      "id": 8,
+      "name_zh": "多边形区域",
+      "type": "polygon",
+      "default": [],
+      "ui": {
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "检测区域"
+      },
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        },
+        "alignment": {
+          "stage": "inputs",
+          "id": 6
+        }
       }
     }
   ],
@@ -117,5 +169,5 @@
       }
     }
   ],
-  "schema_version": 2
+  "schema_version": 4
 }

@@ -97,7 +97,7 @@ visionrt::ToolResult RecognizeColorTool::execute(const visionrt::Values &inputs)
 
     Readings   readings(inputs, p::TOOL_ID);
     const auto imagesRef = readings.image(p::in::IMAGES);
-    const auto regions   = readings.roi(p::in::REGIONS);
+    const auto regions   = readings.circle(p::in::REGIONS);
     const auto minScore  = readings.real(p::in::MIN_SCORE);
     const auto minRatio  = readings.real(p::in::MIN_RATIO);
     const auto alignment = readings.find(p::in::ALIGNMENT);
@@ -183,7 +183,7 @@ visionrt::ToolResult RecognizeColorTool::execute(const visionrt::Values &inputs)
         visionrt::Values outputs;
         outputs.emplace(p::out::MODEL_PATH, modelPath_);
 
-        outputs.emplace(p::out::REGIONS, roi::roiValue(std::move(currentCircles)));
+        outputs.emplace(p::out::REGIONS, roi::value<visionrt::Circle>(std::move(currentCircles)));
         outputs.emplace(p::out::COLORS, visionrt::Array::fromNested(std::move(colors)));
         outputs.emplace(p::out::SCORES, visionrt::Array::fromNested(std::move(scores)));
         outputs.emplace(p::out::RATIOS, visionrt::Array::fromNested(std::move(ratios)));
