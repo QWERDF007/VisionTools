@@ -11,10 +11,10 @@
 #include "common/UpstreamStatus.h"
 #include "common/errors/ToolError.h"
 #include "errors/RecognitionErrors.h"
+#include <visionrt/contracts/TrainingArchive.h>
 
 #include <cstdint>
-#include <fstream>
-#include <iterator>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -38,9 +38,17 @@ visionrt::ToolStatus AlignStraightBordersTool::initialize(const visionrt::ToolCo
             return status(RecognitionError::StraightEdgeModelPathMissing, "模型路径");
         const auto utf8 = found->second.generic_u8string();
         modelPath_ = std::string(reinterpret_cast<const char*>(utf8.data()), utf8.size());
-        std::ifstream file(found->second, std::ios::binary);
-        if (!file) return status(RecognitionError::StraightEdgeModelUnreadable, modelPath_);
-        const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+        if (!std::filesystem::is_regular_file(found->second))
+            return status(RecognitionError::StraightEdgeModelUnreadable, modelPath_);
+        std::vector<std::uint8_t> bytes;
+        try
+        {
+            bytes = visionrt::TrainingArchive::readModel(found->second, p::MODEL_ARTIFACT);
+        }
+        catch (const visionrt::ContractError &error)
+        {
+            return status(RecognitionError::StraightEdgeModelIncompatible, modelPath_, error.what());
+        }
         model_ = StraightEdgeModel::decode(bytes);
         return {};
     }

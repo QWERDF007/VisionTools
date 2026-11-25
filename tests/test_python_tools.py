@@ -348,7 +348,7 @@ class TestPythonToolContracts(unittest.TestCase):
 
 
 class TrainingSdkContract(unittest.TestCase):
-    def test_training_has_ordinary_zero_parameter_and_model_artifacts(self):
+    def test_training_has_ordinary_zero_parameter_and_result_envelope(self):
         sys.path.insert(0, str(AUTHOR_SDK))
         import visiontools_sdk as sdk
 
@@ -363,8 +363,8 @@ class TrainingSdkContract(unittest.TestCase):
         parameters.parse({0: directions, 1: dataset})
         self.assertIs(parameters.directions, directions)
         self.assertIs(parameters.dataset, dataset)
-        answer = sdk.result({2: directions}, artifacts={'model': b'calibrated'})
-        self.assertEqual(answer['artifacts']['model'], b'calibrated')
+        answer = sdk.result({2: directions})
+        self.assertNotIn('artifacts', answer)
         self.assertIs(answer['outputs'][2], directions)
 
 

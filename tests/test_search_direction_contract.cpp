@@ -27,7 +27,11 @@ try
     set.images.emplace(1, trainingFrame(1, image, ColorOrder::BGR));
     set.records.emplace(1, TrainingRecord{1, 1, {{p::field::SEARCH_REGIONS, Rectangle::fromEncoded(regions)}}});
     recognition::AlignStraightBordersTool tool;
-    const auto trained = tool.train({{p::train::DATASET, DataRef<TrainingSet>(set)}, {p::train::MODEL_PATH, std::string{}},
+    const auto modelFile = std::filesystem::temp_directory_path()
+        / ("visiontools-direction-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".zip");
+    const auto modelText = modelFile.generic_u8string();
+    const auto trained = tool.train({{p::train::DATASET, DataRef<TrainingSet>(set)},
+        {p::train::MODEL_PATH, std::string(reinterpret_cast<const char *>(modelText.data()), modelText.size())},
         {p::train::CONTRAST, 30.0}, {p::train::EDGE_WIDTH, std::int64_t{3}},
         {p::train::POLARITY, std::string("any")}, {p::train::MIN_COMPLETENESS, 0.4}});
     require(static_cast<bool>(testview::status(trained)), "real edge training failed");
@@ -41,10 +45,6 @@ try
         require(cv::norm(directions.at(0, 1).end() - cv::Point2d(280, 200)) < 1e-9, "vertical edge search end");
     };
     check(trained);
-    const auto modelFile = std::filesystem::temp_directory_path()
-        / ("visiontools-direction-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".bin");
-    const auto &bytes = trained.artifacts.at(p::MODEL_ARTIFACT).bytes;
-    { std::ofstream file(modelFile, std::ios::binary); file.write(reinterpret_cast<const char *>(bytes.data()), bytes.size()); }
     ToolConfiguration configuration;
     configuration.models.emplace(p::MODEL_ARTIFACT, modelFile);
     require(static_cast<bool>(tool.initialize(configuration)), "trained model loads");

@@ -72,8 +72,8 @@ def status(code=0, message="", detail=""):
     return {"code": int(code) if isinstance(code, IntEnum) else code, "message": message, "detail": detail}
 
 
-def result(outputs=None, code=0, message="", detail="", artifacts=None):
-    """The execution or training result, with optional named model bytes."""
+def result(outputs=None, code=0, message="", detail=""):
+    """The execution or training result envelope."""
     res = {} if outputs is None else dict(outputs)
     for key in res:
         _port(key)
@@ -81,10 +81,7 @@ def result(outputs=None, code=0, message="", detail="", artifacts=None):
             raise ContractError("状态由宿主发布，工具不得写入输出" + _label(key))
     res[0] = int(code) if isinstance(code, IntEnum) else code
     res[1] = message
-    answer = {"outputs": res, "detail": detail}
-    if artifacts:
-        answer["artifacts"] = dict(artifacts)
-    return answer
+    return {"outputs": res, "detail": detail}
 
 
 def success(outputs=None, message="运行成功"):
@@ -319,7 +316,6 @@ class OutputParametersBase(ABC):
         self.status_code = 0
         self.status_message = ""
         self.status_detail = ""
-        self.artifacts = {}
 
     def status(self):
         """The status a lifecycle call returns."""
@@ -329,7 +325,7 @@ class OutputParametersBase(ABC):
         """The envelope execute returns: the written outputs plus this status."""
         writer = OutputWriter()
         self.write_fields(writer)
-        return result(writer.take(), self.status_code, self.status_message, self.status_detail, self.artifacts)
+        return result(writer.take(), self.status_code, self.status_message, self.status_detail)
 
     @abstractmethod
     def write_fields(self, writer):

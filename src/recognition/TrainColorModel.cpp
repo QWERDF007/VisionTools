@@ -2,9 +2,11 @@
 
 #include "ColorModel.h"
 #include "common/InputValues.h"
+#include "common/ProductPaths.h"
 #include "common/ToolOutputs.h"
 #include "common/errors/ToolError.h"
 #include "errors/RecognitionErrors.h"
+#include <visionrt/contracts/TrainingArchive.h>
 
 #include <opencv2/imgproc.hpp>
 
@@ -62,7 +64,7 @@ visionrt::ToolResult RecognizeColorTool::train(const visionrt::Values &parameter
     constexpr auto regionField = p::field::REGIONS;
     try
     {
-        visionrt::validateTrainingSet(training);
+        visionrt::validateTrainingSetPixels(training);
         if (training.records.empty())
             fail(RecognitionError::ColorSamplesMissing, "训练集");
 
@@ -102,12 +104,18 @@ visionrt::ToolResult RecognizeColorTool::train(const visionrt::Values &parameter
             samples.push_back(std::move(sample));
         }
 
-        const auto       bytes = ColorModel::train(samples).encode();
+        const auto bytes = ColorModel::train(samples).encode();
+        if (modelPath.empty())
+            fail(RecognitionError::ColorModelPathMissing, "模型路径");
+        std::vector<visionrt::TrainingArchiveImage> archiveImages;
+        archiveImages.reserve(training.images.size());
+        for (const auto &[id, item] : training.images)
+            archiveImages.push_back({p::train::DATASET, id, item.colorOrder, item.pixels});
+        visionrt::TrainingArchive::write(common::resolveResourcePath(modelPath),
+                                         {{"color-model", bytes}}, archiveImages);
         visionrt::Values outputs;
         outputs.emplace(p::out::MODEL_PATH, modelPath);
-        auto result = visionrt::toolResult(std::move(outputs), {0, "训练成功"});
-        result.artifacts.emplace("color-model", visionrt::ModelArtifact{bytes});
-        return result;
+        return visionrt::toolResult(std::move(outputs), {0, "训练成功"});
     }
     catch (const ToolFailure &error)
     {

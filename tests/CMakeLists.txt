@@ -93,7 +93,7 @@ set(VISIONTOOLS_CALIBRATION_PLATE "" CACHE FILEPATH "Real calibration plate desc
 if(VISIONTOOLS_CALIBRATION_IMAGES AND VISIONTOOLS_CALIBRATION_PLATE)
     add_test(NAME test_calibration_real_contract COMMAND test_calibration_contract
         "${VISIONTOOLS_CALIBRATION_IMAGES}/calibration_plate.png" "${VISIONTOOLS_CALIBRATION_IMAGES}/ruler_high.png"
-        "${VISIONTOOLS_CALIBRATION_PLATE}" "${CMAKE_BINARY_DIR}/evidence/calibration-model.bin")
+        "${VISIONTOOLS_CALIBRATION_PLATE}" "${CMAKE_BINARY_DIR}/evidence/calibration-model.zip")
     get_test_property(test_calibration_contract ENVIRONMENT _calibration_environment)
     set_tests_properties(test_calibration_real_contract PROPERTIES ENVIRONMENT "${_calibration_environment}")
 endif()

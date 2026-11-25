@@ -9,10 +9,10 @@
 #include "common/UpstreamStatus.h"
 #include "common/errors/ToolError.h"
 #include "errors/RecognitionErrors.h"
+#include <visionrt/contracts/TrainingArchive.h>
 
 #include <cstdint>
-#include <fstream>
-#include <iterator>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -57,12 +57,18 @@ std::vector<DetectionCircle> circlesFor(const visionrt::ROI &groups, std::size_t
 
 std::vector<std::uint8_t> readModel(const std::filesystem::path &path)
 {
-    const auto    text = path.generic_u8string();
-    std::ifstream file(path, std::ios::binary);
-    if (!file)
-        fail(RecognitionError::ColorModelUnreadable,
-             std::string(reinterpret_cast<const char *>(text.data()), text.size()), "文件不存在或无法打开");
-    return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    const auto text = path.generic_u8string();
+    const std::string label(reinterpret_cast<const char *>(text.data()), text.size());
+    if (!std::filesystem::is_regular_file(path))
+        fail(RecognitionError::ColorModelUnreadable, label, "文件不存在或无法打开");
+    try
+    {
+        return visionrt::TrainingArchive::readModel(path, "color-model");
+    }
+    catch (const visionrt::ContractError &error)
+    {
+        fail(RecognitionError::ColorModelIncompatible, label, error.what());
+    }
 }
 } // namespace
 

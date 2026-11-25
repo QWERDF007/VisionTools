@@ -3,6 +3,7 @@
 #include "common/GeometryTransform.h"
 #include "common/PlanarCalibration.h"
 #include "ToolResultAssertions.h"
+#include <visionrt/contracts/TrainingArchive.h>
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -31,7 +32,7 @@ struct Files
     {
         const auto stem = "visiontools-calibration-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         descriptor = std::filesystem::temp_directory_path() / (stem + ".cpd");
-        model = std::filesystem::temp_directory_path() / (stem + ".bin");
+        model = std::filesystem::temp_directory_path() / (stem + ".zip");
     }
     ~Files()
     {
@@ -89,9 +90,11 @@ try
     set.records.emplace(1, TrainingRecord{1, 1, {}});
     metrology::CalibrateCameraTool tool;
     const auto text = descriptor.generic_u8string();
+    const auto modelText = files.model.generic_u8string();
     const auto trained = tool.train({{p::train::DATASET, DataRef<TrainingSet>(set)},
         {p::train::PLATE_DESCRIPTION, std::string(reinterpret_cast<const char *>(text.data()), text.size())},
-        {p::train::MODEL_PATH, std::string{}}, {p::train::MAX_REPROJECTION_ERROR, 0.5}});
+        {p::train::MODEL_PATH, std::string(reinterpret_cast<const char *>(modelText.data()), modelText.size())},
+        {p::train::MAX_REPROJECTION_ERROR, 0.5}});
     if (!testview::status(trained)) std::cerr << testview::status(trained).message << '\n' << testview::status(trained).detail << '\n';
     require(static_cast<bool>(testview::status(trained)), "plate training failed");
     const auto rms = std::get<double>(trained.outputs.at(p::out::REPROJECTION_ERROR));
@@ -103,8 +106,8 @@ try
     require(frame.xAxis().x > 0 && frame.yAxis().y < 0, "world positive X points right and positive Y points up");
     require(base.map({500, 400}).y > base.map({500, 500}).y, "pixel positions above the origin have larger world Y");
     if (!real) require(std::abs(cv::norm(base.map({550, 450}) - base.map({500, 450})) - 1) < 0.01, "independent synthetic one millimeter reference");
-    const auto &model = trained.artifacts.at(p::MODEL_ARTIFACT).bytes;
-    { std::ofstream file(files.model, std::ios::binary); file.write(reinterpret_cast<const char *>(model.data()), model.size()); }
+    require(std::filesystem::is_regular_file(files.model), "calibration tool wrote training archive zip");
+    require(TrainingArchive::readImages(files.model).size() == 1, "training archive keeps calibration image");
     ToolConfiguration configuration;
     configuration.models.emplace(p::MODEL_ARTIFACT, files.model);
     require(static_cast<bool>(tool.initialize(configuration)), "serialized calibration model loads");

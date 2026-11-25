@@ -11,6 +11,7 @@
 #include "recognition/RecognizeColorTool.h"
 #include "recognition/StraightEdgeProbe.h"
 #include "recognition/errors/RecognitionErrors.h"
+#include <visionrt/contracts/TrainingArchive.h>
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -84,7 +85,7 @@ geometry::Alignment pose(double translationX, double translationY, double angleD
 // The two bands a user draws on the reference picture: the long side follows the edge, the short
 // side is how far across it the locator may look. The trainer turns them into the published model
 // the alignment node loads, so this is the whole training half of the contract.
-ToolResult trainEdges(const cv::Mat &reference, std::array<cv::Vec4d, 2> bands)
+ToolResult trainEdges(const cv::Mat &reference, std::array<cv::Vec4d, 2> bands, const std::filesystem::path &output = {})
 {
     TrainingSet set;
     set.images.emplace(1, trainingFrame(1, reference, ColorOrder::BGR));
@@ -101,7 +102,7 @@ ToolResult trainEdges(const cv::Mat &reference, std::array<cv::Vec4d, 2> bands)
     recognition::AlignStraightBordersTool trainer;
 
     Values inputs;
-    inputs.emplace(train::train::MODEL_PATH, std::string{});
+    inputs.emplace(train::train::MODEL_PATH, output.empty() ? std::string{} : generic(output));
     inputs.emplace(train::train::CONTRAST, 30.0);
     inputs.emplace(train::train::EDGE_WIDTH, std::int64_t{3});
     inputs.emplace(train::train::POLARITY, std::string("any"));
@@ -116,26 +117,21 @@ std::filesystem::path straightEdgeModel(const std::filesystem::path &directory,
                                             cv::Vec4d{220, 180, 160, 90}
 })
 {
-    const auto result = trainEdges(connectorImage(), bands);
+    std::error_code ignored;
+    std::filesystem::create_directories(directory, ignored);
+    const auto path   = directory / "edge-model.zip";
+    const auto result = trainEdges(connectorImage(), bands, path);
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
 
-    const auto &bytes = result.artifacts.at("edge-model").bytes;
+    const auto bytes = TrainingArchive::readModel(path, "edge-model");
     REQUIRE(bytes.size() > 16, "the published edge model cannot be empty");
+    REQUIRE(TrainingArchive::readImages(path).size() == 1, "edge training archive stores reference image");
 
-    // The trainer also answers with what it measured, in reference coordinates: the training page
-    // draws those lines and the host never derives an endpoint itself.
     const auto &found = std::get<Line>(result.outputs.at(align::out::FOUND_SEGMENTS)).get();
     REQUIRE(found.size() == 1 && found.front().size() == 2, "one measured line per drawn band");
     for (const auto &segment : found.front())
         REQUIRE(visionrt::RegionView(segment).kind() == visionrt::RoiKind::Segment,
                 "a measured reference edge is a segment");
-
-    std::error_code ignored;
-    std::filesystem::create_directories(directory, ignored);
-    const auto    path = directory / "edge.model";
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    REQUIRE(file.good(), "edge model must be writable");
-    file.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     return path;
 }
 
@@ -415,30 +411,23 @@ std::filesystem::path colorTraining(const std::filesystem::path &directory)
     set.records.emplace(secondRecord.id, std::move(secondRecord));
 
     recognition::RecognizeColorTool trainer;
+    const auto                       path = directory / "color-model.zip";
     Values                           inputs;
-    inputs.emplace(color::train::MODEL_PATH, std::string{});
+    inputs.emplace(color::train::MODEL_PATH, generic(path));
     inputs.emplace(color::train::DATASET, DataRef<TrainingSet>(set));
     const auto result = trainer.train(inputs);
     REQUIRE(testview::status(result).code == 0, testview::status(result).message);
-    const auto &bytes = result.artifacts.at("color-model").bytes;
+    const auto bytes = TrainingArchive::readModel(path, "color-model");
     REQUIRE(!bytes.empty(), "the trainer returned no model bytes");
+    REQUIRE(TrainingArchive::readImages(path).size() == 2, "color training archive keeps both training images");
     const auto decoded = recognition::ColorModel::decode(bytes);
     REQUIRE(decoded.classCount() == 4, "rectangle samples with the same label aggregate into one class");
     const auto again = decoded.encode();
     REQUIRE(again.size() == bytes.size() && std::equal(again.begin(), again.end(), bytes.begin()),
             "the model byte format round-trips without changing a class");
 
-    const auto    path = directory / "color.model";
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    REQUIRE(file.good(), "colour model must be writable");
-    file.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    file.close();
-
-    const auto    truncated = directory / "color_truncated.model";
-    std::ofstream cut(truncated, std::ios::binary | std::ios::trunc);
-    REQUIRE(cut.good(), "truncated colour model must be writable");
-    cut.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size() / 2));
-    cut.close();
+    const auto truncated = directory / "color_truncated.zip";
+    TrainingArchive::write(truncated, {{"color-model", std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + bytes.size() / 2)}}, {});
     return path;
 }
 
@@ -504,10 +493,8 @@ void colorRecognition(const std::filesystem::path &directory)
     // The bytes written by the trainer and the model the tool loaded must answer identically to
     // the model decoded in memory, including the float scores and ratios the line exposes.
     {
-        std::ifstream file(modelPath, std::ios::binary);
-        REQUIRE(file.good(), "the published colour model must be readable");
-        const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
-        const auto                      inMemory = recognition::ColorModel::decode(bytes);
+        const auto                     bytes    = TrainingArchive::readModel(modelPath, "color-model");
+        const auto                     inMemory = recognition::ColorModel::decode(bytes);
         const recognition::ChromaImage  chroma(image);
         for (std::size_t index = 0; index < centers.size(); ++index)
         {
@@ -595,17 +582,12 @@ void assetValidation(const std::filesystem::path &directory)
         };
         cv::fillConvexPoly(oblique, triangle, cv::Scalar{255, 255, 255});
         const double angle  = std::atan2(240.0, 200.0) * 180.0 / 3.14159265358979323846;
+        const auto   path   = directory / "oblique.zip";
         const auto   fitted = trainEdges(oblique, {
                                                     cv::Vec4d{ 80, 280, 160,     0},
                                                     cv::Vec4d{130, 160, 140, angle}
-        });
+        }, path);
         REQUIRE(testview::status(fitted).code == 0, "two non-right-angle edges must train a valid pose model");
-        const auto model = fitted.artifacts.at("edge-model").bytes;
-        const auto path  = directory / "oblique.model";
-        {
-            std::ofstream file(path, std::ios::binary);
-            file.write(reinterpret_cast<const char *>(model.data()), model.size());
-        }
         recognition::AlignStraightBordersTool obliqueTool;
         REQUIRE(obliqueTool
                         .initialize(ToolConfiguration{{}, {{"edge-model", path}}})
@@ -720,7 +702,7 @@ void assetValidation(const std::filesystem::path &directory)
             "a corrupt model is rejected instead of retrained");
 
     ToolConfiguration truncatedInit;
-    truncatedInit.models.emplace("color-model", generic(directory / "color_truncated.model"));
+    truncatedInit.models.emplace("color-model", generic(directory / "color_truncated.zip"));
     const auto truncatedStatus = colorTool.initialize(truncatedInit);
     REQUIRE(truncatedStatus.code == static_cast<std::int64_t>(recognition::RecognitionError::ColorModelIncompatible),
             "a truncated model is rejected by its length check");

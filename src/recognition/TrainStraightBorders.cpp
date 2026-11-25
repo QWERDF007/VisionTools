@@ -4,10 +4,12 @@
 #include "StraightEdgeModel.h"
 #include "common/EdgeProfile.h"
 #include "common/InputValues.h"
+#include "common/ProductPaths.h"
 #include "common/RoiSupport.h"
 #include "common/ToolOutputs.h"
 #include "common/errors/ToolError.h"
 #include "errors/RecognitionErrors.h"
+#include <visionrt/contracts/TrainingArchive.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -35,7 +37,7 @@ visionrt::ToolResult AlignStraightBordersTool::train(const visionrt::Values &inp
     try
     {
         const auto options = EdgeSearchOptions::fromParameters(contrast, width, polarity, completeness);
-        visionrt::validateTrainingSet(training);
+        visionrt::validateTrainingSetPixels(training);
         if (training.records.empty())
             fail(RecognitionError::ReferenceSegmentMissing, "训练集");
         if (training.records.size() > 1)
@@ -61,6 +63,14 @@ visionrt::ToolResult AlignStraightBordersTool::train(const visionrt::Values &inp
 
         const auto model = StraightEdgeModel::train(gray, bands, options);
         const auto bytes = model.encode();
+        if (modelPath.empty())
+            fail(RecognitionError::StraightEdgeModelPathMissing, "模型路径");
+        std::vector<visionrt::TrainingArchiveImage> archiveImages;
+        archiveImages.reserve(training.images.size());
+        for (const auto &[id, item] : training.images)
+            archiveImages.push_back({p::train::DATASET, id, item.colorOrder, item.pixels});
+        visionrt::TrainingArchive::write(common::resolveResourcePath(modelPath),
+                                         {{p::MODEL_ARTIFACT, bytes}}, archiveImages);
 
         std::vector<roi::Record> segments;
         segments.reserve(model.segments().size());
@@ -72,9 +82,7 @@ visionrt::ToolResult AlignStraightBordersTool::train(const visionrt::Values &inp
         outputs.emplace(p::out::FOUND_SEGMENTS, roi::value<visionrt::Line>({std::move(segments)}));
         outputs.emplace(p::out::SEARCH_DIRECTIONS,
                         visionrt::Direction::fromNested({{searchDirectionRecord(bands[0]), searchDirectionRecord(bands[1])}}));
-        auto result = visionrt::toolResult(std::move(outputs), {0, "训练成功"});
-        result.artifacts.emplace(p::MODEL_ARTIFACT, visionrt::ModelArtifact{bytes});
-        return result;
+        return visionrt::toolResult(std::move(outputs), {0, "训练成功"});
     }
     catch (const ToolFailure &error)
     {
