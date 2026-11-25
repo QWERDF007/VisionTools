@@ -1,0 +1,301 @@
+{
+  "schema_version": 4,
+  "name_en": "DetermineAlignmentWithMatching",
+  "name_zh": "通过匹配确定对齐",
+  "version": "1.0.0",
+  "implementation": {
+    "kind": "cpp"
+  },
+  "init_params": [],
+  "train_params": [
+    {
+      "id": 1,
+      "name_zh": "对齐模型路径",
+      "type": "string",
+      "default": "",
+      "ui": {
+        "editor": "path",
+        "group": "模型",
+        "tab": "training"
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "匹配方法",
+      "type": "string",
+      "default": "shape",
+      "constraints": {
+        "options": [
+          {
+            "value": "shape",
+            "label": "基于形状"
+          },
+          {
+            "value": "correlation",
+            "label": "基于相关性"
+          }
+        ]
+      },
+      "ui": {
+        "editor": "text",
+        "tab": "training",
+        "group": "训练参数"
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "模型边缘对比度",
+      "type": "float",
+      "default": 10,
+      "constraints": {
+        "min": 1,
+        "max": 255
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "training",
+        "decimals": 1,
+        "group": "训练参数"
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "搜索边缘对比度",
+      "type": "float",
+      "default": 5,
+      "constraints": {
+        "min": 1,
+        "max": 255
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "training",
+        "decimals": 1,
+        "group": "训练参数"
+      }
+    },
+    {
+      "id": 5,
+      "name_zh": "方向容差",
+      "type": "float",
+      "default": 20,
+      "constraints": {
+        "min": 0,
+        "max": 180
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "training",
+        "decimals": 1,
+        "group": "训练参数"
+      }
+    },
+    {
+      "id": 6,
+      "name_zh": "角度步长",
+      "type": "float",
+      "default": 1,
+      "constraints": {
+        "min": 0.1,
+        "max": 45
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "training",
+        "decimals": 2,
+        "group": "训练参数"
+      }
+    },
+    {
+      "id": 7,
+      "name_zh": "极性策略",
+      "type": "string",
+      "default": "use_polarity",
+      "constraints": {
+        "options": [
+          {
+            "value": "use_polarity",
+            "label": "使用极性"
+          },
+          {
+            "value": "ignore_polarity",
+            "label": "忽略极性"
+          }
+        ]
+      },
+      "ui": {
+        "editor": "text",
+        "tab": "training",
+        "group": "训练参数"
+      }
+    },
+    {
+      "id": 8,
+      "name_zh": "特征点数量",
+      "type": "int",
+      "default": 128,
+      "constraints": {
+        "min": 16,
+        "max": 2048
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "training",
+        "group": "训练参数"
+      }
+    },
+    {
+      "id": 9,
+      "name_zh": "训练样本",
+      "type": "training_set",
+      "ui": {
+        "tab": "training",
+        "group": "训练数据"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "搜索区域",
+      "type": "rectangle",
+      "default": [],
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        }
+      },
+      "ui": {
+        "editor": "roi",
+        "tab": "basic_input",
+        "group": "检测区域"
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "最低分数",
+      "type": "float",
+      "default": 0.5,
+      "constraints": {
+        "min": 0.05,
+        "max": 1
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "detection",
+        "decimals": 2,
+        "group": "匹配判定"
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "方向容差",
+      "type": "float",
+      "default": 20,
+      "constraints": {
+        "min": 0,
+        "max": 180
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "detection",
+        "decimals": 1,
+        "group": "匹配判定"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "对齐数据",
+      "type": {
+        "type": "array",
+        "dtype": "float64",
+        "rank": 2
+      },
+      "produced_by": "execute"
+    },
+    {
+      "id": 3,
+      "name_zh": "匹配分数",
+      "type": {
+        "type": "array",
+        "dtype": "float64",
+        "rank": 1
+      },
+      "produced_by": "execute"
+    },
+    {
+      "id": 4,
+      "name_zh": "匹配区域",
+      "type": "rectangle",
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        }
+      }
+    },
+    {
+      "id": 5,
+      "name_zh": "模型路径",
+      "type": "string"
+    }
+  ],
+  "training": {
+    "datasets": [
+      {
+        "parameter": 9,
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        },
+        "max_records": 1,
+        "fields": [
+          {
+            "id": 2,
+            "name_zh": "训练模板区域",
+            "type": "rectangle",
+            "default": [],
+            "ui": {
+              "editor": "roi",
+              "group": "训练数据",
+              "tab": "training"
+            },
+            "constraints": {
+              "regions": {
+                "min": 1,
+                "max": 1
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "alignment-model",
+        "source_port": 5,
+        "format": "visiontools.matching-alignment",
+        "version": 1,
+        "target": {
+          "stage": "train_params",
+          "id": 1
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "schema_version": 4,
+  "name_en": "RectifyImage",
+  "name_zh": "图像校正",
+  "version": "1.0.0",
+  "implementation": {
+    "kind": "cpp"
+  },
+  "init_params": [],
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "标定数据",
+      "type": {
+        "type": "array",
+        "dtype": "float64",
+        "rank": 3
+      },
+      "default": [],
+      "ui": {
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "标定参数"
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "长度单位",
+      "type": "string",
+      "default": "mm",
+      "constraints": {
+        "options": [
+          {
+            "value": "mm",
+            "label": "毫米"
+          },
+          {
+            "value": "um",
+            "label": "微米"
+          },
+          {
+            "value": "cm",
+            "label": "厘米"
+          },
+          {
+            "value": "m",
+            "label": "米"
+          }
+        ]
+      },
+      "ui": {
+        "tab": "detection",
+        "group": "输出单位"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "校正图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "适配标定数据",
+      "type": {
+        "type": "array",
+        "dtype": "float64",
+        "rank": 3
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "像素尺寸",
+      "type": {
+        "type": "array",
+        "dtype": "float64",
+        "rank": 1
+      }
+    },
+    {
+      "id": 5,
+      "name_zh": "坐标系",
+      "type": "coordinate_frame_2d",
+      "relations": {
+        "image": {
+          "stage": "outputs",
+          "id": 2
+        }
+      }
+    }
+  ]
+}

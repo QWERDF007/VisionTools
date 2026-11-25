@@ -1,4 +1,6 @@
+#include "AlignByMatchingTool.h"
 #include "AlignStraightBordersTool.h"
+#include "CheckPresenceTool.h"
 #include "LocateStraightEdgeTool.h"
 #include "RecognizeColorTool.h"
 
@@ -10,6 +12,14 @@ visionrt::ToolStatus VT_CALL registerTools(visionrt::IToolRegistry &registry) no
 {
     if (auto status = visionrt::registerClass<AlignStraightBordersTool>(
             registry, ports::align_straight_borders::TOOL_ID);
+        !status)
+        return status;
+    if (auto status = visionrt::registerClass<AlignByMatchingTool>(
+            registry, ports::align_by_matching::TOOL_ID);
+        !status)
+        return status;
+    if (auto status = visionrt::registerClass<CheckPresenceTool>(
+            registry, ports::check_presence::TOOL_ID);
         !status)
         return status;
     if (auto status = visionrt::registerClass<RecognizeColorTool>(registry, ports::recognize_color::TOOL_ID);

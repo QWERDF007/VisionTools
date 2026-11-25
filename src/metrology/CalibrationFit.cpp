@@ -67,22 +67,68 @@ CalibrationFit fitCalibration(const cv::Mat &gray, const CalibrationPlate &plate
     CalibrationFit result;
     result.marks = observeCalibrationPlate(gray, plate);
     const double scale = std::max(gray.cols, gray.rows);
+    double objectScale = 0.0;
+    for (const auto &mark : result.marks)
+        objectScale = std::max({objectScale, std::abs(mark.millimeters.x), std::abs(mark.millimeters.y)});
+    if (!(objectScale > 0.0)) fail(MetrologyError::CalibrationFailed, "标定点坐标范围无效");
+
+    std::vector<CalibrationMark> normalizedMarks = result.marks;
     std::vector<cv::Point2d> image, object;
-    for (const auto &mark : result.marks) { image.push_back(mark.image / scale); object.push_back(mark.millimeters); }
-    const auto initial = cv::findHomography(object, image);
-    if (initial.empty()) fail(MetrologyError::CalibrationFailed, "标定点不能确定平面映射");
-    const cv::Matx33d h(initial);
+    for (auto &mark : normalizedMarks)
+    {
+        mark.millimeters /= objectScale;
+        image.push_back(mark.image / scale);
+        object.push_back(mark.millimeters);
+    }
+    const cv::Point2d initialCenter(gray.cols / (2 * scale), gray.rows / (2 * scale));
+    double bestDiv = 0.0;
+    double bestError = std::numeric_limits<double>::infinity();
+    cv::Matx33d bestH = cv::Matx33d::eye();
+    for (const double candidateDiv : {-0.8, -0.6, -0.45, -0.32, -0.22, -0.14, -0.07, -0.02, 0.0, 0.05, 0.15, 0.30})
+    {
+        std::vector<cv::Point2d> undistorted;
+        undistorted.reserve(normalizedMarks.size());
+        bool valid = true;
+        for (const auto &mark : normalizedMarks)
+        {
+            const cv::Point2d delta = mark.image / scale - initialCenter;
+            const double lens = 1.0 + candidateDiv * delta.dot(delta);
+            if (!(lens > 0.15)) { valid = false; break; }
+            undistorted.push_back(initialCenter + delta / lens);
+        }
+        if (!valid) continue;
+        const auto candidateHMat = cv::findHomography(object, undistorted);
+        if (candidateHMat.empty()) continue;
+        const cv::Matx33d candidateH(candidateHMat);
+        double sumSq = 0.0;
+        for (std::size_t i = 0; i < normalizedMarks.size(); ++i)
+        {
+            const auto proj = candidateH * cv::Vec3d(object[i].x, object[i].y, 1.0);
+            if (std::abs(proj[2]) < 1e-12) { valid = false; break; }
+            const cv::Point2d u(proj[0] / proj[2], proj[1] / proj[2]);
+            const cv::Point2d diff = (u - undistorted[i]) * scale;
+            sumSq += diff.dot(diff);
+        }
+        if (valid && sumSq < bestError)
+        {
+            bestError = sumSq;
+            bestDiv = candidateDiv;
+            bestH = candidateH;
+        }
+    }
+    if (!std::isfinite(bestError)) fail(MetrologyError::CalibrationFailed, "标定点不能确定平面映射");
     cv::Mat parameters(ParameterCount, 1, CV_64F);
     auto *p = parameters.ptr<double>();
-    for (int i = H00; i <= H21; ++i) p[i] = h.val[i] / h(2, 2);
-    p[CenterX] = gray.cols / (2 * scale); p[CenterY] = gray.rows / (2 * scale); p[Division] = 0;
-    const auto callback = cv::makePtr<DivisionResidual>(result.marks, scale);
+    for (int i = H00; i <= H21; ++i) p[i] = bestH.val[i] / bestH(2, 2);
+    p[CenterX] = initialCenter.x; p[CenterY] = initialCenter.y; p[Division] = bestDiv;
+    const auto callback = cv::makePtr<DivisionResidual>(normalizedMarks, scale);
     cv::LMSolver::create(callback, kMaximumFitIterations, kFitPrecision)->run(parameters);
     const cv::Matx33d fitted(p[H00], p[H01], p[H02], p[H10], p[H11], p[H12], p[H20], p[H21], 1);
     result.calibration.imageSize = gray.size();
     result.calibration.center = {p[CenterX] * scale, p[CenterY] * scale};
     result.calibration.division = p[Division];
-    result.calibration.imageToMillimeters = fitted.inv() * cv::Matx33d(1/scale, 0, 0, 0, 1/scale, 0, 0, 0, 1);
+    result.calibration.imageToMillimeters = cv::Matx33d(objectScale, 0, 0, 0, objectScale, 0, 0, 0, 1)
+        * fitted.inv() * cv::Matx33d(1/scale, 0, 0, 0, 1/scale, 0, 0, 0, 1);
     result.calibration.validate();
     cv::Mat errors;
     if (!callback->compute(parameters, errors, cv::noArray())) fail(MetrologyError::CalibrationFailed, "重投影误差不可计算");

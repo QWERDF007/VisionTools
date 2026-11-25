@@ -1,0 +1,383 @@
+{
+  "schema_version": 4,
+  "name_en": "CheckPresenceWithMatching",
+  "name_zh": "通过匹配检查存在状态",
+  "version": "1.0.0",
+  "implementation": {
+    "kind": "cpp"
+  },
+  "init_params": [],
+  "train_params": [
+    {
+      "id": 1,
+      "name_zh": "存在性模型路径",
+      "type": "string",
+      "default": "",
+      "ui": {
+        "editor": "path",
+        "group": "模型",
+        "tab": "training"
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "匹配方法",
+      "type": "string",
+      "default": "correlation",
+      "constraints": {
+        "options": [
+          {
+            "value": "correlation",
+            "label": "基于相关性"
+          },
+          {
+            "value": "shape",
+            "label": "基于形状"
+          }
+        ]
+      },
+      "ui": {
+        "editor": "text",
+        "tab": "training",
+        "group": "训练参数"
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "训练最低分数",
+      "type": "float",
+      "default": 0.75,
+      "constraints": {
+        "min": 0.05,
+        "max": 1
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "training",
+        "decimals": 2,
+        "group": "训练参数"
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "训练方向容差",
+      "type": "float",
+      "default": 5,
+      "constraints": {
+        "min": 0,
+        "max": 180
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "training",
+        "decimals": 1,
+        "group": "训练参数"
+      }
+    },
+    {
+      "id": 5,
+      "name_zh": "最大重叠比例",
+      "type": "float",
+      "default": 30,
+      "constraints": {
+        "min": 0,
+        "max": 100
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "training",
+        "decimals": 1,
+        "group": "训练参数"
+      }
+    },
+    {
+      "id": 6,
+      "name_zh": "模型边缘对比度",
+      "type": "float",
+      "default": 10,
+      "constraints": {
+        "min": 1,
+        "max": 255
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "training",
+        "decimals": 1,
+        "group": "训练参数"
+      }
+    },
+    {
+      "id": 7,
+      "name_zh": "对象模板样本",
+      "type": "training_set",
+      "ui": {
+        "tab": "training",
+        "group": "对象模板"
+      }
+    },
+    {
+      "id": 8,
+      "name_zh": "参考位置样本",
+      "type": "training_set",
+      "ui": {
+        "tab": "training",
+        "group": "参考位置"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": 1,
+      "name_zh": "图像",
+      "type": "image",
+      "display": {
+        "visible": true
+      },
+      "ui": {
+        "tab": "basic_input",
+        "group": "检测图像"
+      }
+    },
+    {
+      "id": 2,
+      "name_zh": "对齐数据",
+      "type": {
+        "type": "array",
+        "dtype": "float64",
+        "rank": 2
+      },
+      "default": [
+        [
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ]
+      ],
+      "ui": {
+        "editor": "array",
+        "tab": "basic_input",
+        "group": "输入数据"
+      }
+    },
+    {
+      "id": 3,
+      "name_zh": "最大允许距离",
+      "type": "float",
+      "default": 3,
+      "constraints": {
+        "min": 0.1,
+        "max": 10000
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "detection",
+        "decimals": 2,
+        "group": "位置判定"
+      }
+    },
+    {
+      "id": 4,
+      "name_zh": "最低分数",
+      "type": "float",
+      "default": 0.5,
+      "constraints": {
+        "min": 0.05,
+        "max": 1
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "detection",
+        "decimals": 2,
+        "group": "匹配判定"
+      }
+    },
+    {
+      "id": 5,
+      "name_zh": "最大重叠比例",
+      "type": "float",
+      "default": 30,
+      "constraints": {
+        "min": 0,
+        "max": 100
+      },
+      "ui": {
+        "editor": "number",
+        "tab": "detection",
+        "decimals": 1,
+        "group": "匹配判定"
+      }
+    },
+    {
+      "id": 6,
+      "name_zh": "失败处理",
+      "type": "string",
+      "default": "ignore",
+      "constraints": {
+        "options": [
+          {
+            "value": "ignore",
+            "label": "忽略"
+          },
+          {
+            "value": "nan",
+            "label": "输出 NaN"
+          }
+        ]
+      },
+      "ui": {
+        "editor": "text",
+        "tab": "detection",
+        "group": "结果处理"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": 2,
+      "name_zh": "模型路径",
+      "type": "string"
+    },
+    {
+      "id": 3,
+      "name_zh": "逐位点通过",
+      "type": {
+        "type": "array",
+        "dtype": "bool",
+        "rank": 2
+      },
+      "produced_by": "execute"
+    },
+    {
+      "id": 4,
+      "name_zh": "全部通过",
+      "type": {
+        "type": "array",
+        "dtype": "bool",
+        "rank": 1
+      },
+      "produced_by": "execute"
+    },
+    {
+      "id": 5,
+      "name_zh": "绝对距离",
+      "type": {
+        "type": "array",
+        "dtype": "float64",
+        "rank": 2
+      },
+      "produced_by": "execute"
+    },
+    {
+      "id": 6,
+      "name_zh": "相对距离",
+      "type": {
+        "type": "array",
+        "dtype": "float64",
+        "rank": 2
+      },
+      "produced_by": "execute"
+    },
+    {
+      "id": 7,
+      "name_zh": "通过目标",
+      "type": "circle",
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        }
+      },
+      "produced_by": "execute"
+    },
+    {
+      "id": 8,
+      "name_zh": "拒绝位点",
+      "type": "circle",
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        }
+      },
+      "produced_by": "execute"
+    },
+    {
+      "id": 9,
+      "name_zh": "参考位置",
+      "type": "point",
+      "relations": {
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        }
+      }
+    }
+  ],
+  "training": {
+    "datasets": [
+      {
+        "parameter": 7,
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        },
+        "max_records": 1,
+        "fields": [
+          {
+            "id": 2,
+            "name_zh": "模板区域",
+            "type": "circle",
+            "default": [],
+            "ui": {
+              "editor": "roi",
+              "group": "对象模板",
+              "tab": "training"
+            },
+            "constraints": {
+              "regions": {
+                "min": 1,
+                "max": 1
+              }
+            }
+          }
+        ]
+      },
+      {
+        "parameter": 8,
+        "image": {
+          "stage": "inputs",
+          "id": 1
+        },
+        "max_records": 1,
+        "fields": [
+          {
+            "id": 3,
+            "name_zh": "参考位置",
+            "type": "point",
+            "default": [],
+            "ui": {
+              "editor": "roi",
+              "group": "参考位置",
+              "tab": "training"
+            }
+          }
+        ]
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "presence-model",
+        "source_port": 2,
+        "format": "visiontools.matching-presence",
+        "version": 1,
+        "target": {
+          "stage": "train_params",
+          "id": 1
+        }
+      }
+    ]
+  }
+}

@@ -8,6 +8,9 @@ add_library(visiontools_recognition SHARED
     AlignStraightBordersTool.cpp
     RecognizeColorTool.cpp
     LocateStraightEdgeTool.cpp
+    TemplateMatcher.cpp
+    AlignByMatchingTool.cpp
+    CheckPresenceTool.cpp
     RecognitionModule.cpp
 )
 

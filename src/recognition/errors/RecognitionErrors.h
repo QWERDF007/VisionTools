@@ -27,7 +27,12 @@ enum class RecognitionError : std::int64_t
     StraightEdgeModelUnreadable   = errorCode(domain::kRecognition, 16),
     StraightEdgeModelIncompatible = errorCode(domain::kRecognition, 17),
     StraightEdgeModelPathMissing  = errorCode(domain::kRecognition, 18),
-    StraightEdgeRegionsInvalid    = errorCode(domain::kRecognition, 19)
+    StraightEdgeRegionsInvalid    = errorCode(domain::kRecognition, 19),
+    MatchModelPathMissing         = errorCode(domain::kRecognition, 20),
+    MatchModelUnreadable          = errorCode(domain::kRecognition, 21),
+    MatchModelIncompatible        = errorCode(domain::kRecognition, 22),
+    MatchTrainingInvalid          = errorCode(domain::kRecognition, 23),
+    MatchNotFound                 = errorCode(domain::kRecognition, 24)
 };
 
 inline std::string_view message(RecognitionError code) noexcept
@@ -72,6 +77,16 @@ inline std::string_view message(RecognitionError code) noexcept
         return "直边模型路径未配置";
     case RecognitionError::StraightEdgeRegionsInvalid:
         return "直边训练需要两个有效的搜索矩形";
+    case RecognitionError::MatchModelPathMissing:
+        return "匹配模型路径未配置";
+    case RecognitionError::MatchModelUnreadable:
+        return "匹配模型无法读取";
+    case RecognitionError::MatchModelIncompatible:
+        return "匹配模型格式不兼容或已损坏";
+    case RecognitionError::MatchTrainingInvalid:
+        return "匹配训练数据无效";
+    case RecognitionError::MatchNotFound:
+        return "未找到满足分数阈值的匹配目标";
     }
     return "识别失败";
 }

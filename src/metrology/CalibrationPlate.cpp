@@ -217,6 +217,43 @@ std::vector<CalibrationMark> observeCalibrationPlate(const cv::Mat &gray, const 
         if (!physical.contains(key) || !matched.emplace(key, i).second) fail(MetrologyError::CalibrationFinderMissing, "定位邻域与描述不匹配");
         used.insert(i);
     }
+    const auto predictLocal = [&](const Grid &key) -> std::optional<cv::Point2d>
+    {
+        cv::Point2d sum(0.0, 0.0);
+        int count = 0;
+        // Parallelogram stencils: P(k - d1) + P(k - d2) - P(k - d1 - d2)
+        for (std::size_t a = 0; a < kHexNeighbors.size(); ++a)
+        {
+            const Grid n1{key.first - kHexNeighbors[a].first, key.second - kHexNeighbors[a].second};
+            const auto it1 = matched.find(n1);
+            if (it1 == matched.end()) continue;
+            for (std::size_t b = a + 1; b < kHexNeighbors.size(); ++b)
+            {
+                const Grid n2{key.first - kHexNeighbors[b].first, key.second - kHexNeighbors[b].second};
+                const auto it2 = matched.find(n2);
+                if (it2 == matched.end()) continue;
+                const Grid n12{n1.first - kHexNeighbors[b].first, n1.second - kHexNeighbors[b].second};
+                const auto it12 = matched.find(n12);
+                if (it12 == matched.end()) continue;
+                sum += blobs[it1->second].center + blobs[it2->second].center - blobs[it12->second].center;
+                ++count;
+            }
+        }
+        if (count > 0) return sum * (1.0 / count);
+        // Collinear stencils: 2 * P(k - d) - P(k - 2*d)
+        for (const auto &[dq, dr] : kHexNeighbors)
+        {
+            const Grid n1{key.first - dq, key.second - dr};
+            const Grid n2{key.first - 2 * dq, key.second - 2 * dr};
+            const auto it1 = matched.find(n1);
+            const auto it2 = matched.find(n2);
+            if (it1 == matched.end() || it2 == matched.end()) continue;
+            sum += blobs[it1->second].center * 2.0 - blobs[it2->second].center;
+            ++count;
+        }
+        if (count > 0) return sum * (1.0 / count);
+        return std::nullopt;
+    };
     const auto fitHomography = [&]
     {
         std::vector<cv::Point2d> object, image;
@@ -238,16 +275,32 @@ std::vector<CalibrationMark> observeCalibrationPlate(const cv::Mat &gray, const 
         bool added = false;
         for (const auto &key : frontier)
         {
-            const auto predicted = homographyPoint(homography, physical.at(key));
+            const auto local = predictLocal(key);
+            const auto predicted = local ? *local : homographyPoint(homography, physical.at(key));
+            double localPitch = pitch;
+            if (local)
+            {
+                double stepSum = 0.0;
+                int stepCount = 0;
+                for (const auto &[dq, dr] : kHexNeighbors)
+                {
+                    const auto it = matched.find({key.first - dq, key.second - dr});
+                    if (it != matched.end())
+                    {
+                        stepSum += cv::norm(*local - blobs[it->second].center);
+                        ++stepCount;
+                    }
+                }
+                if (stepCount > 0) localPitch = stepSum / stepCount;
+            }
             auto best = blobs.size();
-            double distance = pitch * kNeighborTolerance;
+            double distance = localPitch * kNeighborTolerance;
             for (std::size_t i = 0; i < blobs.size(); ++i)
                 if (!used.contains(i) && cv::norm(blobs[i].center - predicted) < distance)
                 { distance = cv::norm(blobs[i].center - predicted); best = i; }
             if (best != blobs.size()) { matched.emplace(key, best); used.insert(best); added = true; }
         }
         if (!added) break;
-        homography = fitHomography();
     }
     if (matched.size() < kMinimumCalibrationMarks) fail(MetrologyError::InsufficientPoints, "标定点不足");
     std::vector<CalibrationMark> result;
