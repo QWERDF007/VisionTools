@@ -83,12 +83,28 @@ public:
     Classification classify(const ChromaImage &image, const cv::Mat &mask, double minScore,
                             double minRatio) const;
 
+    // Classifies pixels inside a circle on a BGR frame by converting only its clipped bounding box
+    // to YUV into `yuvScratch` and evaluating via the precomputed U/V lookup table.
+    Classification classifyCircle(const cv::Mat &bgr, cv::Point2d center, double radius, double minScore,
+                                  double minRatio, cv::Mat &yuvScratch) const;
+
 private:
+    struct LookupEntry
+    {
+        double        score      = 0.0;
+        std::uint16_t classIndex = 0;
+    };
+
     // The body of `decode`: it reports a truncated file by throwing, so `decode` can answer with
     // this model's own error code instead of a generic exception.
     static ColorModel read(std::span<const std::uint8_t> bytes);
+    void              buildLookupTable();
+    Classification    finalizeClassification(const std::vector<std::size_t> &histogram,
+                                             const std::vector<double> &scoreSums, std::size_t total,
+                                             std::size_t accepted, double minRatio) const;
 
-    std::vector<ColorClass> classes_;
+    std::vector<ColorClass>  classes_;
+    std::vector<LookupEntry> uvLookup_;
 };
 
 } // namespace visiontools::recognition

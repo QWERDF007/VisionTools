@@ -102,22 +102,44 @@ IntensityProfile buildProfile(const cv::Mat &gray, cv::Point2d center, cv::Point
     return profile;
 }
 
+std::vector<double> derivativeGaussianKernel(double sigma, double step)
+{
+    if (!(sigma > 0.0) || !std::isfinite(sigma))
+        throw std::runtime_error("平滑标准差必须为正数");
+    if (!(step > 0.0) || !std::isfinite(step))
+        throw std::runtime_error("采样步长必须为正数");
+    const auto gaussian = gaussianKernel(sigma, step);
+    const int  gRadius  = static_cast<int>(gaussian.size() / 2);
+    const int  kRadius  = gRadius + 1;
+    std::vector<double> kernel(static_cast<std::size_t>(kRadius) * 2 + 1, 0.0);
+    const double        inv = 1.0 / (2.0 * step);
+    for (int offset = -kRadius; offset <= kRadius; ++offset)
+    {
+        const double left  = (offset - 1 >= -gRadius && offset - 1 <= gRadius)
+                                 ? gaussian[static_cast<std::size_t>((offset - 1) + gRadius)]
+                                 : 0.0;
+        const double right = (offset + 1 >= -gRadius && offset + 1 <= gRadius)
+                                 ? gaussian[static_cast<std::size_t>((offset + 1) + gRadius)]
+                                 : 0.0;
+        kernel[static_cast<std::size_t>(offset + kRadius)] = (left - right) * inv;
+    }
+    return kernel;
+}
+
 std::vector<double> gradientProfile(const IntensityProfile &profile, double sigma)
 {
     const std::size_t count = profile.values.size();
-    std::vector<double> smoothed(count, std::numeric_limits<double>::quiet_NaN());
+    std::vector<double> gradient(count, std::numeric_limits<double>::quiet_NaN());
     if (count == 0)
-        return smoothed;
-    if (!(sigma > 0.0) || !std::isfinite(sigma))
-        throw std::runtime_error("平滑标准差必须为正数");
-    const auto   kernel = gaussianKernel(sigma, profile.step);
-    const int    radius = static_cast<int>(kernel.size() / 2);
-    for (std::size_t index = 0; index < count; ++index)
+        return gradient;
+    const auto kernel = derivativeGaussianKernel(sigma, profile.step);
+    const int  radius = static_cast<int>(kernel.size() / 2);
+    if (count <= static_cast<std::size_t>(radius) * 2)
+        return gradient;
+    for (std::size_t index = static_cast<std::size_t>(radius); index + static_cast<std::size_t>(radius) < count; ++index)
     {
-        if (index < static_cast<std::size_t>(radius) || index + static_cast<std::size_t>(radius) >= count)
-            continue;
-        bool         valid = true;
-        double       sum   = 0;
+        bool   valid = true;
+        double sum   = 0.0;
         for (int k = -radius; k <= radius; ++k)
         {
             const double value = profile.values[static_cast<std::ptrdiff_t>(index) + k];
@@ -129,16 +151,7 @@ std::vector<double> gradientProfile(const IntensityProfile &profile, double sigm
             sum += value * kernel[static_cast<std::size_t>(k + radius)];
         }
         if (valid)
-            smoothed[index] = sum;
-    }
-    std::vector<double> gradient(count, std::numeric_limits<double>::quiet_NaN());
-    if (count < 3)
-        return gradient;
-    for (std::size_t index = 1; index + 1 < count; ++index)
-    {
-        const double left = smoothed[index - 1], right = smoothed[index + 1];
-        if (std::isfinite(left) && std::isfinite(right))
-            gradient[index] = (right - left) / (2.0 * profile.step);
+            gradient[index] = sum;
     }
     return gradient;
 }
@@ -187,14 +200,18 @@ std::optional<EdgeCandidate> nearestEdge(std::vector<EdgeCandidate> candidates)
 {
     if (candidates.empty())
         return std::nullopt;
-    std::stable_sort(candidates.begin(), candidates.end(),
-                     [](const EdgeCandidate &a, const EdgeCandidate &b)
-                     {
-                         if (a.offset != b.offset)
-                             return std::abs(a.offset) < std::abs(b.offset);
-                         return std::abs(a.gradient) > std::abs(b.gradient);
-                     });
-    return candidates.front();
+    std::size_t best = 0;
+    for (std::size_t index = 1; index < candidates.size(); ++index)
+    {
+        const auto &candidate = candidates[index];
+        const auto &current   = candidates[best];
+        const bool  better    = candidate.offset != current.offset
+                                    ? std::abs(candidate.offset) < std::abs(current.offset)
+                                    : std::abs(candidate.gradient) > std::abs(current.gradient);
+        if (better)
+            best = index;
+    }
+    return candidates[best];
 }
 
 cv::Mat grayscale(const cv::Mat &image)

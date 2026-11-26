@@ -47,6 +47,9 @@ IntensityProfile buildProfile(const cv::Mat &gray, cv::Point2d center, cv::Point
                               cv::Point2d averageDirection, double averageHalfWidth, double step = 0.5,
                               std::size_t budget = 8'000'000);
 
+// Combined Gaussian-smoothing + central-difference first-derivative kernel in intensity/pixel.
+std::vector<double> derivativeGaussianKernel(double sigma, double step);
+
 // Signed first derivative of the Gaussian-smoothed profile, in intensity/pixel.
 std::vector<double> gradientProfile(const IntensityProfile &profile, double sigma);
 

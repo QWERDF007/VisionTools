@@ -140,6 +140,7 @@ visionrt::ToolResult RecognizeColorTool::execute(const visionrt::Values &inputs)
         centersY.reserve(images.size());
         currentCircles.reserve(images.size());
 
+        cv::Mat yuvScratch;
         for (std::size_t index = 0; index < images.size(); ++index)
         {
             const auto &image = images[index];
@@ -147,7 +148,6 @@ visionrt::ToolResult RecognizeColorTool::execute(const visionrt::Values &inputs)
             if (image.type() != CV_8UC3)
                 fail(RecognitionError::UnsupportedColorImage, "第 " + std::to_string(index + 1) + " 张图");
 
-            const ChromaImage        chroma{image};
             const auto              &alignmentForImage = alignments[index];
             const auto               circles           = circlesFor(regions.get(), index);
             std::vector<std::string> imageColors;
@@ -170,9 +170,8 @@ visionrt::ToolResult RecognizeColorTool::execute(const visionrt::Values &inputs)
                 imageY.push_back(static_cast<float>(centerY));
                 imageCircles.push_back(roi::circle(centerX, centerY, radius));
 
-                const cv::Mat mask
-                    = roi::regionMask({imageCircles.back()}, image.size(), geometry::Alignment::identity());
-                const auto classification = model_.classify(chroma, mask, minScore, minRatio);
+                const auto classification
+                    = model_.classifyCircle(image, {centerX, centerY}, radius, minScore, minRatio, yuvScratch);
                 imageColors.push_back(classification.label);
                 imageScores.push_back(static_cast<float>(classification.score));
                 imageRatios.push_back(static_cast<float>(classification.ratio));

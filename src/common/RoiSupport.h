@@ -29,6 +29,22 @@ CircularSearch circularSearch(const visionrt::PortValue &value, const char *port
 // True when at least one image carries at least one record.
 bool anyRecord(const std::vector<std::vector<Record>> &records) noexcept;
 
+struct BoundedMask
+{
+    cv::Rect bounds;
+    cv::Mat  mask;
+
+    bool empty() const noexcept
+    {
+        return bounds.empty() || mask.empty();
+    }
+};
+
+// Tight CV_8UC1 mask (0 or 255) over the clipped union bounding box of `records`,
+// evaluated at pixel centers in reference coordinates.
+BoundedMask boundedRegionMask(const std::vector<Record> &records, cv::Size size,
+                              const geometry::Alignment &toReference);
+
 // CV_8UC1 mask (0 or 255) of the union of all records of one image, evaluated at
 // pixel centers in reference coordinates.
 cv::Mat regionMask(const std::vector<Record> &records, cv::Size size, const geometry::Alignment &toReference);

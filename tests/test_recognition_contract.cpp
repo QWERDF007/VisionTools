@@ -9,6 +9,7 @@
 #include "recognition/ColorModel.h"
 #include "recognition/LocateStraightEdgeTool.h"
 #include "recognition/RecognizeColorTool.h"
+#include "recognition/StraightEdgeLocator.h"
 #include "recognition/StraightEdgeProbe.h"
 #include "recognition/errors/RecognitionErrors.h"
 #include <visionrt/contracts/TrainingArchive.h>
@@ -264,6 +265,27 @@ void straightEdgeAlignment(const std::filesystem::path &directory)
     },
                                          secondReference, {{0, 5}, {1000, 5.1}, 1}),
             "nearly parallel measured edges cannot determine a rigid pose");
+
+    // Direct BGR input and partially out-of-image bands must agree with grayscale full-image location.
+    {
+        const auto grayRef = edge::grayscale(reference);
+        const recognition::SearchRectangle insideBand{{200.0, 300.0}, 160.0, 40.0, 0.0};
+        const recognition::EdgeSearchOptions opts{30.0, 3, edge::EdgePolarity::Any, 0.4};
+        const auto fromGray = recognition::locateSegment(grayRef, insideBand, opts);
+        const auto fromBgr  = recognition::locateSegment(reference, insideBand, opts);
+        REQUIRE(fromGray && fromBgr, "locateSegment must accept both grayscale and BGR images");
+        REQUIRE(cv::norm(fromGray->start - fromBgr->start) < 0.05 && cv::norm(fromGray->end - fromBgr->end) < 0.05,
+                "BGR and grayscale straight-edge location must match to sub-pixel precision");
+
+        // Band extending past the right image border still locates the in-bounds segment cleanly.
+        cv::Mat borderImg(200, 200, CV_8UC3, cv::Scalar{0, 0, 0});
+        cv::rectangle(borderImg, cv::Rect{0, 80, 200, 120}, cv::Scalar{255, 255, 255}, cv::FILLED);
+        const recognition::SearchRectangle borderBand{{160.0, 80.0}, 140.0, 40.0, 0.0};
+        const auto onBorder = recognition::locateSegment(borderImg, borderBand, opts);
+        REQUIRE(onBorder.has_value(), "partially out-of-bounds band must still locate the visible edge");
+        REQUIRE(std::abs(onBorder->start.y - 79.5) < 0.6 && std::abs(onBorder->end.y - 79.5) < 0.6,
+                "partially out-of-bounds band must preserve edge position");
+    }
 }
 
 void straightEdgeProbe()
@@ -504,7 +526,24 @@ void colorRecognition(const std::filesystem::path &directory)
             REQUIRE(answer.label == colors.front()[index], "the reloaded model changes the label");
             REQUIRE(std::abs(answer.score - scores.front()[index]) < 1e-6, "the reloaded model changes the score");
             REQUIRE(std::abs(answer.ratio - ratios.front()[index]) < 1e-6, "the reloaded model changes the ratio");
+
+            cv::Mat yuvScratch;
+            const auto direct = inMemory.classifyCircle(image, centers[index], 15.0, 0.05, 0.5, yuvScratch);
+            REQUIRE(direct.label == answer.label, "classifyCircle must match mask classification label");
+            REQUIRE(std::abs(direct.score - answer.score) < 1e-12, "classifyCircle must match mask classification score");
+            REQUIRE(std::abs(direct.ratio - answer.ratio) < 1e-12, "classifyCircle must match mask classification ratio");
         }
+        // Partially out-of-bounds circle near image corner must match full regionMask identically.
+        cv::Mat cornerImg(80, 80, CV_8UC3, cv::Scalar{0, 0, 255});
+        const recognition::ChromaImage cornerChroma(cornerImg);
+        const cv::Mat cornerMask
+            = roi::regionMask({makeCircle({5.3, 4.7}, 12.0)}, cornerImg.size(), geometry::Alignment::identity());
+        const auto cornerRef = inMemory.classify(cornerChroma, cornerMask, 0.05, 0.5);
+        cv::Mat cornerScratch;
+        const auto cornerDirect = inMemory.classifyCircle(cornerImg, {5.3, 4.7}, 12.0, 0.05, 0.5, cornerScratch);
+        REQUIRE(cornerDirect.label == cornerRef.label && std::abs(cornerDirect.score - cornerRef.score) < 1e-12
+                    && std::abs(cornerDirect.ratio - cornerRef.ratio) < 1e-12,
+                "partially clipped circle classification must match regionMask exactly");
     }
 
     const auto centersX

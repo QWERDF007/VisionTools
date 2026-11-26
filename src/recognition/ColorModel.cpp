@@ -97,9 +97,12 @@ ColorModel ColorModel::train(const std::vector<Sample> &samples)
             fail(RecognitionError::ColorSamplesMissing, sample.label);
         if (sample.pixels.type() != CV_8UC3)
             fail(RecognitionError::UnsupportedColorImage, sample.label);
-        const ChromaImage chroma(sample.pixels);
-        const cv::Mat mask = roi::regionMask(sample.regions, chroma.planes().size(), geometry::Alignment::identity());
-        accumulate(chroma.planes(), mask, accumulators[sample.label]);
+        const auto bounded = roi::boundedRegionMask(sample.regions, sample.pixels.size(), geometry::Alignment::identity());
+        if (bounded.empty())
+            continue;
+        cv::Mat patchYuv;
+        cv::cvtColor(sample.pixels(bounded.bounds), patchYuv, cv::COLOR_BGR2YUV);
+        accumulate(patchYuv, bounded.mask, accumulators[sample.label]);
     }
 
     ColorModel model;
@@ -124,6 +127,7 @@ ColorModel ColorModel::train(const std::vector<Sample> &samples)
     }
     if (model.classes_.empty())
         fail(RecognitionError::ColorSamplesMissing, "训练数据");
+    model.buildLookupTable();
     return model;
 }
 
@@ -213,42 +217,27 @@ ColorModel ColorModel::read(std::span<const std::uint8_t> bytes)
     }
     if (reader.remaining() != 0)
         corrupt("文件长度与类别数量不符");
+    model.buildLookupTable();
     return model;
 }
 
-ColorModel::Classification ColorModel::classify(const ChromaImage &image, const cv::Mat &mask, double minScore,
-                                                double minRatio) const
+void ColorModel::buildLookupTable()
 {
-    if (classes_.empty())
-        fail(RecognitionError::ColorSamplesMissing, "颜色模型");
-    const cv::Mat &yuv = image.planes();
-    if (mask.type() != CV_8UC1 || mask.size() != yuv.size())
-        fail(CommonToolError::InputOutOfRange, "检测区域掩码与图像尺寸不一致");
-
-    std::vector<std::size_t> histogram(classes_.size(), 0);
-    std::vector<double>      scoreSums(classes_.size(), 0);
-    std::size_t              total    = 0;
-    std::size_t              accepted = 0;
-
-    for (int row = 0; row < yuv.rows; ++row)
+    uvLookup_.assign(65536, LookupEntry{});
+    for (int u = 0; u < 256; ++u)
     {
-        const auto *pixels = yuv.ptr<cv::Vec3b>(row);
-        const auto *valid  = mask.ptr<std::uint8_t>(row);
-        for (int column = 0; column < yuv.cols; ++column)
+        const double ud = static_cast<double>(u);
+        for (int v = 0; v < 256; ++v)
         {
-            if (valid[column] == 0)
-                continue;
-            ++total;
-            const double u = pixels[column][1];
-            const double v = pixels[column][2];
-            std::size_t  best         = 0;
-            double       bestDensity  = -std::numeric_limits<double>::infinity();
-            double       bestDistance = 0;
+            const double  vd           = static_cast<double>(v);
+            std::uint16_t best         = 0;
+            double        bestDensity  = -std::numeric_limits<double>::infinity();
+            double        bestDistance = 0.0;
             for (std::size_t index = 0; index < classes_.size(); ++index)
             {
-                const auto &color = classes_[index];
-                const double du    = u - color.mean[0];
-                const double dv    = v - color.mean[1];
+                const auto  &color = classes_[index];
+                const double du    = ud - color.mean[0];
+                const double dv    = vd - color.mean[1];
                 const double distance = du * (color.inverse(0, 0) * du + color.inverse(0, 1) * dv)
                                         + dv * (color.inverse(1, 0) * du + color.inverse(1, 1) * dv);
                 const double density = -0.5 * distance - 0.5 * color.logDeterminant;
@@ -256,18 +245,19 @@ ColorModel::Classification ColorModel::classify(const ChromaImage &image, const 
                 {
                     bestDensity  = density;
                     bestDistance = distance;
-                    best         = index;
+                    best         = static_cast<std::uint16_t>(index);
                 }
             }
-            const double score = std::exp(-0.5 * std::max(0.0, bestDistance));
-            if (score < minScore)
-                continue;
-            ++accepted;
-            histogram[best] += 1;
-            scoreSums[best] += score;
+            uvLookup_[static_cast<std::size_t>((u << 8) | v)]
+                = {std::exp(-0.5 * std::max(0.0, bestDistance)), best};
         }
     }
+}
 
+ColorModel::Classification ColorModel::finalizeClassification(const std::vector<std::size_t> &histogram,
+                                                              const std::vector<double> &scoreSums, std::size_t total,
+                                                              std::size_t accepted, double minRatio) const
+{
     Classification result;
     if (total == 0)
         return result;
@@ -284,6 +274,97 @@ ColorModel::Classification ColorModel::classify(const ChromaImage &image, const 
     result.label = classes_[winner].label;
     result.score = scoreSums[winner] / static_cast<double>(histogram[winner]);
     return result;
+}
+
+ColorModel::Classification ColorModel::classify(const ChromaImage &image, const cv::Mat &mask, double minScore,
+                                                double minRatio) const
+{
+    if (classes_.empty())
+        fail(RecognitionError::ColorSamplesMissing, "颜色模型");
+    const cv::Mat &yuv = image.planes();
+    if (mask.type() != CV_8UC1 || mask.size() != yuv.size())
+        fail(CommonToolError::InputOutOfRange, "检测区域掩码与图像尺寸不一致");
+
+    std::vector<std::size_t> histogram(classes_.size(), 0);
+    std::vector<double>      scoreSums(classes_.size(), 0.0);
+    std::size_t              total    = 0;
+    std::size_t              accepted = 0;
+    const auto              *lut      = uvLookup_.data();
+
+    for (int row = 0; row < yuv.rows; ++row)
+    {
+        const auto *pixels = yuv.ptr<cv::Vec3b>(row);
+        const auto *valid  = mask.ptr<std::uint8_t>(row);
+        for (int column = 0; column < yuv.cols; ++column)
+        {
+            if (valid[column] == 0)
+                continue;
+            ++total;
+            const auto &entry = lut[(static_cast<std::size_t>(pixels[column][1]) << 8) | pixels[column][2]];
+            if (entry.score < minScore)
+                continue;
+            ++accepted;
+            histogram[entry.classIndex] += 1;
+            scoreSums[entry.classIndex] += entry.score;
+        }
+    }
+    return finalizeClassification(histogram, scoreSums, total, accepted, minRatio);
+}
+
+ColorModel::Classification ColorModel::classifyCircle(const cv::Mat &bgr, cv::Point2d center, double radius,
+                                                      double minScore, double minRatio, cv::Mat &yuvScratch) const
+{
+    if (classes_.empty())
+        fail(RecognitionError::ColorSamplesMissing, "颜色模型");
+    if (bgr.type() != CV_8UC3)
+        fail(RecognitionError::UnsupportedColorImage, "图像");
+    if (!(radius > 0.0) || !std::isfinite(radius) || !std::isfinite(center.x) || !std::isfinite(center.y))
+        return {};
+
+    constexpr double kBoundaryTolerance = 0.5;
+    const double     radiusLimit        = radius + kBoundaryTolerance;
+    const double     radiusLimitSq      = radiusLimit * radiusLimit;
+    const int        x0 = std::clamp(static_cast<int>(std::floor(center.x - radiusLimit)), 0, bgr.cols);
+    const int        y0 = std::clamp(static_cast<int>(std::floor(center.y - radiusLimit)), 0, bgr.rows);
+    const int        x1 = std::clamp(static_cast<int>(std::ceil(center.x + radiusLimit)) + 1, 0, bgr.cols);
+    const int        y1 = std::clamp(static_cast<int>(std::ceil(center.y + radiusLimit)) + 1, 0, bgr.rows);
+    if (x1 <= x0 || y1 <= y0)
+        return {};
+
+    cv::cvtColor(bgr(cv::Rect(x0, y0, x1 - x0, y1 - y0)), yuvScratch, cv::COLOR_BGR2YUV);
+
+    std::vector<std::size_t> histogram(classes_.size(), 0);
+    std::vector<double>      scoreSums(classes_.size(), 0.0);
+    std::size_t              total    = 0;
+    std::size_t              accepted = 0;
+    const auto              *lut      = uvLookup_.data();
+
+    for (int y = y0; y < y1; ++y)
+    {
+        const double dy  = static_cast<double>(y) - center.y;
+        const double dy2 = dy * dy;
+        if (dy2 > radiusLimitSq)
+            continue;
+        const double dxMax = std::sqrt(radiusLimitSq - dy2);
+        const int    lx0   = std::max(x0, static_cast<int>(std::ceil(center.x - dxMax)) - 1);
+        const int    lx1   = std::min(x1 - 1, static_cast<int>(std::floor(center.x + dxMax)) + 1);
+        const auto  *row   = yuvScratch.ptr<cv::Vec3b>(y - y0) - x0;
+        for (int x = lx0; x <= lx1; ++x)
+        {
+            const double dx = static_cast<double>(x) - center.x;
+            if (dx * dx + dy2 > radiusLimitSq)
+                continue;
+            ++total;
+            const auto &px    = row[x];
+            const auto &entry = lut[(static_cast<std::size_t>(px[1]) << 8) | px[2]];
+            if (entry.score < minScore)
+                continue;
+            ++accepted;
+            histogram[entry.classIndex] += 1;
+            scoreSums[entry.classIndex] += entry.score;
+        }
+    }
+    return finalizeClassification(histogram, scoreSums, total, accepted, minRatio);
 }
 
 } // namespace visiontools::recognition

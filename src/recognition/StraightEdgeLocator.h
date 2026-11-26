@@ -52,8 +52,9 @@ struct LocatedSegment
 SearchRectangle searchRectangle(const visionrt::EncodedRegion &record, std::size_t index);
 std::vector<double> searchDirectionRecord(const SearchRectangle &band);
 
-// Fits the edge points in the current search band. Empty when no sufficiently complete edge exists.
-std::optional<LocatedSegment> locateSegment(const cv::Mat &gray, const SearchRectangle &band,
+// Fits the edge points in the current search band on an 8-bit 1/3/4-channel image.
+// Empty when no sufficiently complete edge exists.
+std::optional<LocatedSegment> locateSegment(const cv::Mat &image, const SearchRectangle &band,
                                             const EdgeSearchOptions &options);
 
 // Reference-to-current rigid transform from two non-parallel corresponding segments: the angle

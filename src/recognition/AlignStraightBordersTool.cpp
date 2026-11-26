@@ -101,14 +101,13 @@ visionrt::ToolResult AlignStraightBordersTool::execute(const visionrt::Values &i
             requireSupportedImage(images[index], "通过直边确定对齐");
             if (images[index].depth() != CV_8U)
                 fail(CommonToolError::UnsupportedImage, "第 " + std::to_string(index + 1) + " 张图不是 8 位图像");
-            const cv::Mat gray = edge::grayscale(images[index]);
 
             if (regions[index].size() != 2)
                 fail(RecognitionError::StraightEdgeRegionsInvalid, "搜索区域", "每张图需要恰好两个旋转矩形");
-            const auto firstBand = searchRectangle(regions[index][0], 0);
+            const auto firstBand  = searchRectangle(regions[index][0], 0);
             const auto secondBand = searchRectangle(regions[index][1], 1);
-            const auto first  = locateSegment(gray, firstBand, options);
-            const auto second = locateSegment(gray, secondBand, options);
+            const auto first      = locateSegment(images[index], firstBand, options);
+            const auto second     = locateSegment(images[index], secondBand, options);
             if (!first)
                 fail(RecognitionError::EdgeNotFound, trained[0].name, "第 " + std::to_string(index + 1) + " 张图");
             if (!second)

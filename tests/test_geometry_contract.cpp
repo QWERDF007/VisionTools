@@ -108,6 +108,25 @@ void geometryAndRoi()
     REQUIRE(area == 21 * 11, "rectangle mask must include boundary pixel centres");
     REQUIRE(mask.at<std::uint8_t>(30, 30) == 255 && mask.at<std::uint8_t>(2, 2) == 0,
             "mask must mark only the selected region");
+
+    // Bounded ROI masks must match full regionMask pixel-for-pixel across shapes, alignments and border clipping.
+    const std::vector<cv::Point2d> polygonPoints{{4.0, 6.0}, {18.0, 8.0}, {12.0, 22.0}};
+    const std::vector<roi::Record> multiShapes{
+        roi::rectangle(30, 30, 20, 10, 25.0),
+        roi::circle(55.4, 54.6, 12.0),
+        visionrt::makePolygon(polygonPoints),
+    };
+    const auto toRef = *geometry::rotationAround(30.0, 30.0, 15.0).inverse();
+    const auto fullMulti = roi::regionMask(multiShapes, cv::Size(60, 60), toRef);
+    const auto bounded   = roi::boundedRegionMask(multiShapes, cv::Size(60, 60), toRef);
+    cv::Mat    expanded  = cv::Mat::zeros(cv::Size(60, 60), CV_8UC1);
+    if (!bounded.empty())
+        bounded.mask.copyTo(expanded(bounded.bounds));
+    REQUIRE(cv::countNonZero(fullMulti != expanded) == 0,
+            "boundedRegionMask must reproduce regionMask pixel-for-pixel");
+    const auto offscreen = roi::boundedRegionMask({roi::circle(-40.0, -40.0, 5.0)}, cv::Size(60, 60),
+                                                  geometry::Alignment::identity());
+    REQUIRE(offscreen.empty(), "offscreen ROI must produce an empty bounded mask");
 }
 
 void rotateTool()
